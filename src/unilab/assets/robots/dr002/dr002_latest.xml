@@ -1,0 +1,129 @@
+<mujoco model="DR002_latest_meshbody_cylfoot_collision_lod">
+  <compiler angle="radian" meshdir="meshes_latest/" autolimits="true" />
+  <option timestep="0.0025" gravity="0 0 -9.81" integrator="Euler" />
+  <asset>
+    <mesh name="base_link" file="base_link.STL" />
+    <mesh name="left_thigh_link" file="left_thigh_link.STL" />
+    <mesh name="left_calf_link" file="left_calf_link.STL" />
+    <mesh name="left_foot_link" file="left_foot_link.STL" />
+    <mesh name="right_thigh_link" file="right_thigh_link.STL" />
+    <mesh name="right_calf_link" file="right_calf_link.STL" />
+    <mesh name="right_foot_link" file="right_foot_link.STL" />
+    <material name="base_link_mat" rgba="0.7529 0.7529 0.7529 1" specular="0" />
+    <material name="left_thigh_joint_mat" rgba="1 1 1 1" specular="0" />
+    <material name="left_calf_joint_mat" rgba="0.7765 0.7569 0.7372 1" specular="0" />
+    <material name="left_foot_joint_mat" rgba="1 1 1 1" specular="0" />
+    <material name="right_thigh_joint_mat" rgba="1 1 1 1" specular="0" />
+    <material name="right_calf_joint_mat" rgba="0.7765 0.7569 0.7372 1" specular="0" />
+    <material name="right_foot_joint_mat" rgba="0.6667 0.6667 0.6667 1" specular="0" />
+  </asset>
+  <worldbody>
+    <body name="base_link" pos="0 0 0.30">
+      <inertial pos="-0.0373029 0.0000938 -0.0344686" mass="0.4900983" fullinertia="0.00067549 0.00091599 0.00063227 -0.00000176 -0.00010071 -0.00000296" />
+      <freejoint />
+      <site name="imu" pos="0 0 0" />
+      <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="base_link_mat" type="mesh" mesh="base_link" name="base_link_visual" />
+      <geom pos="-0.019765003 0 -0.024499988" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="box" size="0.063984999 0.059149999 0.075000012" name="base_link_collision" />
+      <site name="base_link_touch_site" type="box" pos="-0.019765003 0 -0.024499988" size="0.063984999 0.059149999 0.075000012" rgba="1 0 0 0.15" />
+      <body name="left_thigh_joint" pos="0.01425 0.05385 -0.0415" quat="0.5003998 -0.4996017 0.500398 0.4995998">
+        <joint name="left_thigh_joint" type="hinge" axis="0 0 1" limited="true" range="-0.43 1.57" damping="0" frictionloss="0" armature="0.0076577" />
+        <inertial pos="0.0103941 0.0002986 0.0341752" mass="0.6449579" fullinertia="0.00105519 0.00171869 0.00074863 -0.00001196 0.00003674 0.00000559" />
+        <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="left_thigh_joint_mat" type="mesh" mesh="left_thigh_link" name="left_thigh_joint_visual" />
+        <geom pos="0.057495112 -0.000012705 0.027400002" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="box" size="0.088995105 0.031453954 0.071400002" name="left_thigh_joint_collision" />
+        <site name="left_thigh_touch_site" type="box" pos="0.057495112 -0.000012705 0.027400002" size="0.088995106 0.031453953 0.071400005" rgba="1 0 0 0.15" />
+        <body name="left_calf_joint" pos="0.136 0 0.0283">
+          <joint name="left_calf_joint" type="hinge" axis="0 0 1" limited="true" range="-2.669 -0.17" damping="0" frictionloss="0" armature="0.01738699" />
+          <inertial pos="0.0649122 -0.0004084 -0.0011213" mass="0.0577115" fullinertia="0.00000775 0.00018349 0.00018663 -0.00000221 0.00000395 0.00000002" />
+          <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="left_calf_joint_mat" type="mesh" mesh="left_calf_link" name="left_calf_joint_visual" />
+          <geom pos="0.078361970 0 0" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="box" size="0.098638031 0.027000001 0.010000000" name="left_calf_joint_collision" />
+          <site name="left_calf_touch_site" type="box" pos="0.078361970 0 0" size="0.098638034 0.027000001 0.010000000" rgba="1 0 0 0.15" />
+          <body name="left_foot_joint" pos="0.15 0 0.037">
+            <joint name="left_foot_joint" type="hinge" axis="0 0 1" damping="0" frictionloss="0.0483561" armature="0.0008" />
+            <inertial pos="-0.0000704 0 -0.0049729" mass="0.31889" fullinertia="0.00018411 0.00018414 0.00012941 0.00000002 -0.00000032 -0.00000003" />
+            <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="left_foot_joint_mat" type="mesh" mesh="left_foot_link" name="left_foot_joint_visual" />
+            <geom pos="0 0 0.017285" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="cylinder" size="0.0425 0.017285" name="left_foot_joint_collision" />
+          </body>
+        </body>
+      </body>
+      <body name="right_thigh_joint" pos="0.01425 -0.05385 -0.0415" quat="0.5 0.5 0.5 -0.5">
+        <joint name="right_thigh_joint" type="hinge" axis="0 0 -1" limited="true" range="-0.43 1.57" damping="0" frictionloss="0" armature="0.0076577" />
+        <inertial pos="0.010179 -0.0000807 0.0342345" mass="0.6449579" fullinertia="0.0010551 0.00172079 0.00075154 0.000012 0.00003643 -0.00000479" />
+        <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="right_thigh_joint_mat" type="mesh" mesh="right_thigh_link" name="right_thigh_joint_visual" />
+        <geom pos="0.057495112 -0.000012701 0.027400002" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="box" size="0.088995105 0.031453958 0.071400002" name="right_thigh_joint_collision" />
+        <site name="right_thigh_touch_site" type="box" pos="0.057495112 -0.000012702 0.027400002" size="0.088995106 0.031453959 0.071400005" rgba="1 0 0 0.15" />
+        <body name="right_calf_joint" pos="0.136 0 0.0283">
+          <joint name="right_calf_joint" type="hinge" axis="0 0 -1" limited="true" range="-2.669 -0.17" damping="0" frictionloss="0" armature="0.01738699" />
+          <inertial pos="0.0649122 0.0004081 -0.0011212" mass="0.0577115" fullinertia="0.00000775 0.00018348 0.00018663 0.00000222 0.00000395 -0.00000002" />
+          <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="right_calf_joint_mat" type="mesh" mesh="right_calf_link" name="right_calf_joint_visual" />
+          <geom pos="0.078361970 0 0" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="box" size="0.098638031 0.027000001 0.010000000" name="right_calf_joint_collision" />
+          <site name="right_calf_touch_site" type="box" pos="0.078361972 0 0" size="0.098638032 0.027000001 0.010000000" rgba="1 0 0 0.15" />
+          <body name="right_foot_joint" pos="0.15 0 0.037">
+            <joint name="right_foot_joint" type="hinge" axis="0 0 -1" damping="0" frictionloss="0.0483561" armature="0.0008" />
+            <inertial pos="-0.0000652 0 -0.0049729" mass="0.31889" fullinertia="0.00018411 0.00018414 0.00012941 0 -0.00000039 -0.00000003" />
+            <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="right_foot_joint_mat" type="mesh" mesh="right_foot_link" name="right_foot_joint_visual" />
+            <geom pos="0 0 0.017285" rgba="0.9373 0.2667 0.2667 0.35" group="3" contype="1" conaffinity="1" type="cylinder" size="0.0425 0.017285" name="right_foot_joint_collision" />
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="left_thigh_motor" joint="left_thigh_joint" ctrlrange="-5.5 5.5" />
+    <motor name="left_calf_motor" joint="left_calf_joint" ctrlrange="-14 14" />
+    <motor name="left_foot_motor" joint="left_foot_joint" ctrlrange="-5.5 5.5" />
+    <motor name="right_thigh_motor" joint="right_thigh_joint" ctrlrange="-5.5 5.5" />
+    <motor name="right_calf_motor" joint="right_calf_joint" ctrlrange="-14 14" />
+    <motor name="right_foot_motor" joint="right_foot_joint" ctrlrange="-5.5 5.5" />
+  </actuator>
+  <sensor>
+    <jointpos name="left_thigh_pos" joint="left_thigh_joint" />
+    <jointpos name="left_calf_pos" joint="left_calf_joint" />
+    <jointpos name="left_foot_pos" joint="left_foot_joint" />
+    <jointpos name="right_thigh_pos" joint="right_thigh_joint" />
+    <jointpos name="right_calf_pos" joint="right_calf_joint" />
+    <jointpos name="right_foot_pos" joint="right_foot_joint" />
+    <jointvel name="left_thigh_vel" joint="left_thigh_joint" />
+    <jointvel name="left_calf_vel" joint="left_calf_joint" />
+    <jointvel name="left_foot_vel" joint="left_foot_joint" />
+    <jointvel name="right_thigh_vel" joint="right_thigh_joint" />
+    <jointvel name="right_calf_vel" joint="right_calf_joint" />
+    <jointvel name="right_foot_vel" joint="right_foot_joint" />
+    <jointactuatorfrc name="left_thigh_torque" joint="left_thigh_joint" />
+    <jointactuatorfrc name="left_calf_torque" joint="left_calf_joint" />
+    <jointactuatorfrc name="left_foot_torque" joint="left_foot_joint" />
+    <jointactuatorfrc name="right_thigh_torque" joint="right_thigh_joint" />
+    <jointactuatorfrc name="right_calf_torque" joint="right_calf_joint" />
+    <jointactuatorfrc name="right_foot_torque" joint="right_foot_joint" />
+    <framequat name="imu_quat" objtype="site" objname="imu" noise="0.0" />
+    <gyro name="imu_gyro" site="imu" noise="0.0" />
+    <accelerometer name="imu_acc" site="imu" />
+    <touch name="base_link_touch" site="base_link_touch_site" />
+    <touch name="left_thigh_touch" site="left_thigh_touch_site" />
+    <touch name="left_calf_touch" site="left_calf_touch_site" />
+    <touch name="right_thigh_touch" site="right_thigh_touch_site" />
+    <touch name="right_calf_touch" site="right_calf_touch_site" />
+  </sensor>
+  <contact>
+    <exclude body1="base_link" body2="left_thigh_joint" />
+    <exclude body1="base_link" body2="left_calf_joint" />
+    <exclude body1="base_link" body2="left_foot_joint" />
+    <exclude body1="base_link" body2="right_thigh_joint" />
+    <exclude body1="base_link" body2="right_calf_joint" />
+    <exclude body1="base_link" body2="right_foot_joint" />
+    <exclude body1="left_thigh_joint" body2="left_calf_joint" />
+    <exclude body1="left_thigh_joint" body2="left_foot_joint" />
+    <exclude body1="left_thigh_joint" body2="right_thigh_joint" />
+    <exclude body1="left_thigh_joint" body2="right_calf_joint" />
+    <exclude body1="left_thigh_joint" body2="right_foot_joint" />
+    <exclude body1="left_calf_joint" body2="left_foot_joint" />
+    <exclude body1="left_calf_joint" body2="right_thigh_joint" />
+    <exclude body1="left_calf_joint" body2="right_calf_joint" />
+    <exclude body1="left_calf_joint" body2="right_foot_joint" />
+    <exclude body1="left_foot_joint" body2="right_thigh_joint" />
+    <exclude body1="left_foot_joint" body2="right_calf_joint" />
+    <exclude body1="left_foot_joint" body2="right_foot_joint" />
+    <exclude body1="right_thigh_joint" body2="right_calf_joint" />
+    <exclude body1="right_thigh_joint" body2="right_foot_joint" />
+    <exclude body1="right_calf_joint" body2="right_foot_joint" />
+  </contact>
+</mujoco>

@@ -314,7 +314,11 @@ class MuJoCoBackend(SimBackend):
         self._pending_xfrc_applied = np.zeros((num_envs, 6 * self._model.nbody), dtype=np.float64)
 
         # Thread configuration.
-        self._n_threads = min(num_envs, cpu_count() * 2)
+        n_threads_override = os.environ.get("UNILAB_MUJOCO_NTHREADS")
+        if n_threads_override is None:
+            self._n_threads = min(num_envs, cpu_count() * 2)
+        else:
+            self._n_threads = min(num_envs, max(1, int(n_threads_override)))
 
         self._model_variants: tuple[mujoco.MjModel, ...] = (self._model,)
         self._model_assignments = np.zeros((num_envs,), dtype=np.int32)
@@ -904,6 +908,7 @@ class MuJoCoBackend(SimBackend):
                 }
             ),
             supports_interval_push=self._push_body_id >= 0,
+            supports_interval_body_velocity_delta=self._base_body_id >= 0,
             supports_interval_body_force=True,
         )
 
@@ -941,6 +946,27 @@ class MuJoCoBackend(SimBackend):
         self._pending_xfrc_applied[:, self._push_body_force_slice] = self._sample_push_force(
             force_range
         )
+
+    def apply_body_linear_velocity_delta(
+        self,
+        body_ids: np.ndarray,
+        velocity_delta: np.ndarray,
+    ) -> None:
+        body_ids_np = np.asarray(body_ids, dtype=np.int32).reshape(-1)
+        velocity_delta_np = np.asarray(velocity_delta, dtype=np.float64)
+        expected_shape = (self._num_envs, body_ids_np.size, 3)
+        if velocity_delta_np.shape != expected_shape:
+            raise ValueError(
+                f"body velocity delta must have shape {expected_shape}, got {velocity_delta_np.shape}"
+            )
+        for body_offset, body_id in enumerate(body_ids_np):
+            if int(body_id) != self._base_body_id:
+                raise NotImplementedError(
+                    "MuJoCo body velocity perturbation currently supports only the free base body"
+                )
+            self._physics_state[:, self._idx_qvel : self._idx_qvel + 3] += velocity_delta_np[
+                :, body_offset, :
+            ].astype(self._np_dtype)
 
     def apply_body_force(
         self,

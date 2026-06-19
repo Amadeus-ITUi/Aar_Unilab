@@ -30,6 +30,9 @@ WARNING_LIST: list[str] = [
     "reward.max_tilt_deg",
     "reward.min_base_height",
     "env.control_config.simulate_action_latency",
+    "env.control_config.action_delay_min_steps",
+    "env.control_config.action_delay_max_steps",
+    "env.control_config.resample_action_delay",
     "env.ctrl_dt",
 ]
 

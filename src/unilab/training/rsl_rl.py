@@ -149,6 +149,9 @@ class RslRlVecEnvWrapper:
         }
         if "critic" in obs:
             td_dict["critic"] = to_torch(obs["critic"], self.device)
+        for group_name, value in obs.items():
+            if group_name not in td_dict:
+                td_dict[group_name] = to_torch(value, self.device)
         return TensorDict(td_dict, batch_size=self.num_envs, device=self.device)
 
     def _resolve_final_observation(self, state: NpEnvState) -> dict[str, Any] | None:

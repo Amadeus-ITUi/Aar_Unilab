@@ -1,0 +1,13 @@
+<mujoco model="dr002 locomotion task">
+  <keyframe>
+    <key name="home"
+      qpos="0 0 0.30 1 0 0 0 0.8 -1.6 0 0.8 -1.6 0"
+      ctrl="0 0 0 0 0 0"/>
+  </keyframe>
+
+  <sensor>
+    <gyro name="gyro" site="imu"/>
+    <velocimeter name="local_linvel" site="imu"/>
+    <framezaxis name="upvector" objtype="site" objname="imu"/>
+  </sensor>
+</mujoco>

@@ -68,6 +68,7 @@ class TerrainSpawnManager(BaseSpawnManager):
         cfg: TerrainCurriculumCfg,
         terrain_surface_sampler: object | None = None,
         spawn_height_points: np.ndarray | None = None,
+        type_col_weights: np.ndarray | None = None,
     ) -> None:
         if terrain_origins.ndim != 3 or terrain_origins.shape[2] != 3:
             raise ValueError(
@@ -86,6 +87,19 @@ class TerrainSpawnManager(BaseSpawnManager):
         self._cell_size = float(cell_size)
         self._cfg = cfg
         self._terrain_surface_sampler = terrain_surface_sampler
+        self._type_col_probabilities: np.ndarray | None = None
+        if type_col_weights is not None:
+            weights = np.asarray(type_col_weights, dtype=np.float64).reshape(-1)
+            if weights.shape != (num_cols,):
+                raise ValueError(
+                    f"type_col_weights must have shape ({num_cols},), got {weights.shape}"
+                )
+            if np.any(weights < 0.0):
+                raise ValueError("type_col_weights must be non-negative")
+            total = float(np.sum(weights))
+            if total <= 0.0:
+                raise ValueError("type_col_weights must contain at least one positive value")
+            self._type_col_probabilities = weights / total
         if spawn_height_points is None:
             self._spawn_height_points = np.zeros((1, 3), dtype=np.float64)
         else:
@@ -97,7 +111,12 @@ class TerrainSpawnManager(BaseSpawnManager):
             self._spawn_height_points = points
         self._rng = np.random.default_rng(cfg.seed)
 
-        self.type_cols = self._rng.integers(0, num_cols, size=num_envs).astype(np.int32)
+        if self._type_col_probabilities is None:
+            self.type_cols = self._rng.integers(0, num_cols, size=num_envs).astype(np.int32)
+        else:
+            self.type_cols = self._rng.choice(
+                num_cols, size=num_envs, p=self._type_col_probabilities
+            ).astype(np.int32)
         if cfg.enabled:
             self.levels = np.zeros(num_envs, dtype=np.int32)
         else:

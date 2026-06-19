@@ -57,6 +57,7 @@ run_summary.json
 *~
 
 benchmark/outputs/
+outputs/
 src/unilab/algos/torch/rsl_rl
 
 third-party
