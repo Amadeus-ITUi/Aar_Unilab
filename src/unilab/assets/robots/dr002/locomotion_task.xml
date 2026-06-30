@@ -8,6 +8,8 @@
   <sensor>
     <gyro name="gyro" site="imu"/>
     <velocimeter name="local_linvel" site="imu"/>
+    <framexaxis name="xvector" objtype="site" objname="imu"/>
+    <frameyaxis name="yvector" objtype="site" objname="imu"/>
     <framezaxis name="upvector" objtype="site" objname="imu"/>
   </sensor>
 </mujoco>

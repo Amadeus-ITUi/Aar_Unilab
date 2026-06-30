@@ -47,6 +47,7 @@ class ControlConfig(PdControlConfig):
     action_scale: float = 0.5
     wheel_action_scale: float = 10.0
     clip_actions: float = 100.0
+    wheel_clip_actions: float = 2.5
     simulate_action_latency: bool = True
     action_delay_min_steps: int = 4
     action_delay_max_steps: int = 8

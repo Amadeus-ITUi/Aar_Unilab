@@ -41,10 +41,11 @@ from unilab.terrains import (
 @dataclass
 class DR002RoughCommands(DR002Commands):
     lin_vel_x: list[float] = field(default_factory=lambda: [-0.5, 0.5])
-    ang_vel_z: list[float] = field(default_factory=lambda: [-3.14, 3.14])
-    height: list[float] = field(default_factory=lambda: [0.12, 0.30])
+    ang_vel_z: list[float] = field(default_factory=lambda: [-1.0, 1.0])
+    height: list[float] = field(default_factory=lambda: [0.28, 0.28])
     resampling_time: float = 5.0
-    range_multiplier: list[float] = field(default_factory=lambda: [1.0, 3.0])
+    startup_stand_seconds: float = 3.0
+    range_multiplier: list[float] = field(default_factory=lambda: [1.0, 2.0])
     ang_vel_z_range_multiplier: list[float] = field(default_factory=lambda: [0.3, 1.0])
 
 
@@ -111,9 +112,7 @@ class DR002JoystickRoughCfg(DR002JoystickCfg):
     scene: SceneCfg = field(
         default_factory=lambda: SceneCfg(
             model_file=str(ASSETS_ROOT_PATH / "robots" / "dr002" / "dr002_latest.xml"),
-            fragment_files=[
-                str(ASSETS_ROOT_PATH / "robots" / "dr002" / "locomotion_task.xml"),
-            ],
+            fragment_files=[],
             terrain=TerrainSceneCfg(
                 generator=DR002RoughTerrainCfg(),
                 hfield_name="terrain_hfield",
@@ -140,18 +139,25 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
             yaw = np.random.uniform(yaw_low, yaw_high, (num_reset,))
             qpos[:, 3:7] = np_quat_mul(qpos[:, 3:7], np_yaw_to_quat(yaw))
         qpos[:, 0:3] = env._spawn.apply_spawn(env_ids, qpos[:, 0:3], yaw=yaw)
-        qvel_low, qvel_high = env.cfg.domain_rand.init_qvel_range
-        qvel[:, 0:6] = np.asarray(
-            np.random.uniform(qvel_low, qvel_high, size=(num_reset, 6)),
-            dtype=get_global_dtype(),
-        )
+        if env._startup_stand_steps > 0:
+            qvel[:, 0:6] = 0.0
+        else:
+            qvel_low, qvel_high = env.cfg.domain_rand.init_qvel_range
+            qvel[:, 0:6] = np.asarray(
+                np.random.uniform(qvel_low, qvel_high, size=(num_reset, 6)),
+                dtype=get_global_dtype(),
+            )
 
         motor_kp, motor_kd = env.sample_reset_motor_gains(num_reset)
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
         torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(num_reset)
         env.set_motor_runtime_randomization(env_ids, torque_scale, default_joint_pos_offset)
         info_updates: dict[str, Any] = {
-            "commands": env.sample_commands(num_reset),
+            "commands": (
+                env.startup_commands(num_reset)
+                if env._startup_stand_steps > 0
+                else env.sample_commands(num_reset)
+            ),
             "current_actions": zero_actions(num_reset, env._num_action),
             "last_actions": zero_actions(num_reset, env._num_action),
             "motor_kp": motor_kp.astype(get_global_dtype()),
@@ -212,7 +218,8 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
 
     @property
     def obs_groups_spec(self) -> dict[str, int]:
-        return {"obs": 125, "critic": 46 + self._height_scan_dim, "privileged_target": 3}
+        spec = super().obs_groups_spec
+        return {**spec, "critic": spec["critic"] + self._height_scan_dim}
 
     def _compute_obs(self, *args, **kwargs) -> dict[str, np.ndarray]:
         obs = super()._compute_obs(*args, **kwargs)

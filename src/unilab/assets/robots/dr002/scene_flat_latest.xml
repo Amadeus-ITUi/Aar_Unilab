@@ -1,6 +1,5 @@
 <mujoco model="dr002 flat scene">
   <include file="dr002_latest.xml"/>
-  <include file="locomotion_task.xml"/>
 
   <statistic center="0 0 0.15" extent="0.8"/>
 

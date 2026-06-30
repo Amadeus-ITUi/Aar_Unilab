@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -18,7 +19,7 @@ from unilab.dr import (
 )
 from unilab.dr.dr_utils import zero_actions
 from unilab.dtype_config import get_global_dtype
-from unilab.envs.common.rotation import np_quat_mul, np_yaw_to_quat
+from unilab.envs.common.rotation import np_quat_apply, np_quat_mul, np_yaw_to_quat
 from unilab.envs.locomotion.common import rewards
 from unilab.envs.locomotion.common.domain_rand import DomainRandConfig
 from unilab.envs.locomotion.common.dr_provider import LocomotionDRProvider
@@ -43,15 +44,18 @@ _ACTOR_DIM = _HISTORY_LENGTH * sum(_TERM_DIMS)
 @dataclass
 class DR002Commands:
     lin_vel_x: list[float] = field(default_factory=lambda: [-0.5, 0.5])
-    ang_vel_z: list[float] = field(default_factory=lambda: [-3.14, 3.14])
-    height: list[float] = field(default_factory=lambda: [0.12, 0.30])
+    ang_vel_z: list[float] = field(default_factory=lambda: [-1.0, 1.0])
+    height: list[float] = field(default_factory=lambda: [0.28, 0.28])
     resampling_time: float = 5.0
+    startup_stand_seconds: float = 3.0
     rel_standing_envs: float = 0.0
     curriculum: bool = True
-    range_multiplier: list[float] = field(default_factory=lambda: [1.0, 2.5])
+    range_multiplier: list[float] = field(default_factory=lambda: [1.0, 2.0])
     ang_vel_z_range_multiplier: list[float] = field(default_factory=lambda: [0.3, 1.0])
     curriculum_threshold: float = 0.7
+    curriculum_demote_threshold: float = 0.4
     curriculum_step: float = 0.1
+    curriculum_min_episode_fraction: float = 0.8
 
 
 @dataclass
@@ -77,6 +81,28 @@ class DR002DomainRandConfig(DomainRandConfig):
     push_velocity_x_range: list[float] = field(default_factory=lambda: [-1.0, 1.0])
     push_velocity_y_range: list[float] = field(default_factory=lambda: [-1.0, 1.0])
 
+    csv_force_enabled: bool = False
+    csv_force_path: str = "/home/esd_wch/lsaac_lab_ws/force_raw.csv"
+    csv_force_curriculum_paths: list[str] = field(default_factory=list)
+    csv_force_curriculum_hz: list[float] = field(default_factory=list)
+    csv_force_period: float = 10.0
+    csv_force_rotation: list[float] = field(
+        default_factory=lambda: [
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+        ]
+    )
+    csv_force_body_name: str | None = None
+    csv_force_push_point: list[float] = field(default_factory=lambda: [0.006, 0.0, 0.066])
+    csv_force_apply_point_torque: bool = True
+    csv_force_curriculum: bool = True
+    # Deprecated compatibility flag. Frequency curriculum always applies raw CSV force.
+    csv_force_apply_curriculum_scale: bool = False
+    csv_force_scale_initial: float = 0.1
+    csv_force_scale_final: float = 1.0
+    csv_force_scale_step: float = 0.1
+
 
 @dataclass
 class RewardConfig:
@@ -88,7 +114,7 @@ class RewardConfig:
     undesired_contact_threshold: float = 0.1
     termination_contact_threshold: float = 5.0
     termination_gravity_z_threshold: float = 0.7
-    termination_fail_time_s: float = 0.5
+    termination_fail_time_s: float = 0.001
 
 
 @dataclass
@@ -96,12 +122,20 @@ class JoystickSensor:
     local_linvel = "local_linvel"
     gyro = "gyro"
     gravity = "upvector"
+    projected_gravity_x = "xvector"
+    projected_gravity_y = "yvector"
+    projected_gravity_z = "upvector"
     undesired_contacts: tuple[str, ...] = (
         "base_link_touch",
         "left_thigh_touch",
         "left_calf_touch",
         "right_thigh_touch",
         "right_calf_touch",
+        "ancestor_dante_upper_left_touch",
+        "ancestor_dante_upper_right_touch",
+        "ancestor_dante_tail_rear_touch",
+        "ancestor_dante_tail_mid_touch",
+        "ancestor_dante_front_center_touch",
     )
 
 
@@ -113,7 +147,7 @@ class DR002JoystickCfg(DR002BaseCfg):
             model_file=str(ASSETS_ROOT_PATH / "robots" / "dr002" / "scene_flat_latest.xml")
         )
     )
-    max_episode_seconds: float = 20.0
+    max_episode_seconds: float = 23.0
     commands: DR002Commands = field(default_factory=DR002Commands)
     reward_config: RewardConfig | None = None
     sensor: JoystickSensor = field(default_factory=JoystickSensor)  # type: ignore[assignment]
@@ -136,6 +170,79 @@ def _sample_dr002_commands(
         standing = np.random.uniform(size=(num_samples,)) < min(standing_prob, 1.0)
         commands[standing, 0:2] = 0.0
     return commands
+
+
+def _load_force_csv(path: str) -> np.ndarray:
+    samples: list[list[float]] = []
+    with open(path, "r", newline="", encoding="latin1") as file:
+        for row in csv.reader(file):
+            try:
+                values = [float(value) for value in row[:4]]
+            except (TypeError, ValueError):
+                continue
+            if len(values) >= 4:
+                samples.append(values[:4])
+    if not samples:
+        raise ValueError(f"force CSV has no numeric rows: {path}")
+    force = np.asarray(samples, dtype=np.float64)
+    order = np.argsort(force[:, 0])
+    return force[order]
+
+
+def _interp_force_csv(samples: np.ndarray, replay_t: float) -> np.ndarray | None:
+    if samples.size == 0 or replay_t < float(samples[0, 0]) or replay_t > float(samples[-1, 0]):
+        return None
+    times = samples[:, 0]
+    upper = int(np.searchsorted(times, replay_t, side="left"))
+    if upper <= 0:
+        return samples[0, 1:4].copy()
+    if upper >= samples.shape[0]:
+        return samples[-1, 1:4].copy()
+    a = samples[upper - 1]
+    b = samples[upper]
+    denom = float(b[0] - a[0])
+    alpha = (float(replay_t) - float(a[0])) / denom if denom > 0.0 else 0.0
+    return np.asarray(a[1:4] + alpha * (b[1:4] - a[1:4]), dtype=np.float64)
+
+
+def _interp_force_csv_batch(samples: np.ndarray, replay_t: np.ndarray) -> np.ndarray:
+    replay = np.asarray(replay_t, dtype=np.float64).reshape(-1)
+    force = np.zeros((replay.shape[0], 3), dtype=np.float64)
+    if samples.size == 0:
+        return force
+    times = samples[:, 0]
+    if times.size == 0:
+        return force
+    for axis in range(3):
+        force[:, axis] = np.interp(replay, times, samples[:, axis + 1], left=0.0, right=0.0)
+    return force
+
+
+def _csv_force_curriculum_paths(domain_rand: DR002DomainRandConfig) -> list[str]:
+    paths = [str(path) for path in domain_rand.csv_force_curriculum_paths]
+    return paths if paths else [str(domain_rand.csv_force_path)]
+
+
+def _csv_force_curriculum_level_index(
+    domain_rand: DR002DomainRandConfig,
+    current_scale: float,
+    initial_scale: float,
+    final_scale: float,
+) -> int:
+    paths = _csv_force_curriculum_paths(domain_rand)
+    if len(paths) <= 1:
+        return 0
+    denom = final_scale - initial_scale
+    progress = 1.0 if abs(denom) < 1e-9 else (current_scale - initial_scale) / denom
+    level = int(round(float(np.clip(progress, 0.0, 1.0)) * (len(paths) - 1)))
+    return int(np.clip(level, 0, len(paths) - 1))
+
+
+def _csv_force_curriculum_source_hz(domain_rand: DR002DomainRandConfig, level: int) -> float:
+    hz_values = list(domain_rand.csv_force_curriculum_hz)
+    if not hz_values:
+        return float("nan")
+    return float(hz_values[int(np.clip(level, 0, len(hz_values) - 1))])
 
 
 def build_dr002_backend_reset_randomization(
@@ -230,6 +337,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         self._base_geom_friction = base_geom_friction
         self._ground_geom_id = ground_geom_id
         self._base_dof_armature = base_dof_armature
+        self._force_samples_by_path: dict[str, np.ndarray] = {}
 
     def validate(self, env: Any, capabilities: DomainRandomizationCapabilities) -> None:
         payload = build_dr002_backend_reset_randomization(
@@ -251,25 +359,123 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             raise NotImplementedError(
                 f"{env._backend.backend_type} backend does not support interval body velocity perturbation"
             )
+        if env.cfg.domain_rand.csv_force_enabled and not capabilities.supports_interval_body_force:
+            raise NotImplementedError(
+                f"{env._backend.backend_type} backend does not support interval CSV force perturbation"
+            )
+        if env.cfg.domain_rand.csv_force_enabled:
+            rotation = np.asarray(env.cfg.domain_rand.csv_force_rotation, dtype=np.float64)
+            if rotation.size != 9:
+                raise ValueError("domain_rand.csv_force_rotation must contain 9 row-major values")
+            if float(env.cfg.domain_rand.csv_force_period) < 0.0:
+                raise ValueError("domain_rand.csv_force_period must be >= 0")
+            if (
+                env.cfg.domain_rand.csv_force_curriculum_hz
+                and len(env.cfg.domain_rand.csv_force_curriculum_hz)
+                != len(env.cfg.domain_rand.csv_force_curriculum_paths)
+            ):
+                raise ValueError(
+                    "domain_rand.csv_force_curriculum_hz must be empty or match "
+                    "csv_force_curriculum_paths length"
+                )
+            push_point = np.asarray(env.cfg.domain_rand.csv_force_push_point, dtype=np.float64)
+            if push_point.shape != (3,):
+                raise ValueError("domain_rand.csv_force_push_point must contain 3 values")
+            csv_body_name = env.cfg.domain_rand.csv_force_body_name
+            if (
+                env.cfg.domain_rand.push_robots
+                and csv_body_name is not None
+                and csv_body_name != env.cfg.asset.base_name
+            ):
+                raise NotImplementedError(
+                    "DR002 cannot combine push_robots with csv_force_body_name pointing to a "
+                    "different body; interval plans currently share one body_ids array"
+                )
 
     def build_interval_randomization_plan(self, env: Any, step_counter: int):
         domain_rand = env.cfg.domain_rand
-        if (
-            not domain_rand.push_robots
-            or step_counter <= 0
-            or step_counter % domain_rand.push_interval != 0
-        ):
+        body_ids: np.ndarray | None = None
+        velocity_delta: np.ndarray | None = None
+        episode_steps = env.episode_steps()
+        elapsed_after_startup = episode_steps - int(getattr(env, "_startup_stand_steps", 0))
+        if domain_rand.push_robots and domain_rand.push_interval > 0:
+            push_due = (elapsed_after_startup > 0) & ((elapsed_after_startup % domain_rand.push_interval) == 0)
+            if np.any(push_due):
+                num_push = int(np.count_nonzero(push_due))
+                body_id = env._backend.get_body_id(env.cfg.asset.base_name)
+                body_ids = np.asarray([body_id], dtype=np.int32)
+                velocity_delta = np.zeros((env._num_envs, 1, 3), dtype=np.float64)
+                low, high = domain_rand.push_velocity_x_range
+                velocity_delta[push_due, 0, 0] = np.random.uniform(low, high, size=(num_push,))
+                low, high = domain_rand.push_velocity_y_range
+                velocity_delta[push_due, 0, 1] = np.random.uniform(low, high, size=(num_push,))
+
+        body_force = self._build_csv_force(env, step_counter)
+        if body_force is None and velocity_delta is None:
             return None
-        body_id = env._backend.get_body_id(env.cfg.asset.base_name)
-        velocity_delta = np.zeros((env._num_envs, 1, 3), dtype=np.float64)
-        low, high = domain_rand.push_velocity_x_range
-        velocity_delta[:, 0, 0] = np.random.uniform(low, high, size=(env._num_envs,))
-        low, high = domain_rand.push_velocity_y_range
-        velocity_delta[:, 0, 1] = np.random.uniform(low, high, size=(env._num_envs,))
+        if body_ids is None:
+            body_name = domain_rand.csv_force_body_name or env.cfg.asset.base_name
+            body_ids = np.asarray([env._backend.get_body_id(body_name)], dtype=np.int32)
         return IntervalRandomizationPlan(
-            body_ids=np.asarray([body_id], dtype=np.int32),
+            body_ids=body_ids,
             body_linear_velocity_delta=velocity_delta,
+            body_force=body_force,
         )
+
+    def _build_csv_force(self, env: Any, step_counter: int) -> np.ndarray | None:
+        domain_rand = env.cfg.domain_rand
+        if hasattr(env, "_csv_force_current_wrench"):
+            env._csv_force_current_wrench.fill(0.0)
+        if not domain_rand.csv_force_enabled:
+            return None
+        paths = _csv_force_curriculum_paths(domain_rand)
+        level = _csv_force_curriculum_level_index(
+            domain_rand,
+            float(getattr(env, "_csv_force_curriculum_scale", 1.0)),
+            float(getattr(env, "_csv_force_curriculum_initial_scale", 1.0)),
+            float(getattr(env, "_csv_force_curriculum_final_scale", 1.0)),
+        )
+        force_path = paths[level]
+        if force_path not in self._force_samples_by_path:
+            self._force_samples_by_path[force_path] = _load_force_csv(force_path)
+        force_samples = self._force_samples_by_path[force_path]
+
+        episode_steps = env.episode_steps()
+        startup_steps = int(getattr(env, "_startup_stand_steps", 0))
+        elapsed_after_startup = episode_steps - startup_steps
+        replay_t = np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(env.cfg.ctrl_dt)
+        period = float(domain_rand.csv_force_period)
+        if period > 0.0:
+            period_steps = int(round(period / float(env.cfg.ctrl_dt)))
+            aligned_period = abs(period_steps * float(env.cfg.ctrl_dt) - period)
+            if period_steps > 0 and aligned_period < float(env.cfg.ctrl_dt) * 0.25:
+                replay_steps = np.mod(np.maximum(elapsed_after_startup, 0), period_steps)
+                replay_t = replay_steps.astype(np.float64) * float(env.cfg.ctrl_dt)
+            else:
+                replay_t = np.fmod(replay_t, period)
+                replay_t = np.where(replay_t < 0.0, replay_t + period, replay_t)
+
+        force_sensor_batch = _interp_force_csv_batch(force_samples, replay_t)
+        force_sensor_batch[elapsed_after_startup < 0] = 0.0
+
+        rotation = np.asarray(domain_rand.csv_force_rotation, dtype=np.float64).reshape(3, 3)
+        force_base_batch = force_sensor_batch @ rotation.T
+        force_world = np.asarray(
+            np_quat_apply(env._backend.get_base_quat(), force_base_batch),
+            dtype=np.float64,
+        )
+        torque_world = np.zeros_like(force_world)
+        if domain_rand.csv_force_apply_point_torque:
+            push_point_base = np.asarray(domain_rand.csv_force_push_point, dtype=np.float64)
+            torque_base = np.cross(push_point_base[None, :], force_base_batch)
+            torque_world = np.asarray(
+                np_quat_apply(env._backend.get_base_quat(), torque_base),
+                dtype=np.float64,
+            )
+        wrench_world = np.concatenate([force_world, torque_world], axis=1)
+        if hasattr(env, "_csv_force_current_wrench"):
+            env._csv_force_current_wrench[: wrench_world.shape[0]] = wrench_world
+        return wrench_world[:, None, :]
 
     def build_reset_plan(self, env: Any, env_ids: np.ndarray) -> ResetPlan:
         num_reset = len(env_ids)
@@ -282,18 +488,25 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             yaw_low, yaw_high = env.cfg.domain_rand.init_yaw_range
             yaw = np.random.uniform(yaw_low, yaw_high, (num_reset,))
             qpos[:, 3:7] = np_quat_mul(qpos[:, 3:7], np_yaw_to_quat(yaw))
-        qvel_low, qvel_high = env.cfg.domain_rand.init_qvel_range
-        qvel[:, 0:6] = np.asarray(
-            np.random.uniform(qvel_low, qvel_high, size=(num_reset, 6)),
-            dtype=get_global_dtype(),
-        )
+        if env._startup_stand_steps > 0:
+            qvel[:, 0:6] = 0.0
+        else:
+            qvel_low, qvel_high = env.cfg.domain_rand.init_qvel_range
+            qvel[:, 0:6] = np.asarray(
+                np.random.uniform(qvel_low, qvel_high, size=(num_reset, 6)),
+                dtype=get_global_dtype(),
+            )
 
         motor_kp, motor_kd = env.sample_reset_motor_gains(num_reset)
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
         torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(num_reset)
         env.set_motor_runtime_randomization(env_ids, torque_scale, default_joint_pos_offset)
         info_updates: dict[str, Any] = {
-            "commands": env.sample_commands(num_reset),
+            "commands": (
+                env.startup_commands(num_reset)
+                if env._startup_stand_steps > 0
+                else env.sample_commands(num_reset)
+            ),
             "current_actions": zero_actions(num_reset, env._num_action),
             "last_actions": zero_actions(num_reset, env._num_action),
             "motor_kp": motor_kp.astype(get_global_dtype()),
@@ -326,6 +539,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         dof_pos: np.ndarray,
         dof_vel: np.ndarray,
     ) -> dict[str, np.ndarray]:
+        projected_gravity = env.get_projected_gravity()[env_ids]
         return cast(
             dict[str, np.ndarray],
             env._compute_obs(
@@ -333,6 +547,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 linvel,
                 gyro,
                 gravity,
+                projected_gravity,
                 dof_pos,
                 dof_vel,
                 env_ids=env_ids,
@@ -382,6 +597,17 @@ class DR002JoystickEnv(DR002BaseEnv):
                 "DR002 action delay requires 0 <= action_delay_min_steps <= action_delay_max_steps, "
                 f"got [{self._action_delay_min_steps}, {self._action_delay_max_steps}]"
             )
+        startup_seconds = float(cfg.commands.startup_stand_seconds)
+        if startup_seconds < 0.0:
+            raise ValueError("commands.startup_stand_seconds must be non-negative")
+        self._startup_stand_steps = int(round(startup_seconds / float(cfg.ctrl_dt)))
+        self._leg_clip_actions = float(cfg.control_config.clip_actions)
+        self._wheel_clip_actions = float(cfg.control_config.wheel_clip_actions)
+        if self._leg_clip_actions <= 0.0 or self._wheel_clip_actions <= 0.0:
+            raise ValueError(
+                "DR002 action clipping limits must be positive, "
+                f"got leg={self._leg_clip_actions}, wheel={self._wheel_clip_actions}"
+            )
         self._action_delay_buffer = np.zeros(
             (num_envs, self._action_delay_max_steps + 1, NUM_DR002_ACTIONS), dtype=self._np_dtype
         )
@@ -401,10 +627,25 @@ class DR002JoystickEnv(DR002BaseEnv):
         if yaw_multiplier.shape != (2,):
             raise ValueError("commands.ang_vel_z_range_multiplier must contain [initial, final]")
         self._command_curriculum_scale = float(multiplier[0])
+        self._command_curriculum_initial_scale = float(multiplier[0])
         self._command_curriculum_final_scale = float(multiplier[1])
         self._command_curriculum_yaw_scale = float(yaw_multiplier[0])
+        self._command_curriculum_yaw_initial_scale = float(yaw_multiplier[0])
         self._command_curriculum_yaw_final_scale = float(yaw_multiplier[1])
         self._last_command_curriculum_mean_tracking = np.nan
+        self._last_command_curriculum_mature_mean_tracking = np.nan
+        self._last_command_curriculum_mean_episode_steps = np.nan
+        self._last_command_curriculum_mature_fraction = np.nan
+        self._csv_force_curriculum_scale = float(cfg.domain_rand.csv_force_scale_initial)
+        self._csv_force_curriculum_initial_scale = float(cfg.domain_rand.csv_force_scale_initial)
+        self._csv_force_curriculum_final_scale = float(cfg.domain_rand.csv_force_scale_final)
+        if self._csv_force_curriculum_scale < 0.0 or self._csv_force_curriculum_final_scale < 0.0:
+            raise ValueError("CSV force curriculum scales must be non-negative")
+        self._csv_force_curriculum_scale = min(
+            self._csv_force_curriculum_scale,
+            self._csv_force_curriculum_final_scale,
+        )
+        self._csv_force_current_wrench = np.zeros((num_envs, 6), dtype=get_global_dtype())
         self._episode_track_lin_vel_x_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_ang_vel_z_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_lin_vel_x_steps = np.zeros((num_envs,), dtype=np.int32)
@@ -436,12 +677,13 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     @property
     def obs_groups_spec(self) -> dict[str, int]:
-        return {"obs": _ACTOR_DIM, "critic": 46, "privileged_target": 3}
+        return {"obs": _ACTOR_DIM, "critic": 52, "privileged_target": 3}
 
     def reset(self, env_indices: np.ndarray) -> tuple[dict[str, np.ndarray], dict]:
         env_ids = np.asarray(env_indices, dtype=np.int32)
         if hasattr(self, "_episode_track_lin_vel_x_sum"):
             self._update_command_curriculum(env_ids)
+        self._csv_force_current_wrench[env_ids] = 0.0
         obs, info = super().reset(env_ids)
         dof_vel = self.get_dof_vel()
         if dof_vel.shape[0] == self._num_envs:
@@ -524,6 +766,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             "action_rate_l2": self._reward_action_rate_lingzu,
             "action_smooth_lingzu": self._reward_action_smooth_lingzu,
             "undesired_contacts": self._reward_undesired_contacts,
+            "alive": self._reward_alive,
         }
 
     def sample_reset_motor_gains(self, num_reset: int) -> tuple[np.ndarray, np.ndarray]:
@@ -586,11 +829,32 @@ class DR002JoystickEnv(DR002BaseEnv):
             ang_vel_z_range=self._current_ang_vel_z_range(),
         )
 
-    def apply_action(self, actions: np.ndarray, state: NpEnvState) -> np.ndarray:
+    def startup_commands(self, num_samples: int) -> np.ndarray:
+        commands = np.zeros((num_samples, 3), dtype=get_global_dtype())
+        height = np.asarray(self._cfg.commands.height, dtype=np.float64)
+        commands[:, 2] = float(np.mean(height))
+        return commands
+
+    def episode_steps(self) -> np.ndarray:
+        steps = np.asarray(self._state.info.get("steps"), dtype=np.int64)
+        if steps.shape != (self._num_envs,):
+            return np.zeros((self._num_envs,), dtype=np.int64)
+        return steps
+
+    def _clip_policy_actions(self, actions: np.ndarray) -> np.ndarray:
         clipped_actions = np.asarray(
-            np.clip(actions, -self._cfg.control_config.clip_actions, self._cfg.control_config.clip_actions),
+            np.clip(actions, -self._leg_clip_actions, self._leg_clip_actions),
             dtype=self._np_dtype,
         )
+        clipped_actions[:, WHEEL_ACTION_INDICES] = np.clip(
+            actions[:, WHEEL_ACTION_INDICES],
+            -self._wheel_clip_actions,
+            self._wheel_clip_actions,
+        )
+        return clipped_actions
+
+    def apply_action(self, actions: np.ndarray, state: NpEnvState) -> np.ndarray:
+        clipped_actions = self._clip_policy_actions(actions)
         state.info["last_actions"] = state.info.get("current_actions", np.zeros_like(clipped_actions))
         state.info["current_actions"] = clipped_actions
 
@@ -622,11 +886,27 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._motor_torque_scale,
         )
 
+    def get_projected_gravity(self) -> np.ndarray:
+        """Return standard body-frame gravity: R^T * [0, 0, -1]."""
+        x_axis = self._backend.get_sensor_data(self._cfg.sensor.projected_gravity_x)
+        y_axis = self._backend.get_sensor_data(self._cfg.sensor.projected_gravity_y)
+        z_axis = self._backend.get_sensor_data(self._cfg.sensor.projected_gravity_z)
+        projected = np.stack(
+            [
+                -x_axis[:, 2],
+                -y_axis[:, 2],
+                -z_axis[:, 2],
+            ],
+            axis=1,
+        )
+        return projected.astype(get_global_dtype(), copy=False)
+
     def update_state(self, state: NpEnvState) -> NpEnvState:
         self._update_commands(state.info)
         linvel = self.get_local_linvel()
         gyro = self.get_gyro()
         gravity = self._backend.get_sensor_data(self._cfg.sensor.gravity)
+        projected_gravity = self.get_projected_gravity()
         dof_pos = self.get_dof_pos()
         dof_vel = self.get_dof_vel()
         state.info["torques"] = self._last_motor_ctrl.copy()
@@ -635,7 +915,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         reward = self._compute_reward(state.info, linvel, gyro, gravity, dof_pos, dof_vel)
         self._accumulate_command_curriculum(state.info, linvel)
         self._log_command_curriculum(state.info)
-        obs = self._compute_obs(state.info, linvel, gyro, gravity, dof_pos, dof_vel)
+        obs = self._compute_obs(state.info, linvel, gyro, gravity, projected_gravity, dof_pos, dof_vel)
         return state.replace(obs=obs, reward=reward, terminated=terminated)
 
     def _compute_terminated(self, gravity: np.ndarray) -> np.ndarray:
@@ -670,7 +950,17 @@ class DR002JoystickEnv(DR002BaseEnv):
         commands_arr = np.asarray(commands, dtype=get_global_dtype())
         interval = max(int(round(float(self._cfg.commands.resampling_time) / self._cfg.ctrl_dt)), 1)
         steps = np.asarray(info.get("steps", np.zeros((self._num_envs,), dtype=np.uint32)))
-        resample_mask = (steps > 0) & ((steps % interval) == 0)
+        startup_steps = int(self._startup_stand_steps)
+        if startup_steps > 0:
+            startup_mask = steps < startup_steps
+            if np.any(startup_mask):
+                commands_arr[startup_mask] = self.startup_commands(int(np.count_nonzero(startup_mask)))
+            elapsed_after_startup = steps.astype(np.int64) - startup_steps
+            resample_mask = (steps == startup_steps) | (
+                (steps > startup_steps) & ((elapsed_after_startup % interval) == 0)
+            )
+        else:
+            resample_mask = (steps > 0) & ((steps % interval) == 0)
         if np.any(resample_mask):
             commands_arr[resample_mask] = self.sample_commands(int(np.count_nonzero(resample_mask)))
         info["commands"] = commands_arr
@@ -705,34 +995,148 @@ class DR002JoystickEnv(DR002BaseEnv):
             return
         lin_tracking = self._episode_track_lin_vel_x_sum[env_ids][valid] / np.maximum(steps[valid], 1)
         yaw_tracking = self._episode_track_ang_vel_z_sum[env_ids][valid] / np.maximum(steps[valid], 1)
-        mean_tracking = float(np.mean(0.5 * (lin_tracking + yaw_tracking)))
+        tracking = 0.5 * (lin_tracking + yaw_tracking)
+        valid_steps = steps[valid]
+        mean_tracking = float(np.mean(tracking))
         self._last_command_curriculum_mean_tracking = float(mean_tracking)
-        if mean_tracking > float(self._cfg.commands.curriculum_threshold):
+        self._last_command_curriculum_mean_episode_steps = float(np.mean(valid_steps))
+
+        min_fraction = float(self._cfg.commands.curriculum_min_episode_fraction)
+        if min_fraction < 0.0:
+            raise ValueError("commands.curriculum_min_episode_fraction must be non-negative")
+        max_steps = self._cfg.max_episode_steps or 0
+        min_episode_steps = int(np.ceil(float(max_steps) * min_fraction)) if max_steps else 0
+        mature = valid_steps >= min_episode_steps
+        self._last_command_curriculum_mature_fraction = float(np.mean(mature))
+        mature_mean_tracking = float(np.mean(tracking[mature])) if np.any(mature) else np.nan
+        self._last_command_curriculum_mature_mean_tracking = mature_mean_tracking
+
+        if mean_tracking < float(self._cfg.commands.curriculum_demote_threshold):
+            if self._csv_force_curriculum_is_above_initial():
+                self._update_csv_force_curriculum(promote=False)
+            else:
+                self._update_command_velocity_curriculum(promote=False)
+        elif (
+            np.isfinite(mature_mean_tracking)
+            and mature_mean_tracking > float(self._cfg.commands.curriculum_threshold)
+        ):
+            if self._command_curriculum_is_full():
+                self._update_csv_force_curriculum(promote=True)
+            else:
+                self._update_command_velocity_curriculum(promote=True)
+
+    def _command_curriculum_is_full(self) -> bool:
+        if not self._cfg.commands.curriculum:
+            return True
+        eps = 1.0e-9
+        lin_full = self._curriculum_value_reached(
+            self._command_curriculum_scale,
+            self._command_curriculum_initial_scale,
+            self._command_curriculum_final_scale,
+            eps=eps,
+        )
+        yaw_full = self._curriculum_value_reached(
+            self._command_curriculum_yaw_scale,
+            self._command_curriculum_yaw_initial_scale,
+            self._command_curriculum_yaw_final_scale,
+            eps=eps,
+        )
+        return lin_full and yaw_full
+
+    @staticmethod
+    def _curriculum_value_reached(current: float, initial: float, final: float, *, eps: float) -> bool:
+        if final >= initial:
+            return current >= final - eps
+        return current <= final + eps
+
+    def _csv_force_curriculum_is_above_initial(self) -> bool:
+        return self._csv_force_curriculum_scale > self._csv_force_curriculum_initial_scale + 1.0e-9
+
+    def _update_command_velocity_curriculum(self, *, promote: bool) -> None:
+        step = float(self._cfg.commands.curriculum_step)
+        if promote:
             self._command_curriculum_scale = min(
                 self._command_curriculum_final_scale,
-                self._command_curriculum_scale + float(self._cfg.commands.curriculum_step),
+                self._command_curriculum_scale + step,
             )
             self._command_curriculum_yaw_scale = min(
                 self._command_curriculum_yaw_final_scale,
-                self._command_curriculum_yaw_scale + float(self._cfg.commands.curriculum_step),
+                self._command_curriculum_yaw_scale + step,
+            )
+        else:
+            self._command_curriculum_scale = max(
+                self._command_curriculum_initial_scale,
+                self._command_curriculum_scale - step,
+            )
+            self._command_curriculum_yaw_scale = max(
+                self._command_curriculum_yaw_initial_scale,
+                self._command_curriculum_yaw_scale - step,
+            )
+
+    def _update_csv_force_curriculum(self, *, promote: bool) -> None:
+        domain_rand = self._cfg.domain_rand
+        if not domain_rand.csv_force_enabled or not domain_rand.csv_force_curriculum:
+            return
+        step = float(domain_rand.csv_force_scale_step)
+        if promote:
+            self._csv_force_curriculum_scale = min(
+                self._csv_force_curriculum_final_scale,
+                self._csv_force_curriculum_scale + step,
+            )
+        else:
+            self._csv_force_curriculum_scale = max(
+                self._csv_force_curriculum_initial_scale,
+                self._csv_force_curriculum_scale - step,
             )
 
     def _log_command_curriculum(self, info: dict) -> None:
-        if not self._cfg.commands.curriculum:
-            return
-        low, high = self._current_lin_vel_x_range()
-        yaw_low, yaw_high = self._current_ang_vel_z_range()
         log = info.setdefault("log", {})
-        log["command_curriculum/scale"] = float(self._command_curriculum_scale)
-        log["command_curriculum/lin_vel_x_min"] = low
-        log["command_curriculum/lin_vel_x_max"] = high
-        log["command_curriculum/yaw_scale"] = float(self._command_curriculum_yaw_scale)
-        log["command_curriculum/ang_vel_z_min"] = yaw_low
-        log["command_curriculum/ang_vel_z_max"] = yaw_high
-        if np.isfinite(self._last_command_curriculum_mean_tracking):
-            log["command_curriculum/last_mean_tracking"] = float(
-                self._last_command_curriculum_mean_tracking
+        if self._cfg.commands.curriculum:
+            low, high = self._current_lin_vel_x_range()
+            yaw_low, yaw_high = self._current_ang_vel_z_range()
+            log["command_curriculum/scale"] = float(self._command_curriculum_scale)
+            log["command_curriculum/lin_vel_x_min"] = low
+            log["command_curriculum/lin_vel_x_max"] = high
+            log["command_curriculum/yaw_scale"] = float(self._command_curriculum_yaw_scale)
+            log["command_curriculum/ang_vel_z_min"] = yaw_low
+            log["command_curriculum/ang_vel_z_max"] = yaw_high
+            log["command_curriculum/is_full"] = float(self._command_curriculum_is_full())
+            if np.isfinite(self._last_command_curriculum_mean_tracking):
+                log["command_curriculum/last_mean_tracking"] = float(
+                    self._last_command_curriculum_mean_tracking
+                )
+            if np.isfinite(self._last_command_curriculum_mature_mean_tracking):
+                log["command_curriculum/last_mature_mean_tracking"] = float(
+                    self._last_command_curriculum_mature_mean_tracking
+                )
+            if np.isfinite(self._last_command_curriculum_mean_episode_steps):
+                log["command_curriculum/mean_episode_steps"] = float(
+                    self._last_command_curriculum_mean_episode_steps
+                )
+            if np.isfinite(self._last_command_curriculum_mature_fraction):
+                log["command_curriculum/mature_fraction"] = float(
+                    self._last_command_curriculum_mature_fraction
+                )
+        if self._cfg.domain_rand.csv_force_enabled:
+            domain_rand = self._cfg.domain_rand
+            paths = _csv_force_curriculum_paths(domain_rand)
+            level = _csv_force_curriculum_level_index(
+                domain_rand,
+                self._csv_force_curriculum_scale,
+                self._csv_force_curriculum_initial_scale,
+                self._csv_force_curriculum_final_scale,
             )
+            log["force_curriculum/progress"] = float(self._csv_force_curriculum_scale)
+            log["force_curriculum/level"] = level
+            log["force_curriculum/final_progress"] = float(self._csv_force_curriculum_final_scale)
+            log["force_curriculum/num_levels"] = len(paths)
+            log["force_curriculum/applied_scale"] = 1.0
+            command_ready = self._command_curriculum_is_full()
+            log["force_curriculum/command_ready"] = float(command_ready)
+            log["force_curriculum/locked_by_command"] = float(not command_ready)
+            hz = _csv_force_curriculum_source_hz(domain_rand, level)
+            if np.isfinite(hz):
+                log["force_curriculum/source_hz"] = hz
 
     def _compute_obs(
         self,
@@ -740,6 +1144,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         linvel: np.ndarray,
         gyro: np.ndarray,
         gravity: np.ndarray,
+        projected_gravity: np.ndarray,
         dof_pos: np.ndarray,
         dof_vel: np.ndarray,
         *,
@@ -752,7 +1157,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         dof_vel_obs = dof_vel[:, JOINT_VEL_OBSERVATION_INDICES]
         frame_terms = [
             self._obs_noise(gyro, noise_cfg.scale_gyro),
-            self._obs_noise(-gravity, noise_cfg.scale_gravity),
+            self._obs_noise(projected_gravity, noise_cfg.scale_gravity),
             self._obs_noise(dof_pos[:, LEG_ACTION_INDICES] - self.default_angles[LEG_ACTION_INDICES], noise_cfg.scale_joint_angle),
             self._obs_noise(dof_vel_obs, noise_cfg.scale_joint_vel) * 0.1,
             current_actions,
@@ -760,11 +1165,15 @@ class DR002JoystickEnv(DR002BaseEnv):
         ]
         actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
         motor_ctrl = info.get("torques", np.zeros((num_obs, self._num_action), dtype=dof_pos.dtype))
+        csv_force_wrench = np.asarray(
+            self._csv_force_current_wrench[:num_obs],
+            dtype=get_global_dtype(),
+        )
         critic = np.concatenate(
             [
                 linvel,
                 gyro,
-                -gravity,
+                projected_gravity,
                 dof_pos[:, LEG_ACTION_INDICES] - self.default_angles[LEG_ACTION_INDICES],
                 dof_vel_obs * 0.1,
                 current_actions,
@@ -772,6 +1181,7 @@ class DR002JoystickEnv(DR002BaseEnv):
                 motor_ctrl,
                 self._motor_kp[:num_obs],
                 self._motor_kd[:num_obs],
+                csv_force_wrench,
             ],
             axis=1,
             dtype=get_global_dtype(),
@@ -967,6 +1377,10 @@ class DR002JoystickEnv(DR002BaseEnv):
             dtype=get_global_dtype(),
         )
         return self._clip_lingzu_reward("undesired_contacts", reward)
+
+    def _reward_alive(self, ctx: RewardContext) -> np.ndarray:
+        alive = self._lingzu_fail_steps[: ctx.num_envs] == 0
+        return np.asarray(alive, dtype=get_global_dtype())
 
 
 registry.register_env("DR002JoystickFlat", DR002JoystickEnv, sim_backend="motrix")

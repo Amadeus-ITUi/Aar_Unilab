@@ -973,24 +973,34 @@ class MuJoCoBackend(SimBackend):
         body_ids: np.ndarray,
         force: np.ndarray,
     ) -> None:
-        """Accumulate one external world-frame force vector per target body.
+        """Accumulate one external world-frame force or wrench per target body.
 
         Args:
             body_ids: Body ids to perturb.
-            force: Force tensor with shape ``(num_envs, len(body_ids), 3)``.
+            force: Force tensor with shape ``(num_envs, len(body_ids), 3)`` or wrench tensor
+                with shape ``(num_envs, len(body_ids), 6)``. The 6D layout matches MuJoCo
+                ``xfrc_applied``: ``[fx, fy, fz, tx, ty, tz]`` in world frame.
 
         Returns:
             None. The force is staged in ``xfrc_applied`` for the next step.
         """
         body_ids_np = np.asarray(body_ids, dtype=np.int32).reshape(-1)
         force_np = np.asarray(force, dtype=np.float64)
-        expected_shape = (self._num_envs, body_ids_np.size, 3)
-        if force_np.shape != expected_shape:
-            raise ValueError(f"body force must have shape {expected_shape}, got {force_np.shape}")
-        for body_offset, body_id in enumerate(body_ids_np):
-            self._pending_xfrc_applied[:, self._resolve_push_body_force_slice(int(body_id))] += (
-                force_np[:, body_offset, :]
+        expected_prefix = (self._num_envs, body_ids_np.size)
+        if force_np.shape[:2] != expected_prefix or force_np.shape[-1] not in (3, 6):
+            raise ValueError(
+                "body force must have shape "
+                f"({self._num_envs}, {body_ids_np.size}, 3|6), got {force_np.shape}"
             )
+        for body_offset, body_id in enumerate(body_ids_np):
+            if int(body_id) < 0 or int(body_id) >= self._model.nbody:
+                raise ValueError(f"body id {int(body_id)} is out of range [0, {self._model.nbody})")
+            force_slice = self._resolve_push_body_force_slice(int(body_id))
+            if force_np.shape[-1] == 3:
+                self._pending_xfrc_applied[:, force_slice] += force_np[:, body_offset, :]
+            else:
+                start = 6 * int(body_id)
+                self._pending_xfrc_applied[:, start : start + 6] += force_np[:, body_offset, :]
 
     def get_play_capabilities(self) -> BackendPlayCapabilities:
         return BackendPlayCapabilities(supports_physics_state_playback=True)
