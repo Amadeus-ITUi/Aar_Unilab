@@ -11,6 +11,9 @@ class DomainRandConfig:
     randomize_body_mass: bool = False
     body_mass_multiplier_range: list[float] = field(default_factory=lambda: [0.9, 1.1])
 
+    randomize_body_inertia: bool = False
+    body_inertia_multiplier_range: list[float] = field(default_factory=lambda: [0.9, 1.2])
+
     random_com: bool = False
     com_offset_x: list[float] = field(default_factory=lambda: [-0.05, 0.05])
 
@@ -21,6 +24,8 @@ class DomainRandConfig:
 
     randomize_ground_friction: bool = False
     ground_friction_multiplier_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
+    randomize_robot_geom_friction: bool = False
+    robot_geom_friction_multiplier_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
 
     randomize_dof_armature: bool = False
     dof_armature_multiplier_range: list[float] = field(default_factory=lambda: [0.8, 1.2])

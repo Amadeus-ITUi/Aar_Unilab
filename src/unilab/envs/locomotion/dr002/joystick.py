@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -9,6 +10,7 @@ import numpy as np
 from unilab.assets import ASSETS_ROOT_PATH
 from unilab.base import registry
 from unilab.base.backend import create_backend
+from unilab.base.backend.base import BatchedMixedPdControl
 from unilab.base.np_env import NpEnvState
 from unilab.base.scene import SceneCfg
 from unilab.dr import (
@@ -26,19 +28,50 @@ from unilab.envs.locomotion.common.dr_provider import LocomotionDRProvider
 from unilab.envs.locomotion.common.rewards import RewardContext
 from unilab.envs.locomotion.dr002.base import (
     DEFAULT_DR002_ANGLES,
+    JOINT_SENSOR_PREFIXES,
     JOINT_VEL_OBSERVATION_INDICES,
     LEG_ACTION_INDICES,
     NUM_DR002_ACTIONS,
     WHEEL_ACTION_INDICES,
+    ControlConfig,
     DR002BaseCfg,
     DR002BaseEnv,
+    NoiseConfig,
     compute_dr002_motor_ctrl,
     stack_joint_sensors,
 )
 
 _HISTORY_LENGTH = 5
 _TERM_DIMS = (3, 3, 4, 6, 6, 3)
-_ACTOR_DIM = _HISTORY_LENGTH * sum(_TERM_DIMS)
+_WING_ANGLE_OBS_DIM = 2
+_DR002_ASSET_ROOT = ASSETS_ROOT_PATH / "robots" / "dr002"
+_JOINT_POS_SENSOR_NAMES = tuple(f"{prefix}_pos" for prefix in JOINT_SENSOR_PREFIXES)
+_JOINT_VEL_SENSOR_NAMES = tuple(f"{prefix}_vel" for prefix in JOINT_SENSOR_PREFIXES)
+_POSITION_CONTROL_MASK = np.ones((NUM_DR002_ACTIONS,), dtype=np.int32)
+_POSITION_CONTROL_MASK[WHEEL_ACTION_INDICES] = 0
+_PRIVILEGED_BODY_NAMES = tuple(f"{prefix}_joint" for prefix in JOINT_SENSOR_PREFIXES)
+_ISAACLAB_CRITIC_TERM_DIMS = (
+    3,  # base linear velocity
+    3,  # base angular velocity
+    3,  # projected gravity
+    3,  # velocity command
+    len(LEG_ACTION_INDICES),  # leg joint position error (wheel positions omitted)
+    NUM_DR002_ACTIONS,  # joint velocity
+    NUM_DR002_ACTIONS,  # actions
+    NUM_DR002_ACTIONS,  # gym_last_action (same current action, matching IsaacLab)
+    NUM_DR002_ACTIONS,  # gym_previous_action
+    NUM_DR002_ACTIONS,  # gym_joint_acc
+    77,  # gym_height_measurements
+    NUM_DR002_ACTIONS,  # gym_joint_torque
+    1,  # gym_base_mass_delta
+    3,  # gym_base_com
+    NUM_DR002_ACTIONS,  # gym_default_joint_pos_delta
+    2,  # gym_material_properties: robot friction, restitution
+    3,  # measured CSV force [Fx, Fy, Fz] (critic only)
+)
+_LEGACY_CRITIC_DIM = 52
+_CRITIC_DIM = sum(_ISAACLAB_CRITIC_TERM_DIMS)
+assert _CRITIC_DIM == 144
 
 
 @dataclass
@@ -49,6 +82,7 @@ class DR002Commands:
     resampling_time: float = 5.0
     startup_stand_seconds: float = 3.0
     rel_standing_envs: float = 0.0
+    standing_envs_episode_persistent: bool = False
     curriculum: bool = True
     range_multiplier: list[float] = field(default_factory=lambda: [1.0, 2.0])
     ang_vel_z_range_multiplier: list[float] = field(default_factory=lambda: [0.3, 1.0])
@@ -56,6 +90,7 @@ class DR002Commands:
     curriculum_demote_threshold: float = 0.4
     curriculum_step: float = 0.1
     curriculum_min_episode_fraction: float = 0.8
+    curriculum_moving_command_threshold: float = 0.05
 
 
 @dataclass
@@ -78,41 +113,57 @@ class DR002DomainRandConfig(DomainRandConfig):
     randomize_default_joint_pos: bool = False
     default_joint_pos_offset_range: list[float] = field(default_factory=lambda: [-0.02, 0.02])
 
-    push_velocity_x_range: list[float] = field(default_factory=lambda: [-1.0, 1.0])
-    push_velocity_y_range: list[float] = field(default_factory=lambda: [-1.0, 1.0])
-
     csv_force_enabled: bool = False
     csv_force_path: str = "/home/esd_wch/lsaac_lab_ws/force_raw.csv"
     csv_force_curriculum_paths: list[str] = field(default_factory=list)
     csv_force_curriculum_hz: list[float] = field(default_factory=list)
     csv_force_period: float = 10.0
+    csv_force_transition_seconds: float = 0.1
+    csv_force_start_delay_range_s: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    csv_force_zero_fy: bool = False
     csv_force_rotation: list[float] = field(
         default_factory=lambda: [
-            1.0, 0.0, 0.0,
+            0.7907964138, 0.0, -0.6120792693,
             0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0,
+            0.6120792693, 0.0, 0.7907964138,
         ]
     )
     csv_force_body_name: str | None = None
-    csv_force_push_point: list[float] = field(default_factory=lambda: [0.006, 0.0, 0.066])
+    csv_force_push_point: list[float] = field(default_factory=lambda: [0.14543, 0.0, 0.1118])
     csv_force_apply_point_torque: bool = True
+    csv_force_observation_force_normalization: float = 50.0
     csv_force_curriculum: bool = True
-    # Deprecated compatibility flag. Frequency curriculum always applies raw CSV force.
-    csv_force_apply_curriculum_scale: bool = False
-    csv_force_scale_initial: float = 0.1
-    csv_force_scale_final: float = 1.0
-    csv_force_scale_step: float = 0.1
+    csv_force_curriculum_window_episodes: int = 4096
+    csv_force_curriculum_promote_tracking_threshold: float = 0.65
+    csv_force_curriculum_demote_tracking_threshold: float = 0.45
+    csv_force_curriculum_promote_fail_rate_max: float = 0.20
+    csv_force_curriculum_demote_fail_rate_min: float = 0.30
+    csv_force_curriculum_promote_mean_episode_length_fraction: float = 0.0
+    csv_force_curriculum_demote_mean_episode_length_fraction: float = 0.60
+    csv_force_curriculum_step_levels: int = 1
+    csv_force_curriculum_allow_demotion: bool = False
+
+
+@dataclass
+class WingAngleObservationConfig:
+    enabled: bool = False
+    curriculum_paths: list[str] = field(default_factory=list)
+    normalization_deg: float = 180.0
+    zero_offsets_deg: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    standing_normalized_range: list[float] = field(default_factory=lambda: [0.0, 0.0])
 
 
 @dataclass
 class RewardConfig:
     scales: dict[str, float]
     tracking_sigma: float = 0.25
+    track_lin_vel_x_enhance_std: float = 0.8
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
     only_positive_rewards: bool = False
     undesired_contact_threshold: float = 0.1
-    termination_contact_threshold: float = 5.0
+    termination_contact_threshold: float = 0.1
+    termination_contact_fail_steps: int = 1
     termination_gravity_z_threshold: float = 0.7
     termination_fail_time_s: float = 0.001
 
@@ -139,12 +190,28 @@ class JoystickSensor:
     )
 
 
+@dataclass
+class WE6JoystickSensor(JoystickSensor):
+    """Contact sensors available in the streamlined WE6 model."""
+
+    undesired_contacts: tuple[str, ...] = (
+        "base_link_touch",
+        "left_thigh_touch",
+        "left_calf_touch",
+        "right_thigh_touch",
+        "right_calf_touch",
+        "ancestor_dante_upper_left_touch",
+        "ancestor_dante_upper_right_touch",
+        "ancestor_dante_front_center_touch",
+    )
+
+
 @registry.envcfg("DR002JoystickFlat")
 @dataclass
 class DR002JoystickCfg(DR002BaseCfg):
     scene: SceneCfg = field(
         default_factory=lambda: SceneCfg(
-            model_file=str(ASSETS_ROOT_PATH / "robots" / "dr002" / "scene_flat_latest.xml")
+            model_file=str(_DR002_ASSET_ROOT / "scene_flat_latest.xml")
         )
     )
     max_episode_seconds: float = 23.0
@@ -152,6 +219,63 @@ class DR002JoystickCfg(DR002BaseCfg):
     reward_config: RewardConfig | None = None
     sensor: JoystickSensor = field(default_factory=JoystickSensor)  # type: ignore[assignment]
     domain_rand: DR002DomainRandConfig = field(default_factory=DR002DomainRandConfig)
+    wing_angle_obs: WingAngleObservationConfig = field(default_factory=WingAngleObservationConfig)
+    critic_obs_mode: str = "legacy"
+
+
+@dataclass
+class WE6ControlConfig(ControlConfig):
+    """WE6's 400 Hz training PD and pre-controller command FIFO."""
+
+    motor_control_hz: float | None = 400.0
+    action_delay_semantics: str = "pre_controller_command_fifo"
+    torque_delay_steps: int = 0
+    action_delay_min_steps: int = 6
+    action_delay_max_steps: int = 14
+    action_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [14, 6, 10, 14, 6, 10]
+    )
+    resample_action_delay: bool = False
+    use_native_batched_pd: bool = True
+    Kp: list[float] = field(  # noqa: N815
+        default_factory=lambda: [3.75, 4.04, 0.0, 3.75, 4.04, 0.0]
+    )
+    Kd: list[float] = field(  # noqa: N815
+        default_factory=lambda: [0.145, 0.2, 0.202, 0.145, 0.2, 0.202]
+    )
+
+
+@dataclass
+class WE6NoiseConfig(NoiseConfig):
+    """WE6 sensor noise with episode-fixed mounting error and slow IMU drift."""
+
+    scale_gyro: float = 0.1
+    scale_joint_angle: float = 0.001
+    scale_joint_vel: float = 0.2
+    scale_wheel_vel: float = 0.3
+    scale_gravity: float = 0.0
+    gravity_noise_mode: str = "tilt"
+    gravity_installation_bias_max_deg: float = 5.0
+    gravity_dynamic_noise_max_deg: float = 1.0
+    gravity_dynamic_noise_time_constant_s: float = 3.0
+
+
+@registry.envcfg("DR002JoystickFlatWE6")
+@dataclass
+class DR002JoystickFlatWE6Cfg(DR002JoystickCfg):
+    """Walking Eagle 6 with Bode-PACE actuator dynamics."""
+
+    scene: SceneCfg = field(
+        default_factory=lambda: SceneCfg(
+            model_file=str(_DR002_ASSET_ROOT / "we6" / "scene_flat_we6.xml")
+        )
+    )
+    sim_dt: float = 0.0025
+    ctrl_dt: float = 0.02
+    noise_config: NoiseConfig = field(default_factory=WE6NoiseConfig)  # type: ignore[assignment]
+    control_config: ControlConfig = field(default_factory=WE6ControlConfig)  # type: ignore[assignment]
+    sensor: JoystickSensor = field(default_factory=WE6JoystickSensor)  # type: ignore[assignment]
+    critic_obs_mode: str = "isaaclab"
 
 
 def _sample_dr002_commands(
@@ -159,15 +283,19 @@ def _sample_dr002_commands(
     num_samples: int,
     lin_vel_x_range: tuple[float, float] | None = None,
     ang_vel_z_range: tuple[float, float] | None = None,
+    standing_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     lin_vel_x = tuple(cfg.lin_vel_x) if lin_vel_x_range is None else lin_vel_x_range
     ang_vel_z = tuple(cfg.ang_vel_z) if ang_vel_z_range is None else ang_vel_z_range
     low = np.asarray([lin_vel_x[0], ang_vel_z[0], cfg.height[0]], dtype=get_global_dtype())
     high = np.asarray([lin_vel_x[1], ang_vel_z[1], cfg.height[1]], dtype=get_global_dtype())
     commands = np.random.uniform(low=low, high=high, size=(num_samples, 3)).astype(get_global_dtype())
-    standing_prob = float(getattr(cfg, "rel_standing_envs", 0.0))
-    if standing_prob > 0.0:
-        standing = np.random.uniform(size=(num_samples,)) < min(standing_prob, 1.0)
+    if standing_mask is not None:
+        standing = np.asarray(standing_mask, dtype=np.bool_).reshape(-1)
+        if standing.shape != (num_samples,):
+            raise ValueError(
+                f"standing_mask must have shape ({num_samples},), got {standing.shape}"
+            )
         commands[standing, 0:2] = 0.0
     return commands
 
@@ -177,16 +305,23 @@ def _load_force_csv(path: str) -> np.ndarray:
     with open(path, "r", newline="", encoding="latin1") as file:
         for row in csv.reader(file):
             try:
-                values = [float(value) for value in row[:4]]
+                values = [float(value) for value in row[:7]]
             except (TypeError, ValueError):
                 continue
             if len(values) >= 4:
-                samples.append(values[:4])
+                # Preserve compatibility with legacy force-only files while
+                # making the six-axis measured-wrench contract explicit.
+                samples.append(values[:7] + [0.0] * max(7 - len(values), 0))
     if not samples:
         raise ValueError(f"force CSV has no numeric rows: {path}")
     force = np.asarray(samples, dtype=np.float64)
     order = np.argsort(force[:, 0])
-    return force[order]
+    force = force[order]
+    if not np.all(np.isfinite(force)):
+        raise ValueError(f"force CSV contains non-finite values: {path}")
+    if force.shape[0] < 2 or np.any(np.diff(force[:, 0]) <= 0.0):
+        raise ValueError(f"force CSV timestamps must be strictly increasing: {path}")
+    return force
 
 
 def _interp_force_csv(samples: np.ndarray, replay_t: float) -> np.ndarray | None:
@@ -218,31 +353,411 @@ def _interp_force_csv_batch(samples: np.ndarray, replay_t: np.ndarray) -> np.nda
     return force
 
 
+def _interp_wrench_csv_batch(samples: np.ndarray, replay_t: np.ndarray) -> np.ndarray:
+    replay = np.asarray(replay_t, dtype=np.float64).reshape(-1)
+    wrench = np.zeros((replay.shape[0], 6), dtype=np.float64)
+    if samples.size == 0:
+        return wrench
+    times = samples[:, 0]
+    if times.size == 0:
+        return wrench
+    for axis in range(6):
+        wrench[:, axis] = np.interp(
+            replay,
+            times,
+            samples[:, axis + 1],
+            left=0.0,
+            right=0.0,
+        )
+    return wrench
+
+
+def _csv_replay_clock(
+    domain_rand: DR002DomainRandConfig,
+    episode_steps: np.ndarray,
+    startup_steps: int,
+    ctrl_dt: float,
+    sample_offsets_s: np.ndarray | None = None,
+    start_delay_steps: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    elapsed_after_startup = np.asarray(episode_steps, dtype=np.int64) - int(startup_steps)
+    if start_delay_steps is not None:
+        delays = np.asarray(start_delay_steps, dtype=np.int64).reshape(-1)
+        if delays.shape != elapsed_after_startup.shape:
+            raise ValueError(
+                "start_delay_steps must match the episode_steps shape, "
+                f"got {delays.shape} and {elapsed_after_startup.shape}"
+            )
+        elapsed_after_startup = elapsed_after_startup - delays
+    elapsed_s = np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(ctrl_dt)
+    if sample_offsets_s is None:
+        replay_t = elapsed_s
+    else:
+        offsets = np.asarray(sample_offsets_s, dtype=np.float64).reshape(-1)
+        replay_t = elapsed_s[:, None] + offsets[None, :]
+    period = float(domain_rand.csv_force_period)
+    if period <= 0.0:
+        return elapsed_after_startup, replay_t
+
+    period_steps = int(round(period / float(ctrl_dt)))
+    aligned_period = abs(period_steps * float(ctrl_dt) - period)
+    if sample_offsets_s is None and period_steps > 0 and aligned_period < float(ctrl_dt) * 0.25:
+        replay_steps = np.mod(np.maximum(elapsed_after_startup, 0), period_steps)
+        replay_t = replay_steps.astype(np.float64) * float(ctrl_dt)
+    else:
+        replay_t = np.fmod(replay_t, period)
+        replay_t = np.where(replay_t < 0.0, replay_t + period, replay_t)
+    return elapsed_after_startup, replay_t
+
+
+def _smoothstep01(value: np.ndarray) -> np.ndarray:
+    clipped = np.clip(np.asarray(value, dtype=np.float64), 0.0, 1.0)
+    return clipped * clipped * (3.0 - 2.0 * clipped)
+
+
+def _csv_replay_activity_weight(
+    samples: np.ndarray,
+    replay_t: np.ndarray,
+    elapsed_s: np.ndarray,
+    *,
+    period: float,
+    transition_seconds: float,
+) -> np.ndarray:
+    replay = np.asarray(replay_t, dtype=np.float64)
+    elapsed = np.broadcast_to(np.asarray(elapsed_s, dtype=np.float64), replay.shape)
+    source_start = float(samples[0, 0])
+    source_end = float(samples[-1, 0])
+    active_end = min(source_end, period) if period > 0.0 else source_end
+    active = (replay >= source_start) & (replay <= active_end)
+    weight = active.astype(np.float64)
+    transition = float(transition_seconds)
+    if transition <= 0.0:
+        return weight
+
+    covers_period = period > 0.0 and source_end >= period
+    if covers_period:
+        initial_weight = _smoothstep01((elapsed - source_start) / transition)
+        return weight * initial_weight
+
+    fade_in = _smoothstep01((replay - source_start) / transition)
+    fade_out = _smoothstep01((active_end - replay) / transition)
+    return weight * np.minimum(fade_in, fade_out)
+
+
+def _sample_force_csv_replay(
+    samples: np.ndarray,
+    replay_t: np.ndarray,
+    elapsed_s: np.ndarray,
+    *,
+    period: float,
+    transition_seconds: float,
+) -> np.ndarray:
+    replay = np.asarray(replay_t, dtype=np.float64)
+    flat_force = _interp_force_csv_batch(samples, replay.reshape(-1))
+    force = flat_force.reshape(replay.shape + (3,))
+    weight = _csv_replay_activity_weight(
+        samples,
+        replay,
+        elapsed_s,
+        period=period,
+        transition_seconds=transition_seconds,
+    )
+    force *= weight[..., None]
+
+    source_end = float(samples[-1, 0])
+    transition = float(transition_seconds)
+    if period <= 0.0 or source_end < period or transition <= 0.0:
+        return force
+
+    source_start = float(samples[0, 0])
+    tail_start = max(source_start, period - transition)
+    tail_width = period - tail_start
+    if tail_width <= 0.0:
+        return force
+    tail = replay >= tail_start
+    if not np.any(tail):
+        return force
+    alpha = _smoothstep01((replay[tail] - tail_start) / tail_width)
+    first_force = np.asarray(samples[0, 1:4], dtype=np.float64)
+    force[tail] = (1.0 - alpha[:, None]) * force[tail] + alpha[:, None] * first_force
+    return force
+
+
+def _apply_csv_force_channel_options(
+    force_sensor: np.ndarray,
+    *,
+    zero_fy: bool,
+) -> np.ndarray:
+    force = np.asarray(force_sensor, dtype=np.float64)
+    if force.shape[-1] != 3:
+        raise ValueError(f"CSV force must have three channels, got shape {force.shape}")
+    result = force.copy()
+    if zero_fy:
+        result[..., 1] = 0.0
+    return result
+
+
+def _sample_wrench_csv_replay(
+    samples: np.ndarray,
+    replay_t: np.ndarray,
+    elapsed_s: np.ndarray,
+    *,
+    period: float,
+    transition_seconds: float,
+) -> np.ndarray:
+    replay = np.asarray(replay_t, dtype=np.float64)
+    flat_wrench = _interp_wrench_csv_batch(samples, replay.reshape(-1))
+    wrench = flat_wrench.reshape(replay.shape + (6,))
+    weight = _csv_replay_activity_weight(
+        samples,
+        replay,
+        elapsed_s,
+        period=period,
+        transition_seconds=transition_seconds,
+    )
+    wrench *= weight[..., None]
+
+    source_end = float(samples[-1, 0])
+    transition = float(transition_seconds)
+    if period <= 0.0 or source_end < period or transition <= 0.0:
+        return wrench
+    source_start = float(samples[0, 0])
+    tail_start = max(source_start, period - transition)
+    tail_width = period - tail_start
+    if tail_width <= 0.0:
+        return wrench
+    tail = replay >= tail_start
+    if not np.any(tail):
+        return wrench
+    alpha = _smoothstep01((replay[tail] - tail_start) / tail_width)
+    first_wrench = np.asarray(samples[0, 1:7], dtype=np.float64)
+    wrench[tail] = (1.0 - alpha[:, None]) * wrench[tail] + alpha[:, None] * first_wrench
+    return wrench
+
+
+def _load_wing_angle_csv(path: str | Path) -> np.ndarray:
+    samples: list[list[float]] = []
+    with Path(path).open("r", newline="", encoding="utf-8") as file:
+        for row in csv.reader(file):
+            try:
+                values = [float(value) for value in row[:3]]
+            except (TypeError, ValueError):
+                continue
+            if len(values) >= 3:
+                samples.append(values[:3])
+    if not samples:
+        raise ValueError(f"wing angle CSV has no numeric rows: {path}")
+    angles = np.asarray(samples, dtype=np.float64)
+    order = np.argsort(angles[:, 0])
+    angles = angles[order]
+    if not np.all(np.isfinite(angles)):
+        raise ValueError(f"wing angle CSV contains non-finite values: {path}")
+    if angles.shape[0] < 2 or np.any(np.diff(angles[:, 0]) <= 0.0):
+        raise ValueError(f"wing angle CSV timestamps must be strictly increasing: {path}")
+    return angles
+
+
+def _interp_wing_angle_csv_batch(samples: np.ndarray, phase_t: np.ndarray) -> np.ndarray:
+    phase = np.asarray(phase_t, dtype=np.float64).reshape(-1)
+    angles = np.zeros((phase.shape[0], _WING_ANGLE_OBS_DIM), dtype=np.float64)
+    for motor_index in range(_WING_ANGLE_OBS_DIM):
+        angles[:, motor_index] = np.interp(
+            phase,
+            samples[:, 0],
+            samples[:, motor_index + 1],
+        )
+    return angles
+
+
+def _wing_angle_curriculum_paths(cfg: WingAngleObservationConfig) -> list[Path]:
+    paths: list[Path] = []
+    for configured_path in cfg.curriculum_paths:
+        path = Path(configured_path).expanduser()
+        paths.append(path if path.is_absolute() else ASSETS_ROOT_PATH / path)
+    return paths
+
+
+def _wing_angle_path_for_level(
+    domain_rand: DR002DomainRandConfig,
+    cfg: WingAngleObservationConfig,
+    level: int,
+) -> Path | None:
+    paths = _wing_angle_curriculum_paths(cfg)
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
+    if not hz_values:
+        return paths[int(np.clip(level, 0, len(paths) - 1))]
+
+    level = int(np.clip(level, 0, len(hz_values) - 1))
+    if hz_values[level] <= 0.0:
+        return None
+    if len(paths) == len(hz_values):
+        return paths[level]
+
+    positive_path_index = sum(1 for hz in hz_values[: level + 1] if hz > 0.0) - 1
+    if positive_path_index < 0:
+        return None
+    if positive_path_index >= len(paths):
+        raise ValueError(
+            "wing_angle_obs.curriculum_paths does not contain enough positive-Hz paths"
+        )
+    return paths[positive_path_index]
+
+
+def _validate_wing_angle_observation_mapping(
+    domain_rand: DR002DomainRandConfig,
+    cfg: WingAngleObservationConfig,
+) -> None:
+    if not cfg.enabled:
+        return
+    if not domain_rand.csv_force_enabled:
+        raise ValueError("wing_angle_obs.enabled requires domain_rand.csv_force_enabled")
+    if float(cfg.normalization_deg) <= 0.0:
+        raise ValueError("wing_angle_obs.normalization_deg must be positive")
+    zero_offsets = np.asarray(cfg.zero_offsets_deg, dtype=np.float64)
+    if zero_offsets.shape != (_WING_ANGLE_OBS_DIM,) or not np.all(np.isfinite(zero_offsets)):
+        raise ValueError("wing_angle_obs.zero_offsets_deg must contain two finite values")
+    standing_range = np.asarray(cfg.standing_normalized_range, dtype=np.float64)
+    if standing_range.shape != (2,) or not np.all(np.isfinite(standing_range)):
+        raise ValueError(
+            "wing_angle_obs.standing_normalized_range must contain two finite values"
+        )
+    if standing_range[0] > standing_range[1]:
+        raise ValueError(
+            "wing_angle_obs.standing_normalized_range must be ordered [low, high]"
+        )
+
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
+    if not hz_values:
+        raise ValueError("wing angle observations require csv_force_curriculum_hz labels")
+    paths = _wing_angle_curriculum_paths(cfg)
+    positive_count = sum(1 for hz in hz_values if hz > 0.0)
+    if len(paths) not in (len(hz_values), positive_count):
+        raise ValueError(
+            "wing_angle_obs.curriculum_paths must either match csv_force_curriculum_hz "
+            "length or contain only the positive-Hz paths"
+        )
+    for level, source_hz in enumerate(hz_values):
+        if source_hz <= 0.0:
+            continue
+        path = _wing_angle_path_for_level(domain_rand, cfg, level)
+        if path is None:
+            raise ValueError(f"wing angle path is missing for {source_hz:g}Hz")
+        samples = _load_wing_angle_csv(path)
+        expected_period = 1.0 / source_hz
+        tolerance = max(1.0e-6, expected_period * 1.0e-3)
+        if samples[0, 0] > tolerance or samples[-1, 0] < expected_period - tolerance:
+            raise ValueError(
+                f"wing angle CSV must span one full {source_hz:g}Hz period "
+                f"[0, {expected_period:g}]s: {path}"
+            )
+
+
 def _csv_force_curriculum_paths(domain_rand: DR002DomainRandConfig) -> list[str]:
-    paths = [str(path) for path in domain_rand.csv_force_curriculum_paths]
-    return paths if paths else [str(domain_rand.csv_force_path)]
+    configured_paths = (
+        list(domain_rand.csv_force_curriculum_paths)
+        if domain_rand.csv_force_curriculum_paths
+        else [domain_rand.csv_force_path]
+    )
+    paths: list[str] = []
+    for configured_path in configured_paths:
+        path = Path(configured_path).expanduser()
+        paths.append(str(path if path.is_absolute() else ASSETS_ROOT_PATH / path))
+    return paths
+
+
+def _csv_force_curriculum_hz_values(domain_rand: DR002DomainRandConfig) -> list[float]:
+    return [float(hz) for hz in domain_rand.csv_force_curriculum_hz]
+
+
+def _csv_force_curriculum_num_levels(domain_rand: DR002DomainRandConfig) -> int:
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
+    if hz_values:
+        return len(hz_values)
+    return len(_csv_force_curriculum_paths(domain_rand))
 
 
 def _csv_force_curriculum_level_index(
     domain_rand: DR002DomainRandConfig,
-    current_scale: float,
-    initial_scale: float,
-    final_scale: float,
+    current_level: int | float,
 ) -> int:
-    paths = _csv_force_curriculum_paths(domain_rand)
-    if len(paths) <= 1:
+    num_levels = _csv_force_curriculum_num_levels(domain_rand)
+    if num_levels <= 1:
         return 0
-    denom = final_scale - initial_scale
-    progress = 1.0 if abs(denom) < 1e-9 else (current_scale - initial_scale) / denom
-    level = int(round(float(np.clip(progress, 0.0, 1.0)) * (len(paths) - 1)))
-    return int(np.clip(level, 0, len(paths) - 1))
+    level = int(round(float(current_level)))
+    return int(np.clip(level, 0, num_levels - 1))
 
 
 def _csv_force_curriculum_source_hz(domain_rand: DR002DomainRandConfig, level: int) -> float:
-    hz_values = list(domain_rand.csv_force_curriculum_hz)
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
     if not hz_values:
         return float("nan")
     return float(hz_values[int(np.clip(level, 0, len(hz_values) - 1))])
+
+
+def _csv_force_zero_hz_mask(
+    domain_rand: DR002DomainRandConfig,
+    levels: np.ndarray,
+) -> np.ndarray:
+    level_values = np.asarray(levels, dtype=np.int32)
+    zero_hz = np.zeros(level_values.shape, dtype=np.bool_)
+    for level in np.unique(level_values):
+        source_hz = _csv_force_curriculum_source_hz(domain_rand, int(level))
+        if np.isfinite(source_hz) and source_hz <= 0.0:
+            zero_hz[level_values == int(level)] = True
+    return zero_hz
+
+
+def _csv_force_curriculum_path_for_level(
+    domain_rand: DR002DomainRandConfig,
+    level: int,
+) -> str | None:
+    paths = _csv_force_curriculum_paths(domain_rand)
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
+    if not hz_values:
+        return paths[int(np.clip(level, 0, len(paths) - 1))]
+
+    level = int(np.clip(level, 0, len(hz_values) - 1))
+    if hz_values[level] <= 0.0:
+        return None
+
+    if len(paths) == len(hz_values):
+        return paths[level]
+
+    positive_path_index = sum(1 for hz in hz_values[: level + 1] if hz > 0.0) - 1
+    if positive_path_index < 0:
+        return None
+    if positive_path_index >= len(paths):
+        raise ValueError(
+            "domain_rand.csv_force_curriculum_paths does not contain enough positive-Hz CSV paths"
+        )
+    return paths[positive_path_index]
+
+
+def _validate_csv_force_curriculum_mapping(domain_rand: DR002DomainRandConfig) -> None:
+    hz_values = _csv_force_curriculum_hz_values(domain_rand)
+    if not hz_values:
+        return
+    paths = _csv_force_curriculum_paths(domain_rand)
+    positive_count = sum(1 for hz in hz_values if hz > 0.0)
+    if len(paths) not in (len(hz_values), positive_count):
+        raise ValueError(
+            "domain_rand.csv_force_curriculum_paths must either match "
+            "csv_force_curriculum_hz length, or contain only the positive-Hz CSV paths"
+        )
+
+
+def _noise_curriculum_levels(noise_cfg: Any) -> np.ndarray:
+    levels = np.asarray(
+        getattr(noise_cfg, "curriculum_levels", []),
+        dtype=np.float64,
+    ).reshape(-1)
+    if levels.size == 0:
+        raise ValueError("noise_config.curriculum_levels must be non-empty")
+    if not np.all(np.isfinite(levels)):
+        raise ValueError("noise_config.curriculum_levels must be finite")
+    if np.any(levels < 0.0):
+        raise ValueError("noise_config.curriculum_levels must be non-negative")
+    return levels
 
 
 def build_dr002_backend_reset_randomization(
@@ -250,8 +765,10 @@ def build_dr002_backend_reset_randomization(
     num_reset: int,
     *,
     base_body_mass: np.ndarray | None = None,
+    base_body_inertia: np.ndarray | None = None,
     base_geom_friction: np.ndarray | None = None,
     ground_geom_id: int | None = None,
+    robot_geom_ids: np.ndarray | None = None,
     base_dof_armature: np.ndarray | None = None,
 ) -> ResetRandomizationPayload | None:
     domain_rand = getattr(env.cfg, "domain_rand", None)
@@ -259,13 +776,18 @@ def build_dr002_backend_reset_randomization(
         return None
 
     payload = ResetRandomizationPayload()
+    body_inertia = None
+    body_inertia_template = None
     if getattr(domain_rand, "randomize_base_mass", False):
         low, high = domain_rand.added_mass_range
         payload.base_mass_delta = np.random.uniform(low, high, size=(num_reset,))
     if getattr(domain_rand, "randomize_body_mass", False):
         if base_body_mass is None:
             raise ValueError("body mass randomization requires cached body mass")
+        if base_body_inertia is None:
+            raise ValueError("body mass inertia recompute requires cached body inertia")
         body_mass_template = np.asarray(base_body_mass, dtype=np.float64)
+        body_inertia_template = np.asarray(base_body_inertia, dtype=np.float64)
         low, high = domain_rand.body_mass_multiplier_range
         multipliers = np.random.uniform(low, high, size=(num_reset, body_mass_template.size))
         body_names = ("thigh_joint", "calf_joint", "foot_joint")
@@ -284,6 +806,25 @@ def build_dr002_backend_reset_randomization(
         randomized = body_mass_template > 0.0
         body_mass[:, randomized] *= multipliers[:, randomized]
         payload.body_mass = body_mass
+        body_inertia = np.broadcast_to(
+            body_inertia_template, (num_reset, *body_inertia_template.shape)
+        ).copy()
+        body_inertia[:, randomized, :] *= multipliers[:, randomized, None]
+    if getattr(domain_rand, "randomize_body_inertia", False):
+        if body_inertia_template is None:
+            if base_body_inertia is None:
+                raise ValueError("body inertia randomization requires cached body inertia")
+            body_inertia_template = np.asarray(base_body_inertia, dtype=np.float64)
+        if body_inertia is None:
+            body_inertia = np.broadcast_to(
+                body_inertia_template, (num_reset, *body_inertia_template.shape)
+            ).copy()
+        low, high = domain_rand.body_inertia_multiplier_range
+        base_body_id = env._backend.get_body_id(env.cfg.asset.base_name)
+        scale = np.random.uniform(low, high, size=(num_reset, 1))
+        body_inertia[:, int(base_body_id), :] *= scale
+    if body_inertia is not None:
+        payload.body_inertia = body_inertia
     if getattr(domain_rand, "random_com", False):
         base_com_offset = np.zeros((num_reset, 3), dtype=np.float64)
         low, high = domain_rand.com_offset_x
@@ -298,15 +839,34 @@ def build_dr002_backend_reset_randomization(
         low = np.minimum(gravity_range[0], gravity_range[1])
         high = np.maximum(gravity_range[0], gravity_range[1])
         payload.gravity = np.random.uniform(low=low, high=high, size=(num_reset, 3))
-    if getattr(domain_rand, "randomize_ground_friction", False):
-        if base_geom_friction is None or ground_geom_id is None:
-            raise ValueError("ground friction randomization requires cached geom friction and ground geom id")
+    geom_friction = None
+    geom_friction_template = None
+    if getattr(domain_rand, "randomize_ground_friction", False) or getattr(
+        domain_rand, "randomize_robot_geom_friction", False
+    ):
+        if base_geom_friction is None:
+            raise ValueError("geom friction randomization requires cached geom friction")
         geom_friction_template = np.asarray(base_geom_friction, dtype=np.float64)
-        low, high = domain_rand.ground_friction_multiplier_range
         geom_friction = np.broadcast_to(
             geom_friction_template, (num_reset, *geom_friction_template.shape)
         ).copy()
+    if getattr(domain_rand, "randomize_ground_friction", False):
+        if ground_geom_id is None:
+            raise ValueError("ground friction randomization requires ground geom id")
+        assert geom_friction is not None
+        low, high = domain_rand.ground_friction_multiplier_range
         geom_friction[:, int(ground_geom_id), 0] *= np.random.uniform(low, high, size=(num_reset,))
+    if getattr(domain_rand, "randomize_robot_geom_friction", False):
+        if robot_geom_ids is None:
+            raise ValueError("robot geom friction randomization requires robot geom ids")
+        robot_geom_ids_np = np.asarray(robot_geom_ids, dtype=np.int32).reshape(-1)
+        if robot_geom_ids_np.size == 0:
+            raise ValueError("robot geom friction randomization requires at least one robot geom")
+        assert geom_friction is not None
+        low, high = domain_rand.robot_geom_friction_multiplier_range
+        scale = np.random.uniform(low, high, size=(num_reset, 1, 1))
+        geom_friction[:, robot_geom_ids_np, :] *= scale
+    if geom_friction is not None:
         payload.geom_friction = geom_friction
     if getattr(domain_rand, "randomize_dof_armature", False):
         if base_dof_armature is None:
@@ -329,13 +889,17 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         self,
         *,
         base_body_mass: np.ndarray | None = None,
+        base_body_inertia: np.ndarray | None = None,
         base_geom_friction: np.ndarray | None = None,
         ground_geom_id: int | None = None,
+        robot_geom_ids: np.ndarray | None = None,
         base_dof_armature: np.ndarray | None = None,
     ) -> None:
         self._base_body_mass = base_body_mass
+        self._base_body_inertia = base_body_inertia
         self._base_geom_friction = base_geom_friction
         self._ground_geom_id = ground_geom_id
+        self._robot_geom_ids = robot_geom_ids
         self._base_dof_armature = base_dof_armature
         self._force_samples_by_path: dict[str, np.ndarray] = {}
 
@@ -344,8 +908,10 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             env,
             num_reset=1,
             base_body_mass=self._base_body_mass,
+            base_body_inertia=self._base_body_inertia,
             base_geom_friction=self._base_geom_friction,
             ground_geom_id=self._ground_geom_id,
+            robot_geom_ids=self._robot_geom_ids,
             base_dof_armature=self._base_dof_armature,
         )
         if payload is not None:
@@ -355,13 +921,21 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 raise NotImplementedError(
                     f"{env._backend.backend_type} backend does not support DR002 reset randomization terms: {names}"
                 )
-        if env.cfg.domain_rand.push_robots and not capabilities.supports_interval_body_velocity_delta:
+        if env.cfg.domain_rand.push_robots and not capabilities.supports_interval_body_force:
             raise NotImplementedError(
-                f"{env._backend.backend_type} backend does not support interval body velocity perturbation"
+                f"{env._backend.backend_type} backend does not support interval body force perturbation"
             )
         if env.cfg.domain_rand.csv_force_enabled and not capabilities.supports_interval_body_force:
             raise NotImplementedError(
                 f"{env._backend.backend_type} backend does not support interval CSV force perturbation"
+            )
+        if (
+            env.cfg.domain_rand.csv_force_enabled
+            and int(env.cfg.sim_substeps) > 1
+            and not capabilities.supports_interval_body_force_trajectory
+        ):
+            raise NotImplementedError(
+                f"{env._backend.backend_type} backend does not support physics-substep CSV force trajectories"
             )
         if env.cfg.domain_rand.csv_force_enabled:
             rotation = np.asarray(env.cfg.domain_rand.csv_force_rotation, dtype=np.float64)
@@ -369,15 +943,17 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 raise ValueError("domain_rand.csv_force_rotation must contain 9 row-major values")
             if float(env.cfg.domain_rand.csv_force_period) < 0.0:
                 raise ValueError("domain_rand.csv_force_period must be >= 0")
+            transition_seconds = float(env.cfg.domain_rand.csv_force_transition_seconds)
+            if transition_seconds < 0.0:
+                raise ValueError("domain_rand.csv_force_transition_seconds must be >= 0")
             if (
-                env.cfg.domain_rand.csv_force_curriculum_hz
-                and len(env.cfg.domain_rand.csv_force_curriculum_hz)
-                != len(env.cfg.domain_rand.csv_force_curriculum_paths)
+                float(env.cfg.domain_rand.csv_force_period) > 0.0
+                and transition_seconds * 2.0 > float(env.cfg.domain_rand.csv_force_period)
             ):
                 raise ValueError(
-                    "domain_rand.csv_force_curriculum_hz must be empty or match "
-                    "csv_force_curriculum_paths length"
+                    "domain_rand.csv_force_transition_seconds must not exceed half the replay period"
                 )
+            _validate_csv_force_curriculum_mapping(env.cfg.domain_rand)
             push_point = np.asarray(env.cfg.domain_rand.csv_force_push_point, dtype=np.float64)
             if push_point.shape != (3,):
                 raise ValueError("domain_rand.csv_force_push_point must contain 3 values")
@@ -395,87 +971,127 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
     def build_interval_randomization_plan(self, env: Any, step_counter: int):
         domain_rand = env.cfg.domain_rand
         body_ids: np.ndarray | None = None
-        velocity_delta: np.ndarray | None = None
+        push_force: np.ndarray | None = None
         episode_steps = env.episode_steps()
         elapsed_after_startup = episode_steps - int(getattr(env, "_startup_stand_steps", 0))
-        if domain_rand.push_robots and domain_rand.push_interval > 0:
+        push_robots_enabled = bool(domain_rand.push_robots)
+        if push_robots_enabled and domain_rand.push_interval > 0:
             push_due = (elapsed_after_startup > 0) & ((elapsed_after_startup % domain_rand.push_interval) == 0)
             if np.any(push_due):
                 num_push = int(np.count_nonzero(push_due))
                 body_id = env._backend.get_body_id(env.cfg.asset.base_name)
                 body_ids = np.asarray([body_id], dtype=np.int32)
-                velocity_delta = np.zeros((env._num_envs, 1, 3), dtype=np.float64)
-                low, high = domain_rand.push_velocity_x_range
-                velocity_delta[push_due, 0, 0] = np.random.uniform(low, high, size=(num_push,))
-                low, high = domain_rand.push_velocity_y_range
-                velocity_delta[push_due, 0, 1] = np.random.uniform(low, high, size=(num_push,))
+                force_limit = np.asarray(domain_rand.max_force, dtype=np.float64)
+                if force_limit.shape != (3,):
+                    raise ValueError(f"domain_rand.max_force must have shape (3,), got {force_limit.shape}")
+                push_force = np.zeros((env._num_envs, 1, 6), dtype=np.float64)
+                push_force[push_due, 0, :3] = (
+                    np.random.uniform(-1.0, 1.0, size=(num_push, 3)) * force_limit[None, :]
+                )
 
-        body_force = self._build_csv_force(env, step_counter)
-        if body_force is None and velocity_delta is None:
+        body_force_trajectory = self._build_csv_force_trajectory(env, step_counter)
+        if push_force is not None and hasattr(env, "_external_disturbance_current_wrench"):
+            env._external_disturbance_current_wrench += push_force[:, 0, :]
+        if push_force is None and body_force_trajectory is None:
             return None
         if body_ids is None:
             body_name = domain_rand.csv_force_body_name or env.cfg.asset.base_name
             body_ids = np.asarray([env._backend.get_body_id(body_name)], dtype=np.int32)
         return IntervalRandomizationPlan(
             body_ids=body_ids,
-            body_linear_velocity_delta=velocity_delta,
-            body_force=body_force,
+            body_force=push_force,
+            body_force_trajectory=body_force_trajectory,
         )
 
-    def _build_csv_force(self, env: Any, step_counter: int) -> np.ndarray | None:
+    def _build_csv_force_trajectory(self, env: Any, step_counter: int) -> np.ndarray | None:
         domain_rand = env.cfg.domain_rand
-        if hasattr(env, "_csv_force_current_wrench"):
-            env._csv_force_current_wrench.fill(0.0)
+        if hasattr(env, "_external_disturbance_current_wrench"):
+            env._external_disturbance_current_wrench.fill(0.0)
+        if hasattr(env, "_measured_csv_force_base"):
+            env._measured_csv_force_base.fill(0.0)
         if not domain_rand.csv_force_enabled:
             return None
-        paths = _csv_force_curriculum_paths(domain_rand)
-        level = _csv_force_curriculum_level_index(
+        if domain_rand.csv_force_curriculum:
+            levels = env.csv_force_active_levels()
+        else:
+            level = _csv_force_curriculum_level_index(
+                domain_rand,
+                int(getattr(env, "_csv_force_curriculum_level", 0)),
+            )
+            levels = np.full((env._num_envs,), level, dtype=np.int32)
+        if env._standing_envs_episode_persistent:
+            levels = np.array(levels, copy=True)
+            levels[env.episode_standing_mask()] = 0
+
+        num_substeps = int(env.cfg.sim_substeps)
+        substep_offsets = np.arange(num_substeps, dtype=np.float64) * float(env.cfg.sim_dt)
+        elapsed_after_startup, replay_t = _csv_replay_clock(
             domain_rand,
-            float(getattr(env, "_csv_force_curriculum_scale", 1.0)),
-            float(getattr(env, "_csv_force_curriculum_initial_scale", 1.0)),
-            float(getattr(env, "_csv_force_curriculum_final_scale", 1.0)),
+            env.episode_steps(),
+            int(getattr(env, "_startup_stand_steps", 0)),
+            float(env.cfg.ctrl_dt),
+            sample_offsets_s=substep_offsets,
+            start_delay_steps=env.csv_force_start_delay_steps(),
         )
-        force_path = paths[level]
-        if force_path not in self._force_samples_by_path:
-            self._force_samples_by_path[force_path] = _load_force_csv(force_path)
-        force_samples = self._force_samples_by_path[force_path]
-
-        episode_steps = env.episode_steps()
-        startup_steps = int(getattr(env, "_startup_stand_steps", 0))
-        elapsed_after_startup = episode_steps - startup_steps
-        replay_t = np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(env.cfg.ctrl_dt)
-        period = float(domain_rand.csv_force_period)
-        if period > 0.0:
-            period_steps = int(round(period / float(env.cfg.ctrl_dt)))
-            aligned_period = abs(period_steps * float(env.cfg.ctrl_dt) - period)
-            if period_steps > 0 and aligned_period < float(env.cfg.ctrl_dt) * 0.25:
-                replay_steps = np.mod(np.maximum(elapsed_after_startup, 0), period_steps)
-                replay_t = replay_steps.astype(np.float64) * float(env.cfg.ctrl_dt)
-            else:
-                replay_t = np.fmod(replay_t, period)
-                replay_t = np.where(replay_t < 0.0, replay_t + period, replay_t)
-
-        force_sensor_batch = _interp_force_csv_batch(force_samples, replay_t)
-        force_sensor_batch[elapsed_after_startup < 0] = 0.0
+        elapsed_s = (
+            np.maximum(elapsed_after_startup, 0).astype(np.float64)[:, None]
+            * float(env.cfg.ctrl_dt)
+            + substep_offsets[None, :]
+        )
 
         rotation = np.asarray(domain_rand.csv_force_rotation, dtype=np.float64).reshape(3, 3)
-        force_base_batch = force_sensor_batch @ rotation.T
-        force_world = np.asarray(
-            np_quat_apply(env._backend.get_base_quat(), force_base_batch),
-            dtype=np.float64,
-        )
+        base_quat = env._backend.get_base_quat()
+        force_world = np.zeros((env._num_envs, num_substeps, 3), dtype=np.float64)
         torque_world = np.zeros_like(force_world)
-        if domain_rand.csv_force_apply_point_torque:
-            push_point_base = np.asarray(domain_rand.csv_force_push_point, dtype=np.float64)
-            torque_base = np.cross(push_point_base[None, :], force_base_batch)
-            torque_world = np.asarray(
-                np_quat_apply(env._backend.get_base_quat(), torque_base),
-                dtype=np.float64,
+        body_name = domain_rand.csv_force_body_name or env.cfg.asset.base_name
+        body_id = int(env._backend.get_body_id(body_name))
+        nominal_body_com = np.asarray(env._backend.get_body_ipos()[body_id], dtype=np.float64)
+        body_com = np.broadcast_to(nominal_body_com, (env._num_envs, 3)).copy()
+        if body_name == env.cfg.asset.base_name:
+            body_com += np.asarray(env._privileged_base_com_offset, dtype=np.float64)
+        push_point_base = np.asarray(domain_rand.csv_force_push_point, dtype=np.float64)
+        moment_arm_base = push_point_base[None, :] - body_com
+        for level in np.unique(levels):
+            level_int = int(level)
+            rows = levels == level_int
+            source_hz = _csv_force_curriculum_source_hz(domain_rand, level_int)
+            force_path = _csv_force_curriculum_path_for_level(domain_rand, level_int)
+            if source_hz <= 0.0 or force_path is None or not np.any(rows):
+                continue
+            if force_path not in self._force_samples_by_path:
+                self._force_samples_by_path[force_path] = _load_force_csv(force_path)
+            force_samples = self._force_samples_by_path[force_path]
+            force_sensor_batch = _sample_force_csv_replay(
+                force_samples,
+                replay_t[rows],
+                elapsed_s[rows],
+                period=float(domain_rand.csv_force_period),
+                transition_seconds=float(domain_rand.csv_force_transition_seconds),
             )
-        wrench_world = np.concatenate([force_world, torque_world], axis=1)
-        if hasattr(env, "_csv_force_current_wrench"):
-            env._csv_force_current_wrench[: wrench_world.shape[0]] = wrench_world
-        return wrench_world[:, None, :]
+            force_sensor_batch[elapsed_after_startup[rows] < 0] = 0.0
+            force_sensor_batch = _apply_csv_force_channel_options(
+                force_sensor_batch,
+                zero_fy=bool(domain_rand.csv_force_zero_fy),
+            )
+            force_base_batch = force_sensor_batch @ rotation.T
+            if hasattr(env, "_measured_csv_force_base"):
+                env._measured_csv_force_base[rows] = force_base_batch[:, -1, :]
+            row_count = int(np.count_nonzero(rows))
+            repeated_quat = np.repeat(base_quat[rows], num_substeps, axis=0)
+            force_world[rows] = np.asarray(
+                np_quat_apply(repeated_quat, force_base_batch.reshape(-1, 3)),
+                dtype=np.float64,
+            ).reshape(row_count, num_substeps, 3)
+            if domain_rand.csv_force_apply_point_torque:
+                torque_base = np.cross(moment_arm_base[rows, None, :], force_base_batch)
+                torque_world[rows] = np.asarray(
+                    np_quat_apply(repeated_quat, torque_base.reshape(-1, 3)),
+                    dtype=np.float64,
+                ).reshape(row_count, num_substeps, 3)
+        wrench_world = np.concatenate([force_world, torque_world], axis=2)
+        if hasattr(env, "_external_disturbance_current_wrench"):
+            env._external_disturbance_current_wrench[: wrench_world.shape[0]] = wrench_world[:, -1, :]
+        return wrench_world[:, :, None, :]
 
     def build_reset_plan(self, env: Any, env_ids: np.ndarray) -> ResetPlan:
         num_reset = len(env_ids)
@@ -501,11 +1117,35 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
         torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(num_reset)
         env.set_motor_runtime_randomization(env_ids, torque_scale, default_joint_pos_offset)
+        standing_mask = env.sample_reset_standing_mask(env_ids)
+        env.set_episode_standing_mask(env_ids, standing_mask)
+        csv_force_levels = env.sample_reset_csv_force_levels(num_reset)
+        csv_force_start_delay_steps = env.sample_reset_csv_force_start_delay_steps(num_reset)
+        if env._standing_envs_episode_persistent:
+            csv_force_levels[standing_mask] = 0
+            csv_force_start_delay_steps[standing_mask] = 0
+        zero_hz_wing_angle_obs = env.sample_reset_zero_hz_wing_angle_obs(
+            _csv_force_zero_hz_mask(env.cfg.domain_rand, csv_force_levels)
+        )
+        env.set_zero_hz_wing_angle_obs(env_ids, zero_hz_wing_angle_obs)
+        env.set_csv_force_active_levels(env_ids, csv_force_levels)
+        env.set_csv_force_start_delay_steps(env_ids, csv_force_start_delay_steps)
+        reset_randomization = build_dr002_backend_reset_randomization(
+            env,
+            num_reset,
+            base_body_mass=self._base_body_mass,
+            base_body_inertia=self._base_body_inertia,
+            base_geom_friction=self._base_geom_friction,
+            ground_geom_id=self._ground_geom_id,
+            robot_geom_ids=self._robot_geom_ids,
+            base_dof_armature=self._base_dof_armature,
+        )
+        env.set_privileged_reset_randomization(env_ids, reset_randomization)
         info_updates: dict[str, Any] = {
             "commands": (
                 env.startup_commands(num_reset)
                 if env._startup_stand_steps > 0
-                else env.sample_commands(num_reset)
+                else env.sample_commands(num_reset, env_ids=env_ids)
             ),
             "current_actions": zero_actions(num_reset, env._num_action),
             "last_actions": zero_actions(num_reset, env._num_action),
@@ -518,14 +1158,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             qpos=qpos,
             qvel=qvel,
             info_updates=info_updates,
-            randomization=build_dr002_backend_reset_randomization(
-                env,
-                num_reset,
-                base_body_mass=self._base_body_mass,
-                base_geom_friction=self._base_geom_friction,
-                ground_geom_id=self._ground_geom_id,
-                base_dof_armature=self._base_dof_armature,
-            ),
+            randomization=reset_randomization,
         )
 
     def _compute_reset_obs(
@@ -576,6 +1209,25 @@ class DR002JoystickEnv(DR002BaseEnv):
         super().__init__(cfg, backend, num_envs)
         self._np_dtype = get_global_dtype()
         self._reward_cfg = cfg.reward_config
+        self._wing_angle_obs_enabled = bool(cfg.wing_angle_obs.enabled)
+        self._history_term_dims = (
+            _TERM_DIMS[:-1] + (_WING_ANGLE_OBS_DIM,) + _TERM_DIMS[-1:]
+            if self._wing_angle_obs_enabled
+            else _TERM_DIMS
+        )
+        self._actor_dim = _HISTORY_LENGTH * sum(self._history_term_dims)
+        critic_obs_mode = str(cfg.critic_obs_mode)
+        if critic_obs_mode not in {"legacy", "isaaclab"}:
+            raise ValueError(
+                "critic_obs_mode must be either 'legacy' or 'isaaclab', "
+                f"got {critic_obs_mode!r}"
+            )
+        self._use_isaaclab_critic = critic_obs_mode == "isaaclab"
+        # WE6 mirrors IsaacLab's 144-d privileged critic while existing DR002
+        # tasks retain their 52-d checkpoint contract.
+        self._critic_dim = _CRITIC_DIM if self._use_isaaclab_critic else _LEGACY_CRITIC_DIM
+        self._wing_angle_samples_by_path: dict[Path, np.ndarray] = {}
+        self._wing_angle_force_samples_by_path: dict[str, np.ndarray] = {}
         self._enable_reward_log = True
         ctrl_range = np.asarray(self._backend.get_actuator_ctrl_range(), dtype=np.float64)
         self._validate_motor_control_contract(ctrl_range, num_envs)
@@ -587,11 +1239,79 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._motor_kd = np.broadcast_to(self._base_motor_kd, (num_envs, NUM_DR002_ACTIONS)).copy()
         self._motor_torque_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
         self._default_joint_pos_offset = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        self._privileged_body_ids = np.asarray(
+            [self._backend.get_body_id(name) for name in _PRIVILEGED_BODY_NAMES],
+            dtype=np.int32,
+        )
+        self._privileged_joint_dof_ids = self._backend.get_joint_dof_indices(_PRIVILEGED_BODY_NAMES)
+        self._privileged_base_mass_delta = np.zeros((num_envs, 1), dtype=np.float64)
+        self._privileged_body_mass_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
+        self._privileged_base_com_offset = np.zeros((num_envs, 3), dtype=np.float64)
+        self._privileged_base_inertia_scale = np.ones((num_envs, 1), dtype=np.float64)
+        self._privileged_ground_friction_scale = np.ones((num_envs, 1), dtype=np.float64)
+        self._privileged_robot_friction_scale = np.ones((num_envs, 1), dtype=np.float64)
+        self._privileged_dof_armature_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
         self._last_motor_ctrl = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
         self._last_dof_vel_for_acc = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
+        delay_semantics = str(cfg.control_config.action_delay_semantics)
+        torque_delay_steps = int(cfg.control_config.torque_delay_steps)
+        if delay_semantics != "pre_controller_command_fifo" or torque_delay_steps != 0:
+            raise ValueError(
+                "DR002 supports only pre-controller command delay with torque_delay_steps=0, "
+                f"got semantics={delay_semantics!r}, torque_delay_steps={torque_delay_steps}"
+            )
+        motor_control_hz = cfg.control_config.motor_control_hz
+        if motor_control_hz is None:
+            self._motor_control_hz = 1.0 / float(cfg.sim_dt)
+            self._motor_control_decimation = 1
+        else:
+            self._motor_control_hz = float(motor_control_hz)
+            if not np.isfinite(self._motor_control_hz) or self._motor_control_hz <= 0.0:
+                raise ValueError("motor_control_hz must be finite and positive")
+            decimation = (1.0 / float(cfg.sim_dt)) / self._motor_control_hz
+            rounded_decimation = int(round(decimation))
+            if rounded_decimation < 1 or not np.isclose(
+                decimation, rounded_decimation, rtol=0.0, atol=1.0e-9
+            ):
+                raise ValueError(
+                    "physics_hz must be an integer multiple of motor_control_hz, "
+                    f"got physics_hz={1.0 / float(cfg.sim_dt):g}, "
+                    f"motor_control_hz={self._motor_control_hz:g}"
+                )
+            self._motor_control_decimation = rounded_decimation
+        if int(cfg.sim_substeps) % self._motor_control_decimation != 0:
+            raise ValueError(
+                "policy interval must contain an integer number of motor-control updates, "
+                f"got sim_substeps={cfg.sim_substeps}, decimation={self._motor_control_decimation}"
+            )
+        if self._motor_control_decimation > 1 and cfg.control_config.use_native_batched_pd:
+            raise ValueError(
+                "native batched PD recomputes torque every physics substep and cannot be used "
+                "with a lower-rate zero-order-held motor controller"
+            )
+        self._motor_control_substep_index = 0
         self._action_delay_enabled = bool(cfg.control_config.simulate_action_latency)
-        self._action_delay_min_steps = int(cfg.control_config.action_delay_min_steps)
-        self._action_delay_max_steps = int(cfg.control_config.action_delay_max_steps)
+        fixed_delay_steps = cfg.control_config.action_delay_steps_by_joint
+        self._fixed_action_delay_steps: np.ndarray | None = None
+        if fixed_delay_steps is not None:
+            raw_delay_steps = np.asarray(fixed_delay_steps, dtype=np.float64)
+            if raw_delay_steps.shape != (NUM_DR002_ACTIONS,):
+                raise ValueError(
+                    "action_delay_steps_by_joint must follow the six-joint DR002 order, "
+                    f"got shape {raw_delay_steps.shape}"
+                )
+            if np.any(~np.isfinite(raw_delay_steps)) or np.any(raw_delay_steps < 0.0) or np.any(
+                raw_delay_steps != np.rint(raw_delay_steps)
+            ):
+                raise ValueError("action_delay_steps_by_joint must contain non-negative integers")
+            if not self._action_delay_enabled:
+                raise ValueError("action_delay_steps_by_joint requires simulate_action_latency=True")
+            self._fixed_action_delay_steps = raw_delay_steps.astype(np.int32)
+            self._action_delay_min_steps = int(np.min(self._fixed_action_delay_steps))
+            self._action_delay_max_steps = int(np.max(self._fixed_action_delay_steps))
+        else:
+            self._action_delay_min_steps = int(cfg.control_config.action_delay_min_steps)
+            self._action_delay_max_steps = int(cfg.control_config.action_delay_max_steps)
         if self._action_delay_min_steps < 0 or self._action_delay_max_steps < self._action_delay_min_steps:
             raise ValueError(
                 "DR002 action delay requires 0 <= action_delay_min_steps <= action_delay_max_steps, "
@@ -611,15 +1331,48 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._action_delay_buffer = np.zeros(
             (num_envs, self._action_delay_max_steps + 1, NUM_DR002_ACTIONS), dtype=self._np_dtype
         )
-        self._action_delay_indices = np.zeros((num_envs,), dtype=np.int32)
+        if self._fixed_action_delay_steps is None:
+            self._action_delay_indices = np.zeros((num_envs,), dtype=np.int32)
+        else:
+            self._action_delay_indices = np.broadcast_to(
+                self._fixed_action_delay_steps, (num_envs, NUM_DR002_ACTIONS)
+            ).copy()
         self._reset_action_delay(np.arange(num_envs, dtype=np.int32), resample=True)
         self._joint_range = self._backend.get_joint_range()
         self._lingzu_prev_action = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
         self._lingzu_prev_prev_action = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
         self._lingzu_action_history_count = np.zeros((num_envs,), dtype=np.int32)
         self._lingzu_fail_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._lingzu_contact_fail_accum_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._last_termination_contact_now_fraction = 0.0
+        self._last_termination_contact_accum_mean = 0.0
+        self._last_termination_contact_accum_max = 0.0
+        self._last_termination_contact_done_fraction = 0.0
+        self._last_termination_gravity_done_fraction = 0.0
         self._base_command_lin_vel_x = np.asarray(cfg.commands.lin_vel_x, dtype=np.float64)
         self._base_command_ang_vel_z = np.asarray(cfg.commands.ang_vel_z, dtype=np.float64)
+        self._standing_probability = float(cfg.commands.rel_standing_envs)
+        self._standing_envs_episode_persistent = bool(
+            cfg.commands.standing_envs_episode_persistent
+        )
+        if not 0.0 <= self._standing_probability <= 1.0:
+            raise ValueError(
+                "commands.rel_standing_envs must be between 0 and 1, "
+                f"got {self._standing_probability}"
+            )
+        self._episode_standing_mask = np.zeros((num_envs,), dtype=np.bool_)
+        self._zero_hz_wing_angle_obs = np.zeros(
+            (num_envs, _WING_ANGLE_OBS_DIM), dtype=self._np_dtype
+        )
+        self._standing_window_episodes = 0
+        self._standing_window_fail_count = 0
+        self._standing_window_episode_length_fraction_sum = 0.0
+        self._last_standing_window_fail_rate = np.nan
+        self._last_standing_window_mean_episode_length_fraction = np.nan
+        self._last_standing_fraction = 0.0
+        self._last_standing_mean_abs_vx = np.nan
+        self._last_standing_mean_abs_vy = np.nan
+        self._last_standing_mean_abs_yaw_rate = np.nan
         multiplier = np.asarray(cfg.commands.range_multiplier, dtype=np.float64)
         if multiplier.shape != (2,):
             raise ValueError("commands.range_multiplier must contain [initial, final]")
@@ -635,55 +1388,125 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._last_command_curriculum_mean_tracking = np.nan
         self._last_command_curriculum_mature_mean_tracking = np.nan
         self._last_command_curriculum_mean_episode_steps = np.nan
+        self._last_command_curriculum_mean_moving_steps = np.nan
         self._last_command_curriculum_mature_fraction = np.nan
-        self._csv_force_curriculum_scale = float(cfg.domain_rand.csv_force_scale_initial)
-        self._csv_force_curriculum_initial_scale = float(cfg.domain_rand.csv_force_scale_initial)
-        self._csv_force_curriculum_final_scale = float(cfg.domain_rand.csv_force_scale_final)
-        if self._csv_force_curriculum_scale < 0.0 or self._csv_force_curriculum_final_scale < 0.0:
-            raise ValueError("CSV force curriculum scales must be non-negative")
-        self._csv_force_curriculum_scale = min(
-            self._csv_force_curriculum_scale,
-            self._csv_force_curriculum_final_scale,
+        self._csv_force_curriculum_level = 0
+        self._csv_force_active_levels = np.zeros((num_envs,), dtype=np.int32)
+        self._csv_force_start_delay_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._csv_force_curriculum_num_promoted = 0
+        self._csv_force_curriculum_num_demoted = 0
+        self._csv_force_curriculum_last_direction = 0
+        self._csv_force_window_episodes = 0
+        self._csv_force_window_tracking_episodes = 0
+        self._csv_force_window_tracking_sum = 0.0
+        self._csv_force_window_episode_length_fraction_sum = 0.0
+        self._csv_force_window_mature_count = 0
+        self._csv_force_window_fail_count = 0
+        self._last_csv_force_window_tracking = np.nan
+        self._last_csv_force_window_fail_rate = np.nan
+        self._last_csv_force_window_mean_episode_length_fraction = np.nan
+        self._last_csv_force_window_mature_fraction = np.nan
+        self._noise_curriculum_level = 0
+        self._noise_curriculum_num_promoted = 0
+        self._noise_curriculum_num_demoted = 0
+        self._noise_curriculum_last_direction = 0
+        self._noise_window_episodes = 0
+        self._noise_window_tracking_episodes = 0
+        self._noise_window_tracking_sum = 0.0
+        self._noise_window_episode_length_fraction_sum = 0.0
+        self._noise_window_mature_count = 0
+        self._noise_window_fail_count = 0
+        self._last_noise_window_tracking = np.nan
+        self._last_noise_window_fail_rate = np.nan
+        self._last_noise_window_mean_episode_length_fraction = np.nan
+        self._last_noise_window_mature_fraction = np.nan
+        self._gravity_installation_bias_rp = np.zeros(
+            (num_envs, 2), dtype=self._np_dtype
         )
-        self._csv_force_current_wrench = np.zeros((num_envs, 6), dtype=get_global_dtype())
+        self._gravity_dynamic_noise_rp = np.zeros(
+            (num_envs, 2), dtype=self._np_dtype
+        )
+        self._external_disturbance_current_wrench = np.zeros(
+            (num_envs, 6), dtype=get_global_dtype()
+        )
+        self._measured_csv_force_base = np.zeros(
+            (num_envs, 3), dtype=get_global_dtype()
+        )
+        self._validate_csv_force_curriculum_cfg()
+        _validate_wing_angle_observation_mapping(cfg.domain_rand, cfg.wing_angle_obs)
+        self._validate_noise_curriculum_cfg()
         self._episode_track_lin_vel_x_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_ang_vel_z_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_lin_vel_x_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._episode_track_total_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._episode_alive_sum = np.zeros((num_envs,), dtype=np.float64)
+        self._episode_alive_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._last_episode_alive_return = np.nan
+        self._last_episode_alive_fraction = np.nan
+        self._last_episode_alive_steps = np.nan
+        self._last_episode_alive_episode_steps = np.nan
         self._history_terms = [
             np.zeros((num_envs, _HISTORY_LENGTH, dim), dtype=get_global_dtype())
-            for dim in _TERM_DIMS
+            for dim in self._history_term_dims
         ]
         self._backend.set_pre_step_control(self._pre_step_motor_control)
+        if cfg.control_config.use_native_batched_pd:
+            self._backend.set_batched_mixed_pd_control(self._batched_motor_control)
         self._init_reward_functions()
         self._dr_base_body_mass = (
             self._backend.get_body_mass() if cfg.domain_rand.randomize_body_mass else None
         )
+        self._dr_base_body_inertia = (
+            self._backend.get_body_inertia()
+            if cfg.domain_rand.randomize_body_mass or cfg.domain_rand.randomize_body_inertia
+            else None
+        )
         self._dr_base_geom_friction = None
         self._dr_ground_geom_id = None
-        if cfg.domain_rand.randomize_ground_friction:
+        self._dr_robot_geom_ids = None
+        if cfg.domain_rand.randomize_ground_friction or cfg.domain_rand.randomize_robot_geom_friction:
             self._dr_base_geom_friction = self._backend.get_geom_friction()
+        if cfg.domain_rand.randomize_ground_friction:
             self._dr_ground_geom_id = self._backend.get_geom_id(cfg.asset.ground)
+        if cfg.domain_rand.randomize_robot_geom_friction:
+            base_body_id = self._backend.get_body_id(cfg.asset.base_name)
+            robot_body_ids = self._backend.get_body_subtree_ids(base_body_id)
+            geom_body_ids = self._backend.get_geom_body_ids()
+            robot_geom_mask = np.isin(geom_body_ids, robot_body_ids)
+            contype, conaffinity = self._backend.get_geom_contact_masks()
+            contact_mask = (contype != 0) | (conaffinity != 0)
+            self._dr_robot_geom_ids = np.flatnonzero(robot_geom_mask & contact_mask).astype(np.int32)
+            if self._dr_robot_geom_ids.size == 0:
+                raise ValueError("DR002 robot geom friction randomization found no contact-enabled robot geoms")
         self._dr_base_dof_armature = (
             self._backend.get_dof_armature() if cfg.domain_rand.randomize_dof_armature else None
         )
         self._init_domain_randomization(
             DR002JoystickDomainRandomizationProvider(
                 base_body_mass=self._dr_base_body_mass,
+                base_body_inertia=self._dr_base_body_inertia,
                 base_geom_friction=self._dr_base_geom_friction,
                 ground_geom_id=self._dr_ground_geom_id,
+                robot_geom_ids=self._dr_robot_geom_ids,
                 base_dof_armature=self._dr_base_dof_armature,
             )
         )
 
     @property
     def obs_groups_spec(self) -> dict[str, int]:
-        return {"obs": _ACTOR_DIM, "critic": 52, "privileged_target": 3}
+        return {"obs": self._actor_dim, "critic": self._critic_dim, "privileged_target": 3}
 
     def reset(self, env_indices: np.ndarray) -> tuple[dict[str, np.ndarray], dict]:
         env_ids = np.asarray(env_indices, dtype=np.int32)
+        if hasattr(self, "_episode_standing_mask"):
+            self._update_standing_episode_stats(env_ids)
+        if hasattr(self, "_episode_alive_sum"):
+            self._update_episode_alive_stats(env_ids)
         if hasattr(self, "_episode_track_lin_vel_x_sum"):
             self._update_command_curriculum(env_ids)
-        self._csv_force_current_wrench[env_ids] = 0.0
+        self._reset_gravity_tilt_noise(env_ids)
+        self._external_disturbance_current_wrench[env_ids] = 0.0
+        self._measured_csv_force_base[env_ids] = 0.0
         obs, info = super().reset(env_ids)
         dof_vel = self.get_dof_vel()
         if dof_vel.shape[0] == self._num_envs:
@@ -692,10 +1515,15 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._lingzu_prev_prev_action[env_ids] = 0.0
         self._lingzu_action_history_count[env_ids] = 0
         self._lingzu_fail_steps[env_ids] = 0
+        self._lingzu_contact_fail_accum_steps[env_ids] = 0
+        self._last_motor_ctrl[env_ids] = 0.0
         self._reset_action_delay(env_ids, resample=self._cfg.control_config.resample_action_delay)
         self._episode_track_lin_vel_x_sum[env_ids] = 0.0
         self._episode_track_ang_vel_z_sum[env_ids] = 0.0
         self._episode_track_lin_vel_x_steps[env_ids] = 0
+        self._episode_track_total_steps[env_ids] = 0
+        self._episode_alive_sum[env_ids] = 0.0
+        self._episode_alive_steps[env_ids] = 0
         return obs, info
 
     def _neutral_policy_ctrl(self, env_ids: np.ndarray) -> np.ndarray:
@@ -712,7 +1540,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             return
         neutral = self._neutral_policy_ctrl(env_ids)
         self._action_delay_buffer[env_ids] = neutral[:, None, :]
-        if self._action_delay_enabled and resample:
+        if self._fixed_action_delay_steps is not None:
+            self._action_delay_indices[env_ids] = self._fixed_action_delay_steps
+        elif self._action_delay_enabled and resample:
             self._action_delay_indices[env_ids] = np.random.randint(
                 self._action_delay_min_steps,
                 self._action_delay_max_steps + 1,
@@ -728,7 +1558,12 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._action_delay_buffer[:, 1:] = self._action_delay_buffer[:, :-1].copy()
         self._action_delay_buffer[:, 0] = policy_ctrl
         env_ids = np.arange(policy_ctrl.shape[0], dtype=np.int32)
-        return self._action_delay_buffer[env_ids, self._action_delay_indices[env_ids]]
+        if self._action_delay_indices.ndim == 1:
+            return self._action_delay_buffer[env_ids, self._action_delay_indices[env_ids]]
+        joint_ids = np.arange(NUM_DR002_ACTIONS, dtype=np.int32)
+        return self._action_delay_buffer[
+            env_ids[:, None], self._action_delay_indices[env_ids], joint_ids[None, :]
+        ]
 
     def _validate_motor_control_contract(self, ctrl_range: np.ndarray, num_envs: int) -> None:
         if self._backend.num_actuators != NUM_DR002_ACTIONS:
@@ -811,6 +1646,205 @@ class DR002JoystickEnv(DR002BaseEnv):
             default_joint_pos_offset, dtype=self._np_dtype
         )
 
+    def sample_reset_csv_force_levels(self, num_reset: int) -> np.ndarray:
+        domain_rand = self._cfg.domain_rand
+        levels = np.zeros((num_reset,), dtype=np.int32)
+        if (
+            not domain_rand.csv_force_enabled
+            or not domain_rand.csv_force_curriculum
+            or num_reset <= 0
+        ):
+            return levels
+        max_level = _csv_force_curriculum_level_index(
+            domain_rand,
+            int(self._csv_force_curriculum_level),
+        )
+        if max_level <= 0:
+            return levels
+        return np.random.randint(0, max_level + 1, size=(num_reset,)).astype(np.int32)
+
+    def _csv_force_start_delay_step_bounds(self) -> tuple[int, int]:
+        delay_range = np.asarray(
+            self._cfg.domain_rand.csv_force_start_delay_range_s,
+            dtype=np.float64,
+        )
+        if delay_range.shape != (2,):
+            raise ValueError(
+                "domain_rand.csv_force_start_delay_range_s must contain [min, max]"
+            )
+        if not np.all(np.isfinite(delay_range)):
+            raise ValueError("domain_rand.csv_force_start_delay_range_s must be finite")
+        low_s, high_s = float(delay_range[0]), float(delay_range[1])
+        if low_s < 0.0 or high_s < low_s:
+            raise ValueError(
+                "domain_rand.csv_force_start_delay_range_s must satisfy 0 <= min <= max"
+            )
+        ctrl_dt = float(self._cfg.ctrl_dt)
+        low_steps = int(np.ceil(low_s / ctrl_dt - 1.0e-9))
+        high_steps = int(np.floor(high_s / ctrl_dt + 1.0e-9))
+        if high_steps < low_steps:
+            raise ValueError(
+                "domain_rand.csv_force_start_delay_range_s contains no value aligned "
+                f"to ctrl_dt={ctrl_dt}"
+            )
+        return low_steps, high_steps
+
+    def sample_reset_csv_force_start_delay_steps(self, num_reset: int) -> np.ndarray:
+        low_steps, high_steps = self._csv_force_start_delay_step_bounds()
+        if num_reset <= 0 or high_steps <= low_steps:
+            return np.full((max(num_reset, 0),), low_steps, dtype=np.int32)
+        return np.random.randint(
+            low_steps,
+            high_steps + 1,
+            size=(num_reset,),
+            dtype=np.int32,
+        )
+
+    def set_csv_force_active_levels(self, env_ids: np.ndarray, levels: np.ndarray) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        if rows.size == 0:
+            return
+        self._csv_force_active_levels[rows] = np.asarray(levels, dtype=np.int32).reshape(rows.size)
+
+    def csv_force_active_levels(self) -> np.ndarray:
+        domain_rand = self._cfg.domain_rand
+        max_level = max(_csv_force_curriculum_num_levels(domain_rand) - 1, 0)
+        return np.asarray(
+            np.clip(self._csv_force_active_levels[: self._num_envs], 0, max_level),
+            dtype=np.int32,
+        )
+
+    def set_csv_force_start_delay_steps(
+        self,
+        env_ids: np.ndarray,
+        delay_steps: np.ndarray,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        values = np.asarray(delay_steps, dtype=np.int32).reshape(-1)
+        if values.shape != (rows.size,):
+            raise ValueError(
+                f"CSV force start delays must have shape ({rows.size},), got {values.shape}"
+            )
+        self._csv_force_start_delay_steps[rows] = values
+
+    def csv_force_start_delay_steps(self) -> np.ndarray:
+        return np.asarray(
+            self._csv_force_start_delay_steps[: self._num_envs],
+            dtype=np.int32,
+        )
+
+    def csv_force_active_hz(self) -> np.ndarray:
+        domain_rand = self._cfg.domain_rand
+        levels = self.csv_force_active_levels()
+        hz = np.full((levels.shape[0],), np.nan, dtype=np.float64)
+        for level in np.unique(levels):
+            hz[levels == int(level)] = _csv_force_curriculum_source_hz(domain_rand, int(level))
+        return hz
+
+    @staticmethod
+    def _safe_scale_ratio(values: np.ndarray, baseline: np.ndarray) -> np.ndarray:
+        baseline_arr = np.asarray(baseline, dtype=np.float64)
+        values_arr = np.asarray(values, dtype=np.float64)
+        ratio = np.ones_like(values_arr, dtype=np.float64)
+        valid = np.abs(baseline_arr) > 1.0e-12
+        ratio[..., valid] = values_arr[..., valid] / baseline_arr[valid]
+        return ratio
+
+    def _select_env_rows(
+        self,
+        values: np.ndarray,
+        num_obs: int,
+        env_ids: np.ndarray | None,
+    ) -> np.ndarray:
+        arr = np.asarray(values)
+        if env_ids is None:
+            return arr[:num_obs]
+        return arr[np.asarray(env_ids, dtype=np.int32)]
+
+    def set_privileged_reset_randomization(
+        self,
+        env_ids: np.ndarray,
+        randomization: ResetRandomizationPayload | None,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        num_reset = rows.shape[0]
+        self._privileged_base_mass_delta[rows] = 0.0
+        self._privileged_body_mass_scale[rows] = 1.0
+        self._privileged_base_com_offset[rows] = 0.0
+        self._privileged_base_inertia_scale[rows] = 1.0
+        self._privileged_ground_friction_scale[rows] = 1.0
+        self._privileged_robot_friction_scale[rows] = 1.0
+        self._privileged_dof_armature_scale[rows] = 1.0
+        if randomization is None:
+            return
+
+        if randomization.base_mass_delta is not None:
+            self._privileged_base_mass_delta[rows, 0] = np.asarray(
+                randomization.base_mass_delta, dtype=np.float64
+            ).reshape(num_reset)
+
+        if randomization.body_mass is not None and self._dr_base_body_mass is not None:
+            body_mass = np.asarray(randomization.body_mass, dtype=np.float64).reshape(num_reset, -1)
+            baseline = np.asarray(self._dr_base_body_mass, dtype=np.float64)[self._privileged_body_ids]
+            self._privileged_body_mass_scale[rows] = self._safe_scale_ratio(
+                body_mass[:, self._privileged_body_ids],
+                baseline,
+            )
+
+        if randomization.base_com_offset is not None:
+            self._privileged_base_com_offset[rows] = np.asarray(
+                randomization.base_com_offset, dtype=np.float64
+            ).reshape(num_reset, 3)
+
+        if randomization.body_inertia is not None and self._dr_base_body_inertia is not None:
+            body_inertia = np.asarray(randomization.body_inertia, dtype=np.float64).reshape(num_reset, -1, 3)
+            base_body_id = self._backend.get_body_id(self._cfg.asset.base_name)
+            baseline = np.asarray(self._dr_base_body_inertia, dtype=np.float64)[int(base_body_id)]
+            ratio = self._safe_scale_ratio(body_inertia[:, int(base_body_id), :], baseline)
+            self._privileged_base_inertia_scale[rows, 0] = np.mean(ratio, axis=1)
+
+        if randomization.geom_friction is not None and self._dr_base_geom_friction is not None:
+            geom_friction = np.asarray(randomization.geom_friction, dtype=np.float64).reshape(num_reset, -1, 3)
+            base_geom_friction = np.asarray(self._dr_base_geom_friction, dtype=np.float64)
+            if self._dr_ground_geom_id is not None:
+                ground_id = int(self._dr_ground_geom_id)
+                baseline = base_geom_friction[ground_id, 0]
+                if abs(float(baseline)) > 1.0e-12:
+                    self._privileged_ground_friction_scale[rows, 0] = geom_friction[:, ground_id, 0] / baseline
+            if self._dr_robot_geom_ids is not None and self._dr_robot_geom_ids.size > 0:
+                ids = np.asarray(self._dr_robot_geom_ids, dtype=np.int32)
+                baseline = base_geom_friction[ids, 0]
+                valid = np.abs(baseline) > 1.0e-12
+                if np.any(valid):
+                    ratios = geom_friction[:, ids[valid], 0] / baseline[valid]
+                    self._privileged_robot_friction_scale[rows, 0] = np.mean(ratios, axis=1)
+
+        if randomization.dof_armature is not None and self._dr_base_dof_armature is not None:
+            dof_armature = np.asarray(randomization.dof_armature, dtype=np.float64).reshape(num_reset, -1)
+            baseline = np.asarray(self._dr_base_dof_armature, dtype=np.float64)[self._privileged_joint_dof_ids]
+            self._privileged_dof_armature_scale[rows] = self._safe_scale_ratio(
+                dof_armature[:, self._privileged_joint_dof_ids],
+                baseline,
+            )
+
+    def _privileged_randomization_obs(
+        self,
+        num_obs: int,
+        env_ids: np.ndarray | None,
+    ) -> np.ndarray:
+        terms = [
+            self._select_env_rows(self._motor_torque_scale, num_obs, env_ids),
+            self._select_env_rows(self._default_joint_pos_offset, num_obs, env_ids),
+            self._select_env_rows(self._privileged_base_mass_delta, num_obs, env_ids),
+            self._select_env_rows(self._privileged_body_mass_scale, num_obs, env_ids),
+            self._select_env_rows(self._privileged_base_com_offset, num_obs, env_ids),
+            self._select_env_rows(self._privileged_base_inertia_scale, num_obs, env_ids),
+            self._select_env_rows(self._privileged_ground_friction_scale, num_obs, env_ids),
+            self._select_env_rows(self._privileged_robot_friction_scale, num_obs, env_ids),
+            self._select_env_rows(self._privileged_dof_armature_scale, num_obs, env_ids),
+        ]
+        return np.concatenate(terms, axis=1, dtype=get_global_dtype())
+
     def _current_lin_vel_x_range(self) -> tuple[float, float]:
         scale = self._command_curriculum_scale if self._cfg.commands.curriculum else 1.0
         low, high = self._base_command_lin_vel_x * scale
@@ -821,12 +1855,88 @@ class DR002JoystickEnv(DR002BaseEnv):
         low, high = self._base_command_ang_vel_z * scale
         return float(low), float(high)
 
-    def sample_commands(self, num_samples: int) -> np.ndarray:
+    def sample_reset_standing_mask(self, env_ids: np.ndarray) -> np.ndarray:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        num_reset = int(rows.size)
+        if num_reset <= 0 or self._standing_probability <= 0.0:
+            return np.zeros((max(num_reset, 0),), dtype=np.bool_)
+        if self._standing_probability >= 1.0:
+            return np.ones((num_reset,), dtype=np.bool_)
+        return np.asarray(
+            np.random.uniform(size=(num_reset,)) < self._standing_probability,
+            dtype=np.bool_,
+        )
+
+    def set_episode_standing_mask(self, env_ids: np.ndarray, standing_mask: np.ndarray) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        mask = np.asarray(standing_mask, dtype=np.bool_).reshape(-1)
+        if mask.shape != (rows.shape[0],):
+            raise ValueError(
+                f"standing_mask must have shape ({rows.shape[0]},), got {mask.shape}"
+            )
+        self._episode_standing_mask[rows] = mask
+
+    def episode_standing_mask(self) -> np.ndarray:
+        return np.asarray(
+            self._episode_standing_mask[: self._num_envs],
+            dtype=np.bool_,
+        )
+
+    def sample_reset_zero_hz_wing_angle_obs(
+        self,
+        zero_hz_mask: np.ndarray,
+    ) -> np.ndarray:
+        mask = np.asarray(zero_hz_mask, dtype=np.bool_).reshape(-1)
+        result = np.zeros((mask.size, _WING_ANGLE_OBS_DIM), dtype=self._np_dtype)
+        if not self._wing_angle_obs_enabled or not np.any(mask):
+            return result
+        low, high = np.asarray(
+            self._cfg.wing_angle_obs.standing_normalized_range,
+            dtype=np.float64,
+        )
+        result[mask] = np.random.uniform(
+            low,
+            high,
+            size=(int(np.count_nonzero(mask)), _WING_ANGLE_OBS_DIM),
+        ).astype(self._np_dtype)
+        return result
+
+    def set_zero_hz_wing_angle_obs(
+        self,
+        env_ids: np.ndarray,
+        wing_angle_obs: np.ndarray,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        values = np.asarray(wing_angle_obs, dtype=self._np_dtype)
+        expected_shape = (rows.size, _WING_ANGLE_OBS_DIM)
+        if values.shape != expected_shape:
+            raise ValueError(
+                f"zero-Hz wing angle obs must have shape {expected_shape}, got {values.shape}"
+            )
+        self._zero_hz_wing_angle_obs[rows] = values
+
+    def sample_commands(
+        self,
+        num_samples: int,
+        *,
+        env_ids: np.ndarray | None = None,
+        resample_standing: bool = False,
+    ) -> np.ndarray:
+        standing_mask = None
+        if env_ids is not None:
+            rows = np.asarray(env_ids, dtype=np.int32)
+            if rows.shape != (num_samples,):
+                raise ValueError(f"env_ids must have shape ({num_samples},), got {rows.shape}")
+            if resample_standing and not self._standing_envs_episode_persistent:
+                resampled_mask = self.sample_reset_standing_mask(rows)
+                self.set_episode_standing_mask(rows, resampled_mask)
+            standing_mask = self._episode_standing_mask[rows]
         return _sample_dr002_commands(
             self._cfg.commands,
             num_samples,
             lin_vel_x_range=self._current_lin_vel_x_range(),
             ang_vel_z_range=self._current_ang_vel_z_range(),
+            standing_mask=standing_mask,
         )
 
     def startup_commands(self, num_samples: int) -> np.ndarray:
@@ -840,6 +1950,354 @@ class DR002JoystickEnv(DR002BaseEnv):
         if steps.shape != (self._num_envs,):
             return np.zeros((self._num_envs,), dtype=np.int64)
         return steps
+
+    def _validate_csv_force_curriculum_cfg(self) -> None:
+        domain_rand = self._cfg.domain_rand
+        self._csv_force_start_delay_step_bounds()
+        force_normalization = float(domain_rand.csv_force_observation_force_normalization)
+        if not np.isfinite(force_normalization) or force_normalization <= 0.0:
+            raise ValueError(
+                "domain_rand.csv_force_observation_force_normalization must be positive"
+            )
+        if int(domain_rand.csv_force_curriculum_window_episodes) <= 0:
+            raise ValueError("domain_rand.csv_force_curriculum_window_episodes must be positive")
+        if int(domain_rand.csv_force_curriculum_step_levels) <= 0:
+            raise ValueError("domain_rand.csv_force_curriculum_step_levels must be positive")
+        rate_fields = {
+            "csv_force_curriculum_promote_fail_rate_max": (
+                domain_rand.csv_force_curriculum_promote_fail_rate_max
+            ),
+            "csv_force_curriculum_demote_fail_rate_min": (
+                domain_rand.csv_force_curriculum_demote_fail_rate_min
+            ),
+            "csv_force_curriculum_promote_mean_episode_length_fraction": (
+                domain_rand.csv_force_curriculum_promote_mean_episode_length_fraction
+            ),
+            "csv_force_curriculum_demote_mean_episode_length_fraction": (
+                domain_rand.csv_force_curriculum_demote_mean_episode_length_fraction
+            ),
+        }
+        for name, value in rate_fields.items():
+            if not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"domain_rand.{name} must be in [0, 1], got {value}")
+
+    def _validate_noise_curriculum_cfg(self) -> None:
+        noise_cfg = self._cfg.noise_config
+        gravity_noise_mode = str(
+            getattr(noise_cfg, "gravity_noise_mode", "additive")
+        ).strip().lower()
+        if gravity_noise_mode not in {"additive", "tilt"}:
+            raise ValueError(
+                "noise_config.gravity_noise_mode must be 'additive' or 'tilt', "
+                f"got {gravity_noise_mode!r}"
+            )
+        gravity_angle_fields = (
+            "gravity_installation_bias_max_deg",
+            "gravity_dynamic_noise_max_deg",
+        )
+        for name in gravity_angle_fields:
+            value = float(getattr(noise_cfg, name, 0.0))
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"noise_config.{name} must be finite and non-negative")
+        dynamic_max_deg = float(
+            getattr(noise_cfg, "gravity_dynamic_noise_max_deg", 0.0)
+        )
+        dynamic_time_constant_s = float(
+            getattr(noise_cfg, "gravity_dynamic_noise_time_constant_s", 3.0)
+        )
+        if gravity_noise_mode == "tilt" and dynamic_max_deg > 0.0 and (
+            not np.isfinite(dynamic_time_constant_s) or dynamic_time_constant_s <= 0.0
+        ):
+            raise ValueError(
+                "noise_config.gravity_dynamic_noise_time_constant_s must be finite and "
+                "positive when tilt-mode dynamic gravity noise is enabled"
+            )
+
+        if not bool(getattr(noise_cfg, "curriculum", False)):
+            return
+        levels = _noise_curriculum_levels(noise_cfg)
+        domain_rand = self._cfg.domain_rand
+        if domain_rand.csv_force_enabled and domain_rand.csv_force_curriculum:
+            force_num_levels = _csv_force_curriculum_num_levels(domain_rand)
+            if levels.size != force_num_levels:
+                raise ValueError(
+                    "noise curriculum must have exactly one level per CSV force curriculum "
+                    f"level, got {levels.size} noise levels and {force_num_levels} force levels"
+                )
+
+    def _noise_curriculum_follows_csv_force(self) -> bool:
+        domain_rand = self._cfg.domain_rand
+        return bool(
+            getattr(self._cfg.noise_config, "curriculum", False)
+            and domain_rand.csv_force_enabled
+            and domain_rand.csv_force_curriculum
+        )
+
+    def _current_noise_level(self) -> float:
+        noise_cfg = self._cfg.noise_config
+        if not bool(getattr(noise_cfg, "curriculum", False)):
+            return float(getattr(noise_cfg, "level", 0.0))
+        levels = _noise_curriculum_levels(noise_cfg)
+        curriculum_level = (
+            self._csv_force_curriculum_level
+            if self._noise_curriculum_follows_csv_force()
+            else self._noise_curriculum_level
+        )
+        level_index = int(np.clip(curriculum_level, 0, levels.size - 1))
+        return float(levels[level_index])
+
+    def _compute_wing_angle_obs(
+        self,
+        num_obs: int,
+        env_ids: np.ndarray | None,
+        *,
+        preview_next_step: bool,
+        episode_steps_override: np.ndarray | None = None,
+    ) -> np.ndarray:
+        result = np.zeros((num_obs, _WING_ANGLE_OBS_DIM), dtype=get_global_dtype())
+        if not self._wing_angle_obs_enabled:
+            return result
+
+        domain_rand = self._cfg.domain_rand
+        angle_cfg = self._cfg.wing_angle_obs
+        levels = np.asarray(
+            self._select_env_rows(self.csv_force_active_levels(), num_obs, env_ids),
+            dtype=np.int32,
+        )
+        if episode_steps_override is None:
+            state = getattr(self, "_state", None)
+            if state is None:
+                episode_steps = np.zeros((num_obs,), dtype=np.int64)
+            else:
+                episode_steps = np.asarray(
+                    self._select_env_rows(self.episode_steps(), num_obs, env_ids),
+                    dtype=np.int64,
+                )
+        else:
+            episode_steps = np.asarray(episode_steps_override, dtype=np.int64).reshape(-1)
+            if episode_steps.shape != (num_obs,):
+                raise ValueError(
+                    "episode_steps_override must match observation rows, "
+                    f"got {episode_steps.shape} and ({num_obs},)"
+                )
+        if preview_next_step:
+            episode_steps = episode_steps + 1
+        start_delay_steps = np.asarray(
+            self._select_env_rows(self.csv_force_start_delay_steps(), num_obs, env_ids),
+            dtype=np.int32,
+        )
+        elapsed_after_startup, replay_t = _csv_replay_clock(
+            domain_rand,
+            episode_steps,
+            self._startup_stand_steps,
+            float(self._cfg.ctrl_dt),
+            start_delay_steps=start_delay_steps,
+        )
+        elapsed_s = (
+            np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(self._cfg.ctrl_dt)
+        )
+
+        zero_offsets = np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64)
+        normalization_deg = float(angle_cfg.normalization_deg)
+        for level in np.unique(levels):
+            level_int = int(level)
+            source_hz = _csv_force_curriculum_source_hz(domain_rand, level_int)
+            force_path = _csv_force_curriculum_path_for_level(domain_rand, level_int)
+            angle_path = _wing_angle_path_for_level(domain_rand, angle_cfg, level_int)
+            if source_hz <= 0.0 or force_path is None or angle_path is None:
+                continue
+
+            if force_path not in self._wing_angle_force_samples_by_path:
+                self._wing_angle_force_samples_by_path[force_path] = _load_force_csv(force_path)
+            if angle_path not in self._wing_angle_samples_by_path:
+                self._wing_angle_samples_by_path[angle_path] = _load_wing_angle_csv(angle_path)
+            force_samples = self._wing_angle_force_samples_by_path[force_path]
+            angle_samples = self._wing_angle_samples_by_path[angle_path]
+
+            level_rows = levels == level_int
+            level_indices = np.flatnonzero(level_rows)
+            activity_weight = _csv_replay_activity_weight(
+                force_samples,
+                replay_t[level_rows],
+                elapsed_s[level_rows],
+                period=float(domain_rand.csv_force_period),
+                transition_seconds=float(domain_rand.csv_force_transition_seconds),
+            )
+            activity_weight[elapsed_after_startup[level_rows] < 0] = 0.0
+            active_local = activity_weight > 0.0
+            if not np.any(active_local):
+                continue
+            active_indices = level_indices[active_local]
+            phase_t = np.mod(replay_t[active_indices], 1.0 / source_hz)
+            angles_deg = _interp_wing_angle_csv_batch(angle_samples, phase_t)
+            relative_deg = angles_deg - zero_offsets[None, :]
+            wrapped_deg = np.mod(relative_deg + 180.0, 360.0) - 180.0
+            result[active_indices] = np.asarray(
+                (wrapped_deg / normalization_deg) * activity_weight[active_local, None],
+                dtype=get_global_dtype(),
+            )
+        zero_hz_mask = _csv_force_zero_hz_mask(domain_rand, levels)
+        if np.any(zero_hz_mask):
+            zero_hz_obs = self._select_env_rows(
+                self._zero_hz_wing_angle_obs,
+                num_obs,
+                env_ids,
+            )
+            result[zero_hz_mask] = zero_hz_obs[zero_hz_mask]
+        return result
+
+    @staticmethod
+    def _obs_noise_at_level(data: np.ndarray, scale: float, level: float) -> np.ndarray:
+        if float(level) <= 0.0 or float(scale) <= 0.0:
+            return data
+        noise = (
+            np.random.uniform(-1.0, 1.0, data.shape).astype(data.dtype)
+            * float(level)
+            * float(scale)
+        )
+        return data + noise
+
+    def _gravity_noise_mode(self) -> str:
+        return str(
+            getattr(self._cfg.noise_config, "gravity_noise_mode", "additive")
+        ).strip().lower()
+
+    def _reset_gravity_tilt_noise(self, env_ids: np.ndarray) -> None:
+        rows = np.asarray(env_ids, dtype=np.intp)
+        if rows.size == 0:
+            return
+        self._gravity_dynamic_noise_rp[rows] = 0.0
+        if self._gravity_noise_mode() != "tilt":
+            self._gravity_installation_bias_rp[rows] = 0.0
+            return
+
+        noise_level = max(self._current_noise_level(), 0.0)
+        max_bias_rad = np.deg2rad(
+            float(self._cfg.noise_config.gravity_installation_bias_max_deg) * noise_level
+        )
+        if max_bias_rad <= 0.0:
+            self._gravity_installation_bias_rp[rows] = 0.0
+            return
+        self._gravity_installation_bias_rp[rows] = np.random.uniform(
+            -max_bias_rad,
+            max_bias_rad,
+            size=(rows.size, 2),
+        ).astype(self._np_dtype)
+
+    def _advance_gravity_dynamic_noise(
+        self,
+        env_ids: np.ndarray,
+        noise_level: float,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.intp)
+        if rows.size == 0:
+            return
+        max_noise_rad = np.deg2rad(
+            float(self._cfg.noise_config.gravity_dynamic_noise_max_deg)
+            * max(float(noise_level), 0.0)
+        )
+        if max_noise_rad <= 0.0:
+            self._gravity_dynamic_noise_rp[rows] = 0.0
+            return
+
+        time_constant_s = float(
+            self._cfg.noise_config.gravity_dynamic_noise_time_constant_s
+        )
+        rho = float(np.exp(-float(self._cfg.ctrl_dt) / time_constant_s))
+        # Treat the configured bound as three stationary standard deviations,
+        # then clip exactly so every roll/pitch sample remains inside it.
+        stationary_std = max_noise_rad / 3.0
+        innovation_std = stationary_std * np.sqrt(max(1.0 - rho * rho, 0.0))
+        standard_normal = np.random.normal(
+            0.0,
+            1.0,
+            size=(rows.size, 2),
+        )
+        innovation = (
+            np.clip(standard_normal, -3.0, 3.0) * innovation_std
+        ).astype(self._np_dtype)
+        next_noise = rho * self._gravity_dynamic_noise_rp[rows] + innovation
+        self._gravity_dynamic_noise_rp[rows] = np.clip(
+            next_noise,
+            -max_noise_rad,
+            max_noise_rad,
+        )
+
+    @staticmethod
+    def _rotate_and_normalize_projected_gravity(
+        projected_gravity: np.ndarray,
+        roll_pitch_rad: np.ndarray,
+    ) -> np.ndarray:
+        gravity = np.asarray(projected_gravity)
+        roll_pitch = np.asarray(roll_pitch_rad)
+        if gravity.ndim != 2 or gravity.shape[1] != 3:
+            raise ValueError(f"projected_gravity must have shape (N, 3), got {gravity.shape}")
+        if roll_pitch.shape != (gravity.shape[0], 2):
+            raise ValueError(
+                "roll_pitch_rad must have shape (N, 2), "
+                f"got {roll_pitch.shape} for {gravity.shape[0]} gravity rows"
+            )
+
+        work = np.asarray(gravity, dtype=np.float64)
+        norm = np.linalg.norm(work, axis=1, keepdims=True)
+        unit = np.divide(work, norm, out=np.zeros_like(work), where=norm > 1.0e-12)
+        roll = np.asarray(roll_pitch[:, 0], dtype=np.float64)
+        pitch = np.asarray(roll_pitch[:, 1], dtype=np.float64)
+        sin_roll, cos_roll = np.sin(roll), np.cos(roll)
+        sin_pitch, cos_pitch = np.sin(pitch), np.cos(pitch)
+
+        # Sensor-frame tilt: first rotate about X (roll), then about Y (pitch).
+        x_roll = unit[:, 0]
+        y_roll = cos_roll * unit[:, 1] - sin_roll * unit[:, 2]
+        z_roll = sin_roll * unit[:, 1] + cos_roll * unit[:, 2]
+        rotated = np.stack(
+            (
+                cos_pitch * x_roll + sin_pitch * z_roll,
+                y_roll,
+                -sin_pitch * x_roll + cos_pitch * z_roll,
+            ),
+            axis=1,
+        )
+        rotated_norm = np.linalg.norm(rotated, axis=1, keepdims=True)
+        normalized = np.divide(
+            rotated,
+            rotated_norm,
+            out=np.zeros_like(rotated),
+            where=rotated_norm > 1.0e-12,
+        )
+        return np.asarray(normalized, dtype=gravity.dtype)
+
+    def _actor_projected_gravity(
+        self,
+        projected_gravity: np.ndarray,
+        *,
+        num_obs: int,
+        env_ids: np.ndarray | None,
+        noise_level: float,
+        advance_dynamic: bool,
+    ) -> np.ndarray:
+        if self._gravity_noise_mode() != "tilt":
+            return self._obs_noise_at_level(
+                projected_gravity,
+                self._cfg.noise_config.scale_gravity,
+                noise_level,
+            )
+
+        rows = (
+            np.arange(num_obs, dtype=np.intp)
+            if env_ids is None
+            else np.asarray(env_ids, dtype=np.intp)
+        )
+        if advance_dynamic:
+            self._advance_gravity_dynamic_noise(rows, noise_level)
+        roll_pitch = (
+            self._gravity_installation_bias_rp[rows]
+            + self._gravity_dynamic_noise_rp[rows]
+        )
+        return self._rotate_and_normalize_projected_gravity(
+            projected_gravity,
+            roll_pitch,
+        )
 
     def _clip_policy_actions(self, actions: np.ndarray) -> np.ndarray:
         clipped_actions = np.asarray(
@@ -871,19 +2329,53 @@ class DR002JoystickEnv(DR002BaseEnv):
         return ctrl
 
     def _pre_step_motor_control(self, backend: Any, policy_ctrl: np.ndarray) -> np.ndarray:
-        policy_ctrl = self._delayed_policy_ctrl(policy_ctrl)
+        if self._motor_control_substep_index == 0:
+            delayed_policy_ctrl = self._delayed_policy_ctrl(policy_ctrl)
+            joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
+            joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
+            compute_dr002_motor_ctrl(
+                delayed_policy_ctrl,
+                joint_pos,
+                joint_vel,
+                self._motor_kp,
+                self._motor_kd,
+                self._ctrl_lower,
+                self._ctrl_upper,
+                self._last_motor_ctrl,
+                self._motor_torque_scale,
+            )
+        self._motor_control_substep_index = (
+            self._motor_control_substep_index + 1
+        ) % self._motor_control_decimation
+        return self._last_motor_ctrl
+
+    def _batched_motor_control(
+        self, backend: Any, policy_ctrl: np.ndarray, nsteps: int
+    ) -> BatchedMixedPdControl:
+        if nsteps < 1:
+            raise ValueError("DR002 batched motor control requires at least one physics substep")
         joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
         joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
-        return compute_dr002_motor_ctrl(
-            policy_ctrl,
-            joint_pos,
-            joint_vel,
-            self._motor_kp,
-            self._motor_kd,
-            self._ctrl_lower,
-            self._ctrl_upper,
-            self._last_motor_ctrl,
-            self._motor_torque_scale,
+        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_ACTIONS)
+        target_trajectory = getattr(self, "_batched_policy_ctrl_trajectory", None)
+        if target_trajectory is None or target_trajectory.shape != trajectory_shape:
+            target_trajectory = np.empty(trajectory_shape, dtype=self._np_dtype)
+            self._batched_policy_ctrl_trajectory = target_trajectory
+        for substep in range(int(nsteps)):
+            target_trajectory[:, substep] = self._delayed_policy_ctrl(policy_ctrl)
+        return BatchedMixedPdControl(
+            target_trajectory=target_trajectory,
+            kp=self._motor_kp,
+            kd=self._motor_kd,
+            torque_scale=self._motor_torque_scale,
+            initial_joint_pos=joint_pos,
+            initial_joint_vel=joint_vel,
+            position_control_mask=_POSITION_CONTROL_MASK,
+            position_sensor_names=_JOINT_POS_SENSOR_NAMES,
+            velocity_sensor_names=_JOINT_VEL_SENSOR_NAMES,
+            ctrl_lower=self._ctrl_lower,
+            ctrl_upper=self._ctrl_upper,
+            final_ctrl_out=self._last_motor_ctrl,
         )
 
     def get_projected_gravity(self) -> np.ndarray:
@@ -913,20 +2405,35 @@ class DR002JoystickEnv(DR002BaseEnv):
         state.info["qacc"] = self._estimate_dof_acc(dof_vel)
         terminated = self._compute_terminated(gravity)
         reward = self._compute_reward(state.info, linvel, gyro, gravity, dof_pos, dof_vel)
+        self._update_standing_step_stats(linvel, gyro)
         self._accumulate_command_curriculum(state.info, linvel)
         self._log_command_curriculum(state.info)
         obs = self._compute_obs(state.info, linvel, gyro, gravity, projected_gravity, dof_pos, dof_vel)
         return state.replace(obs=obs, reward=reward, terminated=terminated)
 
     def _compute_terminated(self, gravity: np.ndarray) -> np.ndarray:
-        failed_now = (
-            gravity[:, 2] <= self._reward_cfg.termination_gravity_z_threshold
-        ) | self._has_undesired_contact(
+        gravity_failed_now = gravity[:, 2] <= self._reward_cfg.termination_gravity_z_threshold
+        contact_failed_now = self._has_undesired_contact(
             gravity.shape[0], threshold=self._reward_cfg.termination_contact_threshold
         )
-        self._lingzu_fail_steps = np.where(failed_now, self._lingzu_fail_steps + 1, 0)
+        self._lingzu_fail_steps = np.where(gravity_failed_now, self._lingzu_fail_steps + 1, 0)
+        # Contact failure, like gravity failure, requires an uninterrupted streak.
+        # A contact-free control step clears only the contact counter.
+        self._lingzu_contact_fail_accum_steps = np.where(
+            contact_failed_now,
+            self._lingzu_contact_fail_accum_steps + 1,
+            0,
+        )
         fail_steps = max(int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1)
-        return self._lingzu_fail_steps >= fail_steps
+        contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
+        gravity_done = self._lingzu_fail_steps >= fail_steps
+        contact_done = self._lingzu_contact_fail_accum_steps >= contact_fail_steps
+        self._last_termination_contact_now_fraction = float(np.mean(contact_failed_now))
+        self._last_termination_contact_accum_mean = float(np.mean(self._lingzu_contact_fail_accum_steps))
+        self._last_termination_contact_accum_max = float(np.max(self._lingzu_contact_fail_accum_steps))
+        self._last_termination_contact_done_fraction = float(np.mean(contact_done))
+        self._last_termination_gravity_done_fraction = float(np.mean(gravity_done))
+        return gravity_done | contact_done
 
     def _undesired_contact_values(self, num_envs: int) -> np.ndarray:
         contacts = []
@@ -962,7 +2469,12 @@ class DR002JoystickEnv(DR002BaseEnv):
         else:
             resample_mask = (steps > 0) & ((steps % interval) == 0)
         if np.any(resample_mask):
-            commands_arr[resample_mask] = self.sample_commands(int(np.count_nonzero(resample_mask)))
+            env_ids = np.flatnonzero(resample_mask).astype(np.int32)
+            commands_arr[resample_mask] = self.sample_commands(
+                len(env_ids),
+                env_ids=env_ids,
+                resample_standing=True,
+            )
         info["commands"] = commands_arr
 
     def _accumulate_command_curriculum(self, info: dict, linvel: np.ndarray) -> None:
@@ -982,48 +2494,394 @@ class DR002JoystickEnv(DR002BaseEnv):
             yaw_tracking = np.exp(-yaw_error / (self._reward_cfg.tracking_sigma**2))
         else:
             yaw_tracking = lin_tracking
-        self._episode_track_lin_vel_x_sum[: lin_tracking.shape[0]] += lin_tracking
-        self._episode_track_ang_vel_z_sum[: yaw_tracking.shape[0]] += yaw_tracking
-        self._episode_track_lin_vel_x_steps[: lin_tracking.shape[0]] += 1
-
-    def _update_command_curriculum(self, env_ids: np.ndarray) -> None:
-        if not self._cfg.commands.curriculum or env_ids.size == 0:
+        num_envs = lin_tracking.shape[0]
+        self._episode_track_total_steps[:num_envs] += 1
+        threshold = max(float(self._cfg.commands.curriculum_moving_command_threshold), 0.0)
+        moving = (
+            ~self._episode_standing_mask[:num_envs]
+            & (
+                (np.abs(commands[:, 0]) > threshold)
+                | (np.abs(commands[:, 1]) > threshold)
+            )
+        )
+        if not np.any(moving):
             return
-        steps = self._episode_track_lin_vel_x_steps[env_ids]
-        valid = steps > 0
+        env_rows = np.nonzero(moving)[0]
+        self._episode_track_lin_vel_x_sum[env_rows] += lin_tracking[env_rows]
+        self._episode_track_ang_vel_z_sum[env_rows] += yaw_tracking[env_rows]
+        self._episode_track_lin_vel_x_steps[env_rows] += 1
+
+    def _update_standing_step_stats(self, linvel: np.ndarray, gyro: np.ndarray) -> None:
+        num_envs = linvel.shape[0]
+        standing = self._episode_standing_mask[:num_envs]
+        self._last_standing_fraction = float(np.mean(standing)) if num_envs > 0 else 0.0
+        if not np.any(standing):
+            self._last_standing_mean_abs_vx = np.nan
+            self._last_standing_mean_abs_vy = np.nan
+            self._last_standing_mean_abs_yaw_rate = np.nan
+            return
+        self._last_standing_mean_abs_vx = float(np.mean(np.abs(linvel[standing, 0])))
+        self._last_standing_mean_abs_vy = float(np.mean(np.abs(linvel[standing, 1])))
+        self._last_standing_mean_abs_yaw_rate = float(np.mean(np.abs(gyro[standing, 2])))
+
+    def _standing_window_target_episodes(self) -> int:
+        base_window = int(self._cfg.domain_rand.csv_force_curriculum_window_episodes)
+        return max(int(round(base_window * self._standing_probability)), 1)
+
+    def _reset_standing_episode_window(self) -> None:
+        self._standing_window_episodes = 0
+        self._standing_window_fail_count = 0
+        self._standing_window_episode_length_fraction_sum = 0.0
+
+    def _update_standing_episode_stats(self, env_ids: np.ndarray) -> None:
+        if self._state is None or env_ids.size == 0 or self._standing_probability <= 0.0:
+            return
+        standing = self._episode_standing_mask[env_ids]
+        if not np.any(standing):
+            return
+        total_steps = self._episode_alive_steps[env_ids]
+        done = np.asarray(
+            self._state.terminated[env_ids] | self._state.truncated[env_ids],
+            dtype=np.bool_,
+        )
+        valid = standing & (total_steps > 0) & done
         if not np.any(valid):
             return
-        lin_tracking = self._episode_track_lin_vel_x_sum[env_ids][valid] / np.maximum(steps[valid], 1)
-        yaw_tracking = self._episode_track_ang_vel_z_sum[env_ids][valid] / np.maximum(steps[valid], 1)
-        tracking = 0.5 * (lin_tracking + yaw_tracking)
-        valid_steps = steps[valid]
-        mean_tracking = float(np.mean(tracking))
-        self._last_command_curriculum_mean_tracking = float(mean_tracking)
-        self._last_command_curriculum_mean_episode_steps = float(np.mean(valid_steps))
+
+        valid_steps = total_steps[valid].astype(np.float64)
+        failed = np.asarray(self._state.terminated[env_ids], dtype=np.bool_)[valid]
+        max_steps = int(self._cfg.max_episode_steps or 0)
+        length_fraction = (
+            np.clip(valid_steps / float(max_steps), 0.0, 1.0)
+            if max_steps > 0
+            else np.ones_like(valid_steps)
+        )
+        self._standing_window_episodes += int(valid_steps.size)
+        self._standing_window_fail_count += int(np.count_nonzero(failed))
+        self._standing_window_episode_length_fraction_sum += float(np.sum(length_fraction))
+
+        if self._standing_window_episodes < self._standing_window_target_episodes():
+            return
+        episodes = max(self._standing_window_episodes, 1)
+        self._last_standing_window_fail_rate = self._standing_window_fail_count / float(episodes)
+        self._last_standing_window_mean_episode_length_fraction = (
+            self._standing_window_episode_length_fraction_sum / float(episodes)
+        )
+        self._reset_standing_episode_window()
+
+    def _alive_values(self, num_envs: int) -> np.ndarray:
+        fail_steps = max(int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1)
+        contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
+        alive = (self._lingzu_fail_steps[:num_envs] < fail_steps) & (
+            self._lingzu_contact_fail_accum_steps[:num_envs] < contact_fail_steps
+        )
+        return np.asarray(alive, dtype=np.bool_)
+
+    def _accumulate_alive_episode(self, num_envs: int) -> None:
+        if not hasattr(self, "_episode_alive_sum"):
+            return
+        alive = self._alive_values(num_envs).astype(np.float64)
+        self._episode_alive_sum[:num_envs] += alive
+        self._episode_alive_steps[:num_envs] += 1
+
+    def _update_episode_alive_stats(self, env_ids: np.ndarray) -> None:
+        if env_ids.size == 0:
+            return
+        steps = self._episode_alive_steps[env_ids]
+        done = np.ones_like(steps, dtype=np.bool_)
+        if self._state is not None:
+            done = np.asarray(self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_)
+        valid = (steps > 0) & done
+        if not np.any(valid):
+            return
+        alive_steps = self._episode_alive_sum[env_ids][valid]
+        episode_steps = steps[valid].astype(np.float64)
+        scale = float(self._reward_cfg.scales.get("alive", 0.0))
+        max_steps = int(self._cfg.max_episode_steps or 0)
+        fraction_denominator = (
+            np.full_like(episode_steps, float(max_steps))
+            if max_steps > 0
+            else np.maximum(episode_steps, 1.0)
+        )
+        self._last_episode_alive_return = float(np.mean(alive_steps * scale * self._cfg.ctrl_dt))
+        self._last_episode_alive_fraction = float(np.mean(alive_steps / fraction_denominator))
+        self._last_episode_alive_steps = float(np.mean(alive_steps))
+        self._last_episode_alive_episode_steps = float(np.mean(episode_steps))
+
+    def _log_alive_reward(self, info: dict, num_envs: int) -> None:
+        if not self._enable_reward_log:
+            return
+        step_count = info.get("steps", np.zeros((num_envs,), dtype=np.uint32))
+        if int(step_count[0]) % 4 != 0:
+            return
+        log = info.setdefault("log", {})
+        if np.isfinite(self._last_episode_alive_return):
+            log["reward/alive"] = float(self._last_episode_alive_return)
+            log["reward/alive_fraction"] = float(self._last_episode_alive_fraction)
+            log["reward/alive_steps"] = float(self._last_episode_alive_steps)
+            log["reward/alive_episode_steps"] = float(self._last_episode_alive_episode_steps)
+            return
+
+        scale = float(self._reward_cfg.scales.get("alive", 0.0))
+        alive_steps = self._episode_alive_sum[:num_envs]
+        episode_steps = self._episode_alive_steps[:num_envs].astype(np.float64)
+        max_steps = int(self._cfg.max_episode_steps or 0)
+        fraction_denominator = (
+            np.full_like(episode_steps, float(max_steps))
+            if max_steps > 0
+            else np.maximum(episode_steps, 1.0)
+        )
+        log["reward/alive"] = float(np.mean(alive_steps * scale * self._cfg.ctrl_dt))
+        log["reward/alive_fraction"] = float(np.mean(alive_steps / fraction_denominator))
+        log["reward/alive_steps"] = float(np.mean(alive_steps))
+        log["reward/alive_episode_steps"] = float(np.mean(episode_steps))
+
+    def _update_command_curriculum(self, env_ids: np.ndarray) -> None:
+        if env_ids.size == 0:
+            return
+        moving_steps = self._episode_track_lin_vel_x_steps[env_ids]
+        total_steps = self._episode_track_total_steps[env_ids]
+        done = np.ones_like(total_steps, dtype=np.bool_)
+        failed = np.zeros_like(total_steps, dtype=np.bool_)
+        if self._state is not None:
+            done = np.asarray(self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_)
+            failed = np.asarray(self._state.terminated[env_ids], dtype=np.bool_)
+        episode_valid = (total_steps > 0) & done
+        if not np.any(episode_valid):
+            return
+        valid_total_steps = total_steps[episode_valid]
+        valid_moving_steps = moving_steps[episode_valid]
+        failed = failed[episode_valid]
+        tracking_mask = valid_moving_steps > 0
+        tracking = np.zeros((valid_total_steps.size,), dtype=np.float64)
+        if np.any(tracking_mask):
+            lin_tracking = self._episode_track_lin_vel_x_sum[env_ids][episode_valid][tracking_mask]
+            yaw_tracking = self._episode_track_ang_vel_z_sum[env_ids][episode_valid][tracking_mask]
+            moving_denominator = np.maximum(valid_moving_steps[tracking_mask], 1)
+            tracking[tracking_mask] = 0.5 * (
+                lin_tracking / moving_denominator + yaw_tracking / moving_denominator
+            )
 
         min_fraction = float(self._cfg.commands.curriculum_min_episode_fraction)
         if min_fraction < 0.0:
             raise ValueError("commands.curriculum_min_episode_fraction must be non-negative")
         max_steps = self._cfg.max_episode_steps or 0
         min_episode_steps = int(np.ceil(float(max_steps) * min_fraction)) if max_steps else 0
-        mature = valid_steps >= min_episode_steps
-        self._last_command_curriculum_mature_fraction = float(np.mean(mature))
-        mature_mean_tracking = float(np.mean(tracking[mature])) if np.any(mature) else np.nan
-        self._last_command_curriculum_mature_mean_tracking = mature_mean_tracking
+        mature = valid_total_steps >= min_episode_steps
+        mature_tracking_mask = mature & tracking_mask
+        mean_tracking = np.nan
+        mature_mean_tracking = np.nan
+        if np.any(tracking_mask):
+            mean_tracking = float(np.mean(tracking[tracking_mask]))
+            self._last_command_curriculum_mean_tracking = mean_tracking
+            self._last_command_curriculum_mean_episode_steps = float(
+                np.mean(valid_total_steps[tracking_mask])
+            )
+            self._last_command_curriculum_mean_moving_steps = float(
+                np.mean(valid_moving_steps[tracking_mask])
+            )
+            self._last_command_curriculum_mature_fraction = float(
+                np.mean(mature[tracking_mask])
+            )
+            if np.any(mature_tracking_mask):
+                mature_mean_tracking = float(np.mean(tracking[mature_tracking_mask]))
+            self._last_command_curriculum_mature_mean_tracking = mature_mean_tracking
 
-        if mean_tracking < float(self._cfg.commands.curriculum_demote_threshold):
-            if self._csv_force_curriculum_is_above_initial():
-                self._update_csv_force_curriculum(promote=False)
-            else:
+        if not self._command_curriculum_is_full():
+            self._csv_force_curriculum_level = 0
+            self._csv_force_active_levels.fill(0)
+            self._reset_csv_force_curriculum_window()
+            self._noise_curriculum_level = 0
+            self._reset_noise_curriculum_window()
+            if not np.isfinite(mean_tracking):
+                return
+            if mean_tracking < float(self._cfg.commands.curriculum_demote_threshold):
                 self._update_command_velocity_curriculum(promote=False)
-        elif (
-            np.isfinite(mature_mean_tracking)
-            and mature_mean_tracking > float(self._cfg.commands.curriculum_threshold)
-        ):
-            if self._command_curriculum_is_full():
-                self._update_csv_force_curriculum(promote=True)
-            else:
+            elif (
+                np.isfinite(mature_mean_tracking)
+                and mature_mean_tracking > float(self._cfg.commands.curriculum_threshold)
+            ):
                 self._update_command_velocity_curriculum(promote=True)
+            return
+
+        self._update_csv_force_curriculum_from_window(
+            tracking=tracking,
+            tracking_mask=tracking_mask,
+            valid_steps=valid_total_steps,
+            mature=mature,
+            failed=failed,
+        )
+        if not self._noise_curriculum_follows_csv_force():
+            self._update_noise_curriculum_from_window(
+                tracking=tracking,
+                tracking_mask=tracking_mask,
+                valid_steps=valid_total_steps,
+                mature=mature,
+                failed=failed,
+            )
+
+    def _reset_csv_force_curriculum_window(self) -> None:
+        self._csv_force_window_episodes = 0
+        self._csv_force_window_tracking_episodes = 0
+        self._csv_force_window_tracking_sum = 0.0
+        self._csv_force_window_episode_length_fraction_sum = 0.0
+        self._csv_force_window_mature_count = 0
+        self._csv_force_window_fail_count = 0
+
+    def _update_csv_force_curriculum_from_window(
+        self,
+        *,
+        tracking: np.ndarray,
+        tracking_mask: np.ndarray,
+        valid_steps: np.ndarray,
+        mature: np.ndarray,
+        failed: np.ndarray,
+    ) -> None:
+        domain_rand = self._cfg.domain_rand
+        if not domain_rand.csv_force_enabled or not domain_rand.csv_force_curriculum:
+            return
+        num_episodes = int(valid_steps.shape[0])
+        if num_episodes <= 0:
+            return
+        max_steps = int(self._cfg.max_episode_steps or 0)
+        episode_length_fraction = (
+            valid_steps.astype(np.float64) / float(max_steps)
+            if max_steps > 0
+            else np.ones_like(valid_steps, dtype=np.float64)
+        )
+        episode_length_fraction = np.clip(episode_length_fraction, 0.0, 1.0)
+        self._csv_force_window_episodes += num_episodes
+        self._csv_force_window_tracking_episodes += int(np.count_nonzero(tracking_mask))
+        self._csv_force_window_tracking_sum += float(np.sum(tracking[tracking_mask]))
+        self._csv_force_window_episode_length_fraction_sum += float(np.sum(episode_length_fraction))
+        self._csv_force_window_mature_count += int(np.count_nonzero(mature))
+        self._csv_force_window_fail_count += int(np.count_nonzero(failed))
+
+        window_target = int(domain_rand.csv_force_curriculum_window_episodes)
+        if self._csv_force_window_episodes < window_target:
+            return
+
+        window_episodes = max(self._csv_force_window_episodes, 1)
+        window_tracking = (
+            self._csv_force_window_tracking_sum / float(self._csv_force_window_tracking_episodes)
+            if self._csv_force_window_tracking_episodes > 0
+            else np.nan
+        )
+        window_fail_rate = self._csv_force_window_fail_count / float(window_episodes)
+        window_mean_length_fraction = (
+            self._csv_force_window_episode_length_fraction_sum / float(window_episodes)
+        )
+        window_mature_fraction = self._csv_force_window_mature_count / float(window_episodes)
+        self._last_csv_force_window_tracking = float(window_tracking)
+        self._last_csv_force_window_fail_rate = float(window_fail_rate)
+        self._last_csv_force_window_mean_episode_length_fraction = float(window_mean_length_fraction)
+        self._last_csv_force_window_mature_fraction = float(window_mature_fraction)
+
+        should_promote = (
+            np.isfinite(window_tracking)
+            and window_tracking > float(domain_rand.csv_force_curriculum_promote_tracking_threshold)
+            and window_fail_rate < float(domain_rand.csv_force_curriculum_promote_fail_rate_max)
+            and window_mean_length_fraction
+            >= float(domain_rand.csv_force_curriculum_promote_mean_episode_length_fraction)
+        )
+        should_demote = bool(domain_rand.csv_force_curriculum_allow_demotion) and (
+            (
+                np.isfinite(window_tracking)
+                and window_tracking <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
+            )
+            or window_fail_rate >= float(domain_rand.csv_force_curriculum_demote_fail_rate_min)
+            or window_mean_length_fraction
+            <= float(domain_rand.csv_force_curriculum_demote_mean_episode_length_fraction)
+        )
+        if should_promote:
+            self._update_csv_force_curriculum(promote=True)
+        elif should_demote:
+            self._update_csv_force_curriculum(promote=False)
+        else:
+            self._csv_force_curriculum_last_direction = 0
+        self._reset_csv_force_curriculum_window()
+
+    def _reset_noise_curriculum_window(self) -> None:
+        self._noise_window_episodes = 0
+        self._noise_window_tracking_episodes = 0
+        self._noise_window_tracking_sum = 0.0
+        self._noise_window_episode_length_fraction_sum = 0.0
+        self._noise_window_mature_count = 0
+        self._noise_window_fail_count = 0
+
+    def _update_noise_curriculum_from_window(
+        self,
+        *,
+        tracking: np.ndarray,
+        tracking_mask: np.ndarray,
+        valid_steps: np.ndarray,
+        mature: np.ndarray,
+        failed: np.ndarray,
+    ) -> None:
+        noise_cfg = self._cfg.noise_config
+        if not bool(getattr(noise_cfg, "curriculum", False)):
+            return
+        num_episodes = int(valid_steps.shape[0])
+        if num_episodes <= 0:
+            return
+        max_steps = int(self._cfg.max_episode_steps or 0)
+        episode_length_fraction = (
+            valid_steps.astype(np.float64) / float(max_steps)
+            if max_steps > 0
+            else np.ones_like(valid_steps, dtype=np.float64)
+        )
+        episode_length_fraction = np.clip(episode_length_fraction, 0.0, 1.0)
+        self._noise_window_episodes += num_episodes
+        self._noise_window_tracking_episodes += int(np.count_nonzero(tracking_mask))
+        self._noise_window_tracking_sum += float(np.sum(tracking[tracking_mask]))
+        self._noise_window_episode_length_fraction_sum += float(np.sum(episode_length_fraction))
+        self._noise_window_mature_count += int(np.count_nonzero(mature))
+        self._noise_window_fail_count += int(np.count_nonzero(failed))
+
+        domain_rand = self._cfg.domain_rand
+        window_target = int(domain_rand.csv_force_curriculum_window_episodes)
+        if self._noise_window_episodes < window_target:
+            return
+
+        window_episodes = max(self._noise_window_episodes, 1)
+        window_tracking = (
+            self._noise_window_tracking_sum / float(self._noise_window_tracking_episodes)
+            if self._noise_window_tracking_episodes > 0
+            else np.nan
+        )
+        window_fail_rate = self._noise_window_fail_count / float(window_episodes)
+        window_mean_length_fraction = (
+            self._noise_window_episode_length_fraction_sum / float(window_episodes)
+        )
+        window_mature_fraction = self._noise_window_mature_count / float(window_episodes)
+        self._last_noise_window_tracking = float(window_tracking)
+        self._last_noise_window_fail_rate = float(window_fail_rate)
+        self._last_noise_window_mean_episode_length_fraction = float(window_mean_length_fraction)
+        self._last_noise_window_mature_fraction = float(window_mature_fraction)
+
+        should_promote = (
+            np.isfinite(window_tracking)
+            and window_tracking > float(domain_rand.csv_force_curriculum_promote_tracking_threshold)
+            and window_fail_rate < float(domain_rand.csv_force_curriculum_promote_fail_rate_max)
+            and window_mean_length_fraction
+            >= float(domain_rand.csv_force_curriculum_promote_mean_episode_length_fraction)
+        )
+        should_demote = bool(domain_rand.csv_force_curriculum_allow_demotion) and (
+            (
+                np.isfinite(window_tracking)
+                and window_tracking <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
+            )
+            or window_fail_rate >= float(domain_rand.csv_force_curriculum_demote_fail_rate_min)
+            or window_mean_length_fraction
+            <= float(domain_rand.csv_force_curriculum_demote_mean_episode_length_fraction)
+        )
+        if should_promote:
+            self._update_noise_curriculum(promote=True)
+        elif should_demote:
+            self._update_noise_curriculum(promote=False)
+        else:
+            self._noise_curriculum_last_direction = 0
+        self._reset_noise_curriculum_window()
 
     def _command_curriculum_is_full(self) -> bool:
         if not self._cfg.commands.curriculum:
@@ -1050,7 +2908,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         return current <= final + eps
 
     def _csv_force_curriculum_is_above_initial(self) -> bool:
-        return self._csv_force_curriculum_scale > self._csv_force_curriculum_initial_scale + 1.0e-9
+        return int(self._csv_force_curriculum_level) > 0
 
     def _update_command_velocity_curriculum(self, *, promote: bool) -> None:
         step = float(self._cfg.commands.curriculum_step)
@@ -1077,20 +2935,129 @@ class DR002JoystickEnv(DR002BaseEnv):
         domain_rand = self._cfg.domain_rand
         if not domain_rand.csv_force_enabled or not domain_rand.csv_force_curriculum:
             return
-        step = float(domain_rand.csv_force_scale_step)
+        max_level = max(_csv_force_curriculum_num_levels(domain_rand) - 1, 0)
+        old_level = int(np.clip(self._csv_force_curriculum_level, 0, max_level))
+        step = int(domain_rand.csv_force_curriculum_step_levels)
         if promote:
-            self._csv_force_curriculum_scale = min(
-                self._csv_force_curriculum_final_scale,
-                self._csv_force_curriculum_scale + step,
-            )
+            new_level = min(max_level, old_level + step)
         else:
-            self._csv_force_curriculum_scale = max(
-                self._csv_force_curriculum_initial_scale,
-                self._csv_force_curriculum_scale - step,
+            new_level = max(0, old_level - step)
+        self._csv_force_curriculum_level = int(new_level)
+        if self._noise_curriculum_follows_csv_force():
+            old_noise_level = int(self._noise_curriculum_level)
+            self._noise_curriculum_level = int(new_level)
+            if new_level > old_noise_level:
+                self._noise_curriculum_num_promoted += 1
+                self._noise_curriculum_last_direction = 1
+            elif new_level < old_noise_level:
+                self._noise_curriculum_num_demoted += 1
+                self._noise_curriculum_last_direction = -1
+            else:
+                self._noise_curriculum_last_direction = 0
+            self._reset_noise_curriculum_window()
+        if new_level < old_level:
+            self._csv_force_active_levels = np.minimum(
+                self._csv_force_active_levels,
+                int(new_level),
+            ).astype(np.int32)
+        if new_level > old_level:
+            self._csv_force_curriculum_num_promoted += 1
+            self._csv_force_curriculum_last_direction = 1
+        elif new_level < old_level:
+            self._csv_force_curriculum_num_demoted += 1
+            self._csv_force_curriculum_last_direction = -1
+        else:
+            self._csv_force_curriculum_last_direction = 0
+
+    def _update_noise_curriculum(self, *, promote: bool) -> None:
+        noise_cfg = self._cfg.noise_config
+        if not bool(getattr(noise_cfg, "curriculum", False)):
+            return
+        levels = _noise_curriculum_levels(noise_cfg)
+        max_level = int(levels.size - 1)
+        old_level = int(np.clip(self._noise_curriculum_level, 0, max_level))
+        step = int(self._cfg.domain_rand.csv_force_curriculum_step_levels)
+        if promote:
+            new_level = min(max_level, old_level + step)
+        else:
+            new_level = max(0, old_level - step)
+        self._noise_curriculum_level = int(new_level)
+        if new_level > old_level:
+            self._noise_curriculum_num_promoted += 1
+            self._noise_curriculum_last_direction = 1
+        elif new_level < old_level:
+            self._noise_curriculum_num_demoted += 1
+            self._noise_curriculum_last_direction = -1
+        else:
+            self._noise_curriculum_last_direction = 0
+
+    def _log_noise_curriculum(self, log: dict) -> None:
+        noise_cfg = self._cfg.noise_config
+        is_curriculum = bool(getattr(noise_cfg, "curriculum", False))
+        level = self._current_noise_level()
+        log["noise_curriculum/enabled"] = float(is_curriculum)
+        log["noise_curriculum/level"] = float(level)
+        if not is_curriculum:
+            return
+        levels = _noise_curriculum_levels(noise_cfg)
+        curriculum_level = (
+            self._csv_force_curriculum_level
+            if self._noise_curriculum_follows_csv_force()
+            else self._noise_curriculum_level
+        )
+        level_index = int(np.clip(curriculum_level, 0, levels.size - 1))
+        final_level_index = int(levels.size - 1)
+        progress = float(level_index / final_level_index) if final_level_index > 0 else 1.0
+        domain_rand = self._cfg.domain_rand
+        log["noise_curriculum/level_index"] = float(level_index)
+        log["noise_curriculum/final_level_index"] = float(final_level_index)
+        log["noise_curriculum/progress"] = progress
+        log["noise_curriculum/num_levels"] = float(levels.size)
+        log["noise_curriculum/command_ready"] = float(self._command_curriculum_is_full())
+        log["noise_curriculum/window_episodes"] = float(self._noise_window_episodes)
+        log["noise_curriculum/window_tracking_episodes"] = float(
+            self._noise_window_tracking_episodes
+        )
+        log["noise_curriculum/window_target_episodes"] = float(
+            domain_rand.csv_force_curriculum_window_episodes
+        )
+        log["noise_curriculum/num_promoted"] = float(self._noise_curriculum_num_promoted)
+        log["noise_curriculum/num_demoted"] = float(self._noise_curriculum_num_demoted)
+        log["noise_curriculum/last_direction"] = float(self._noise_curriculum_last_direction)
+        if np.isfinite(self._last_noise_window_tracking):
+            log["noise_curriculum/window_tracking"] = float(self._last_noise_window_tracking)
+        if np.isfinite(self._last_noise_window_fail_rate):
+            log["noise_curriculum/window_fail_rate"] = float(self._last_noise_window_fail_rate)
+        if np.isfinite(self._last_noise_window_mean_episode_length_fraction):
+            log["noise_curriculum/window_mean_episode_length_frac"] = float(
+                self._last_noise_window_mean_episode_length_fraction
             )
+        if np.isfinite(self._last_noise_window_mature_fraction):
+            log["noise_curriculum/window_mature_fraction"] = float(
+                self._last_noise_window_mature_fraction
+            )
+        for index, source_level in enumerate(levels):
+            log[f"noise_curriculum/level_value_{index}"] = float(source_level)
 
     def _log_command_curriculum(self, info: dict) -> None:
         log = info.setdefault("log", {})
+        self._log_noise_curriculum(log)
+        log["standing/target_fraction"] = float(self._standing_probability)
+        log["standing/fraction"] = float(self._last_standing_fraction)
+        log["standing/window_episodes"] = float(self._standing_window_episodes)
+        log["standing/window_target_episodes"] = float(self._standing_window_target_episodes())
+        if np.isfinite(self._last_standing_mean_abs_vx):
+            log["standing/mean_abs_vx"] = float(self._last_standing_mean_abs_vx)
+        if np.isfinite(self._last_standing_mean_abs_vy):
+            log["standing/mean_abs_vy"] = float(self._last_standing_mean_abs_vy)
+        if np.isfinite(self._last_standing_mean_abs_yaw_rate):
+            log["standing/mean_abs_yaw_rate"] = float(self._last_standing_mean_abs_yaw_rate)
+        if np.isfinite(self._last_standing_window_fail_rate):
+            log["standing/fail_rate"] = float(self._last_standing_window_fail_rate)
+        if np.isfinite(self._last_standing_window_mean_episode_length_fraction):
+            log["standing/mean_episode_length_frac"] = float(
+                self._last_standing_window_mean_episode_length_fraction
+            )
         if self._cfg.commands.curriculum:
             low, high = self._current_lin_vel_x_range()
             yaw_low, yaw_high = self._current_ang_vel_z_range()
@@ -1100,6 +3067,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             log["command_curriculum/yaw_scale"] = float(self._command_curriculum_yaw_scale)
             log["command_curriculum/ang_vel_z_min"] = yaw_low
             log["command_curriculum/ang_vel_z_max"] = yaw_high
+            log["command_curriculum/moving_command_threshold"] = float(
+                self._cfg.commands.curriculum_moving_command_threshold
+            )
             log["command_curriculum/is_full"] = float(self._command_curriculum_is_full())
             if np.isfinite(self._last_command_curriculum_mean_tracking):
                 log["command_curriculum/last_mean_tracking"] = float(
@@ -1113,30 +3083,79 @@ class DR002JoystickEnv(DR002BaseEnv):
                 log["command_curriculum/mean_episode_steps"] = float(
                     self._last_command_curriculum_mean_episode_steps
                 )
+            if np.isfinite(self._last_command_curriculum_mean_moving_steps):
+                log["command_curriculum/mean_moving_steps"] = float(
+                    self._last_command_curriculum_mean_moving_steps
+                )
             if np.isfinite(self._last_command_curriculum_mature_fraction):
                 log["command_curriculum/mature_fraction"] = float(
                     self._last_command_curriculum_mature_fraction
                 )
         if self._cfg.domain_rand.csv_force_enabled:
             domain_rand = self._cfg.domain_rand
-            paths = _csv_force_curriculum_paths(domain_rand)
             level = _csv_force_curriculum_level_index(
                 domain_rand,
-                self._csv_force_curriculum_scale,
-                self._csv_force_curriculum_initial_scale,
-                self._csv_force_curriculum_final_scale,
+                self._csv_force_curriculum_level,
             )
-            log["force_curriculum/progress"] = float(self._csv_force_curriculum_scale)
+            num_levels = _csv_force_curriculum_num_levels(domain_rand)
+            final_level = max(num_levels - 1, 0)
+            progress = float(level / final_level) if final_level > 0 else 1.0
+            log["force_curriculum/progress"] = progress
             log["force_curriculum/level"] = level
-            log["force_curriculum/final_progress"] = float(self._csv_force_curriculum_final_scale)
-            log["force_curriculum/num_levels"] = len(paths)
+            log["force_curriculum/final_progress"] = 1.0
+            log["force_curriculum/final_level"] = final_level
+            log["force_curriculum/num_levels"] = num_levels
             log["force_curriculum/applied_scale"] = 1.0
             command_ready = self._command_curriculum_is_full()
             log["force_curriculum/command_ready"] = float(command_ready)
             log["force_curriculum/locked_by_command"] = float(not command_ready)
+            log["force_curriculum/window_episodes"] = float(self._csv_force_window_episodes)
+            log["force_curriculum/window_tracking_episodes"] = float(
+                self._csv_force_window_tracking_episodes
+            )
+            log["force_curriculum/window_target_episodes"] = float(
+                domain_rand.csv_force_curriculum_window_episodes
+            )
+            log["force_curriculum/num_promoted"] = float(self._csv_force_curriculum_num_promoted)
+            log["force_curriculum/num_demoted"] = float(self._csv_force_curriculum_num_demoted)
+            log["force_curriculum/last_direction"] = float(self._csv_force_curriculum_last_direction)
+            log["force_curriculum/allow_demotion"] = float(
+                bool(domain_rand.csv_force_curriculum_allow_demotion)
+            )
+            if np.isfinite(self._last_csv_force_window_tracking):
+                log["force_curriculum/window_tracking"] = float(
+                    self._last_csv_force_window_tracking
+                )
+            if np.isfinite(self._last_csv_force_window_fail_rate):
+                log["force_curriculum/window_fail_rate"] = float(
+                    self._last_csv_force_window_fail_rate
+                )
+            if np.isfinite(self._last_csv_force_window_mean_episode_length_fraction):
+                log["force_curriculum/window_mean_episode_length_frac"] = float(
+                    self._last_csv_force_window_mean_episode_length_fraction
+                )
+            if np.isfinite(self._last_csv_force_window_mature_fraction):
+                log["force_curriculum/window_mature_fraction"] = float(
+                    self._last_csv_force_window_mature_fraction
+                )
             hz = _csv_force_curriculum_source_hz(domain_rand, level)
             if np.isfinite(hz):
                 log["force_curriculum/source_hz"] = hz
+            active_levels = self.csv_force_active_levels()
+            active_hz = self.csv_force_active_hz()
+            log["force_curriculum/active_level_mean"] = float(np.mean(active_levels))
+            finite_active_hz = active_hz[np.isfinite(active_hz)]
+            if finite_active_hz.size > 0:
+                log["force_curriculum/active_source_hz_mean"] = float(np.mean(finite_active_hz))
+                log["force_curriculum/push_enabled"] = float(bool(domain_rand.push_robots))
+            for active_level in range(num_levels):
+                active_level_hz = _csv_force_curriculum_source_hz(domain_rand, active_level)
+                if not np.isfinite(active_level_hz):
+                    continue
+                hz_label = int(active_level_hz) if float(active_level_hz).is_integer() else active_level_hz
+                log[f"force_curriculum/active_fraction_{hz_label}hz"] = float(
+                    np.mean(active_levels == active_level)
+                )
 
     def _compute_obs(
         self,
@@ -1153,40 +3172,170 @@ class DR002JoystickEnv(DR002BaseEnv):
     ) -> dict[str, np.ndarray]:
         noise_cfg = self._cfg.noise_config
         num_obs = gyro.shape[0]
-        current_actions = np.asarray(info.get("current_actions", np.zeros((num_obs, self._num_action))), dtype=get_global_dtype())
-        dof_vel_obs = dof_vel[:, JOINT_VEL_OBSERVATION_INDICES]
-        frame_terms = [
-            self._obs_noise(gyro, noise_cfg.scale_gyro),
-            self._obs_noise(projected_gravity, noise_cfg.scale_gravity),
-            self._obs_noise(dof_pos[:, LEG_ACTION_INDICES] - self.default_angles[LEG_ACTION_INDICES], noise_cfg.scale_joint_angle),
-            self._obs_noise(dof_vel_obs, noise_cfg.scale_joint_vel) * 0.1,
-            current_actions,
-            np.asarray(info["commands"], dtype=get_global_dtype()),
-        ]
-        actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
-        motor_ctrl = info.get("torques", np.zeros((num_obs, self._num_action), dtype=dof_pos.dtype))
-        csv_force_wrench = np.asarray(
-            self._csv_force_current_wrench[:num_obs],
+        current_actions = np.asarray(
+            info.get("current_actions", np.zeros((num_obs, self._num_action))),
             dtype=get_global_dtype(),
         )
-        critic = np.concatenate(
+        dof_vel_obs = dof_vel[:, JOINT_VEL_OBSERVATION_INDICES]
+        default_joint_pos_offset = np.asarray(
+            self._select_env_rows(self._default_joint_pos_offset, num_obs, env_ids),
+            dtype=get_global_dtype(),
+        )
+        ordered_default_joint_pos_offset = default_joint_pos_offset[
+            :, JOINT_VEL_OBSERVATION_INDICES
+        ]
+        leg_joint_pos_rel = (
+            dof_pos[:, LEG_ACTION_INDICES]
+            - self.default_angles[LEG_ACTION_INDICES]
+            - default_joint_pos_offset[:, LEG_ACTION_INDICES]
+        )
+        noise_level = self._current_noise_level()
+        num_leg_vel_obs = len(LEG_ACTION_INDICES)
+        noisy_dof_vel_obs = np.empty_like(dof_vel_obs)
+        noisy_dof_vel_obs[:, :num_leg_vel_obs] = self._obs_noise_at_level(
+            dof_vel_obs[:, :num_leg_vel_obs],
+            noise_cfg.scale_joint_vel,
+            noise_level,
+        )
+        noisy_dof_vel_obs[:, num_leg_vel_obs:] = self._obs_noise_at_level(
+            dof_vel_obs[:, num_leg_vel_obs:],
+            noise_cfg.scale_wheel_vel,
+            noise_level,
+        )
+        commands = np.asarray(info["commands"], dtype=get_global_dtype())
+        noisy_projected_gravity = self._actor_projected_gravity(
+            projected_gravity,
+            num_obs=num_obs,
+            env_ids=env_ids,
+            noise_level=noise_level,
+            advance_dynamic=not reset_history,
+        )
+        frame_terms = [
+            self._obs_noise_at_level(gyro, noise_cfg.scale_gyro, noise_level),
+            noisy_projected_gravity,
+            self._obs_noise_at_level(
+                leg_joint_pos_rel,
+                noise_cfg.scale_joint_angle,
+                noise_level,
+            ),
+            noisy_dof_vel_obs * 0.1,
+            current_actions,
+        ]
+        wing_angle_obs = None
+        if self._wing_angle_obs_enabled:
+            wing_angle_obs = self._compute_wing_angle_obs(
+                num_obs,
+                env_ids,
+                preview_next_step=not reset_history,
+                episode_steps_override=(
+                    np.zeros((num_obs,), dtype=np.int64) if reset_history else None
+                ),
+            )
+            frame_terms.append(wing_angle_obs)
+        frame_terms.append(commands)
+        actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
+        previous_actions = np.asarray(
+            info.get("last_actions", np.zeros((num_obs, self._num_action))),
+            dtype=get_global_dtype(),
+        )
+        joint_acc = np.asarray(
+            info.get("qacc", np.zeros((num_obs, self._num_action))),
+            dtype=get_global_dtype(),
+        )
+        motor_ctrl = np.asarray(
+            info.get("torques", np.zeros((num_obs, self._num_action), dtype=dof_pos.dtype)),
+            dtype=get_global_dtype(),
+        )
+        if not self._use_isaaclab_critic:
+            critic = np.concatenate(
+                [
+                    linvel,
+                    gyro,
+                    projected_gravity,
+                    dof_pos[:, LEG_ACTION_INDICES]
+                    - self.default_angles[LEG_ACTION_INDICES],
+                    dof_vel_obs * 0.1,
+                    current_actions,
+                    commands,
+                    motor_ctrl,
+                    self._select_env_rows(self._motor_kp, num_obs, env_ids),
+                    self._select_env_rows(self._motor_kd, num_obs, env_ids),
+                    self._select_env_rows(
+                        self._external_disturbance_current_wrench,
+                        num_obs,
+                        env_ids,
+                    ),
+                ],
+                axis=1,
+                dtype=get_global_dtype(),
+            )
+            if critic.shape[1] != self._critic_dim:
+                raise RuntimeError(
+                    "DR002 legacy critic contract mismatch: "
+                    f"expected {self._critic_dim}, got {critic.shape[1]}"
+                )
+            return {
+                "obs": actor,
+                "critic": critic,
+                "privileged_target": linvel.astype(get_global_dtype()),
+            }
+
+        base_pos = np.asarray(self._backend.get_base_pos(), dtype=get_global_dtype())
+        base_pos = self._select_env_rows(base_pos, num_obs, env_ids)
+        height_scalar = np.clip(base_pos[:, 2:3] - 0.5, -1.0, 1.0)
+        height_measurements = np.repeat(height_scalar, 77, axis=1)
+        material_properties = np.concatenate(
             [
-                linvel,
-                gyro,
-                projected_gravity,
-                dof_pos[:, LEG_ACTION_INDICES] - self.default_angles[LEG_ACTION_INDICES],
-                dof_vel_obs * 0.1,
-                current_actions,
-                np.asarray(info["commands"], dtype=get_global_dtype()),
-                motor_ctrl,
-                self._motor_kp[:num_obs],
-                self._motor_kd[:num_obs],
-                csv_force_wrench,
+                self._select_env_rows(self._privileged_robot_friction_scale, num_obs, env_ids),
+                # UniLab currently does not randomize MuJoCo restitution. Keep the
+                # IsaacLab slot semantic explicit rather than filling it with an
+                # unrelated ground-friction value.
+                np.zeros((num_obs, 1), dtype=get_global_dtype()),
             ],
             axis=1,
             dtype=get_global_dtype(),
         )
-        return {"obs": actor, "critic": critic, "privileged_target": linvel.astype(get_global_dtype())}
+        measured_csv_force = np.asarray(
+            self._select_env_rows(self._measured_csv_force_base, num_obs, env_ids),
+            dtype=get_global_dtype(),
+        ).copy()
+        measured_csv_force /= float(
+            self._cfg.domain_rand.csv_force_observation_force_normalization
+        )
+        critic_terms = [
+            linvel,
+            gyro,
+            projected_gravity,
+            commands,
+            leg_joint_pos_rel,
+            dof_vel_obs * 0.1,
+            current_actions,
+            current_actions,
+            previous_actions,
+            joint_acc[:, JOINT_VEL_OBSERVATION_INDICES] * 0.0025,
+            height_measurements,
+            motor_ctrl[:, JOINT_VEL_OBSERVATION_INDICES] * 0.05,
+            self._select_env_rows(self._privileged_base_mass_delta, num_obs, env_ids),
+            self._select_env_rows(self._privileged_base_com_offset, num_obs, env_ids),
+            ordered_default_joint_pos_offset,
+            material_properties,
+            measured_csv_force,
+        ]
+        critic = np.concatenate(
+            critic_terms,
+            axis=1,
+            dtype=get_global_dtype(),
+        )
+        if critic.shape[1] != self._critic_dim:
+            raise RuntimeError(
+                "DR002 critic contract mismatch: "
+                f"expected {self._critic_dim}, got {critic.shape[1]}"
+            )
+        return {
+            "obs": actor,
+            "critic": critic,
+            "privileged_target": linvel.astype(get_global_dtype()),
+        }
 
     def _update_history(
         self,
@@ -1238,6 +3387,8 @@ class DR002JoystickEnv(DR002BaseEnv):
             ctrl_dt=self._cfg.ctrl_dt,
             only_positive=self._reward_cfg.only_positive_rewards,
         )
+        self._accumulate_alive_episode(ctx.num_envs)
+        self._log_alive_reward(info, ctx.num_envs)
         step_count = info.get("steps", np.zeros((ctx.num_envs,), dtype=np.uint32))
         if self._enable_reward_log and int(step_count[0]) % 4 == 0 and base_height.shape[0] == ctx.num_envs:
             target = np.asarray(info["commands"], dtype=get_global_dtype())[:, 2]
@@ -1247,6 +3398,11 @@ class DR002JoystickEnv(DR002BaseEnv):
             log["base_height/target_mean"] = float(np.mean(target))
             log["base_height/error_mean"] = float(np.mean(height_error))
             log["base_height/abs_error_mean"] = float(np.mean(np.abs(height_error)))
+            log["termination/contact_now_frac"] = self._last_termination_contact_now_fraction
+            log["termination/contact_accum_steps_mean"] = self._last_termination_contact_accum_mean
+            log["termination/contact_accum_steps_max"] = self._last_termination_contact_accum_max
+            log["termination/contact_done_frac"] = self._last_termination_contact_done_fraction
+            log["termination/gravity_done_frac"] = self._last_termination_gravity_done_fraction
         return reward
 
     def _clip_lingzu_reward(self, name: str, reward: np.ndarray, clip_single_reward: float = 1.0) -> np.ndarray:
@@ -1279,7 +3435,8 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _reward_track_lin_vel_x_enhance(self, ctx: RewardContext) -> np.ndarray:
         error = np.square(ctx.info["commands"][:, 0] - ctx.linvel[:, 0])
-        reward = np.asarray(np.exp(-error / (ctx.tracking_sigma**2 * 10.0)) - 1.0, dtype=get_global_dtype())
+        std = max(float(self._reward_cfg.track_lin_vel_x_enhance_std), 1.0e-6)
+        reward = np.asarray(np.exp(-error / (std * std)) - 1.0, dtype=get_global_dtype())
         return self._clip_lingzu_reward("track_lin_vel_x_enhance", reward)
 
     def _reward_track_ang_vel_z(self, ctx: RewardContext) -> np.ndarray:
@@ -1348,9 +3505,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         return self._clip_lingzu_reward("joint_pos_limits", reward)
 
     def _reward_nominal_state_lingzu(self, ctx: RewardContext) -> np.ndarray:
-        theta_left = ctx.dof_pos[:, 0] + 0.5 * ctx.dof_pos[:, 1]
-        theta_right = ctx.dof_pos[:, 3] + 0.5 * ctx.dof_pos[:, 4]
-        reward = np.asarray(np.square(theta_left - theta_right), dtype=get_global_dtype())
+        thigh_error = ctx.dof_pos[:, 0] - ctx.dof_pos[:, 3]
+        calf_error = ctx.dof_pos[:, 1] - ctx.dof_pos[:, 4]
+        reward = np.asarray(np.square(thigh_error) + np.square(calf_error), dtype=get_global_dtype())
         return self._clip_lingzu_reward("nominal_state_lingzu", reward)
 
     def _reward_action_rate_lingzu(self, ctx: RewardContext) -> np.ndarray:
@@ -1379,8 +3536,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         return self._clip_lingzu_reward("undesired_contacts", reward)
 
     def _reward_alive(self, ctx: RewardContext) -> np.ndarray:
-        alive = self._lingzu_fail_steps[: ctx.num_envs] == 0
-        return np.asarray(alive, dtype=get_global_dtype())
+        return np.asarray(self._alive_values(ctx.num_envs), dtype=get_global_dtype())
 
 
 registry.register_env("DR002JoystickFlat", DR002JoystickEnv, sim_backend="motrix")
+registry.register_env("DR002JoystickFlatWE6", DR002JoystickEnv, sim_backend="mujoco")

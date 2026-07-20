@@ -39,6 +39,7 @@ class DomainRandomizationCapabilities:
     supports_interval_push: bool = False
     supports_interval_body_velocity_delta: bool = False
     supports_interval_body_force: bool = False
+    supports_interval_body_force_trajectory: bool = False
 
     def supports_reset_term(self, term: str) -> bool:
         return term in self.supported_reset_terms
@@ -137,12 +138,14 @@ class IntervalRandomizationPlan:
     body_ids: np.ndarray | None = None
     body_linear_velocity_delta: np.ndarray | None = None
     body_force: np.ndarray | None = None
+    body_force_trajectory: np.ndarray | None = None
 
     def is_empty(self) -> bool:
         return (
             self.push_perturbation_limit is None
             and self.body_linear_velocity_delta is None
             and self.body_force is None
+            and self.body_force_trajectory is None
         )
 
 

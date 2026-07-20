@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+import warnings
 import weakref
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -37,8 +38,14 @@ from ..base import (
     BackendHeightScanner,
     BackendPlayCapabilities,
     BackendPlayRenderPlan,
+    BatchedMixedPdControl,
     SimBackend,
     normalize_play_render_mode,
+)
+from .native_batch import (
+    NativeMixedPdBatchEnvPool,
+    native_mixed_pd_available,
+    native_mixed_pd_import_error,
 )
 from .playback import run_mujoco_playback
 
@@ -298,6 +305,8 @@ class MuJoCoBackend(SimBackend):
             None if position_actuator_gains is None else dict(position_actuator_gains)
         )
         self._pre_step_control_fn = None
+        self._batched_mixed_pd_control_fn = None
+        self._native_mixed_pd_fallback_warned = False
         self._model = self._load_base_model()
         self._base_body_id = (
             mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, base_name)
@@ -312,6 +321,7 @@ class MuJoCoBackend(SimBackend):
         self._np_dtype = np_dtype if np_dtype is not None else get_global_dtype()
         self.backend_type = "mujoco"
         self._pending_xfrc_applied = np.zeros((num_envs, 6 * self._model.nbody), dtype=np.float64)
+        self._pending_xfrc_applied_trajectory: np.ndarray | None = None
 
         # Thread configuration.
         n_threads_override = os.environ.get("UNILAB_MUJOCO_NTHREADS")
@@ -571,7 +581,14 @@ class MuJoCoBackend(SimBackend):
         return [self._model_variants[int(idx)] for idx in self._model_assignments]
 
     def _build_pool(self) -> BatchEnvPool:
-        pool = BatchEnvPool(
+        pool_cls = (
+            NativeMixedPdBatchEnvPool
+            if self._batched_mixed_pd_control_fn is not None and native_mixed_pd_available()
+            else BatchEnvPool
+        )
+        if self._batched_mixed_pd_control_fn is not None and pool_cls is BatchEnvPool:
+            self._warn_native_mixed_pd_fallback()
+        pool = pool_cls(
             self._current_model_sequence(),
             nbatch=self._num_envs,
             nthread=self._n_threads,
@@ -611,6 +628,7 @@ class MuJoCoBackend(SimBackend):
         self._pending_xfrc_applied = np.zeros(
             (self._num_envs, 6 * self._model.nbody), dtype=np.float64
         )
+        self._pending_xfrc_applied_trajectory = None
         self._physics_state[:, self._idx_qpos : self._idx_qpos + self._model.nq] = self._model.qpos0
 
     # ------------------------------------------------------------------ #
@@ -731,6 +749,9 @@ class MuJoCoBackend(SimBackend):
     def get_body_ipos(self) -> np.ndarray:
         return np.asarray(self._model.body_ipos, dtype=np.float64).copy()
 
+    def get_body_inertia(self) -> np.ndarray:
+        return np.asarray(self._model.body_inertia, dtype=np.float64).copy()
+
     def get_dof_armature(self) -> np.ndarray:
         return np.asarray(self._model.dof_armature, dtype=np.float64).copy()
 
@@ -779,18 +800,17 @@ class MuJoCoBackend(SimBackend):
     # ------------------------------------------------------------------ #
 
     def step(self, ctrl: np.ndarray, nsteps: int = 1) -> dict | None:
+        if self._native_mixed_pd_ready():
+            return self._step_with_batched_mixed_pd_control(ctrl, nsteps)
         if self._pre_step_control_fn is not None:
             return self._step_with_pre_step_control(ctrl, nsteps)
 
         t0 = time.perf_counter()
         control_traj = np.broadcast_to(ctrl[:, None, :], (self._num_envs, nsteps, ctrl.shape[-1]))
         control_spec = int(mujoco.mjtState.mjSTATE_CTRL)
-        if np.any(self._pending_xfrc_applied):
+        xfrc_traj = self._pending_xfrc_trajectory(nsteps)
+        if xfrc_traj is not None:
             control_spec |= int(mujoco.mjtState.mjSTATE_XFRC_APPLIED)
-            xfrc_traj = np.broadcast_to(
-                self._pending_xfrc_applied[:, None, :],
-                (self._num_envs, nsteps, self._pending_xfrc_applied.shape[-1]),
-            )
             control_traj = np.concatenate((control_traj, xfrc_traj), axis=-1)
         set_ctrl_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -803,8 +823,7 @@ class MuJoCoBackend(SimBackend):
             return_sensor=True,
             post_step_forward_sensor=self._post_step_forward_sensor,
         )
-        if control_spec & int(mujoco.mjtState.mjSTATE_XFRC_APPLIED):
-            self._pending_xfrc_applied.fill(0.0)
+        self._clear_pending_xfrc()
         self._physics_state[:] = state_np.astype(self._np_dtype)
         physics_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -820,22 +839,138 @@ class MuJoCoBackend(SimBackend):
             }
         }
 
+    def _native_mixed_pd_ready(self) -> bool:
+        if self._batched_mixed_pd_control_fn is None or self._post_step_forward_sensor:
+            return False
+        native_pool = getattr(self._pool, "_pool", None)
+        return callable(getattr(native_pool, "step_mixed_pd", None))
+
+    def _warn_native_mixed_pd_fallback(self) -> None:
+        if self._native_mixed_pd_fallback_warned:
+            return
+        reason = native_mixed_pd_import_error()
+        detail = f": {reason}" if reason is not None else ""
+        warnings.warn(
+            "UniLab native mixed-PD extension is unavailable; falling back to "
+            f"one BatchEnvPool.step call per physics substep{detail}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        self._native_mixed_pd_fallback_warned = True
+
+    def _step_with_batched_mixed_pd_control(
+        self, ctrl: np.ndarray, nsteps: int
+    ) -> dict[str, dict[str, float]]:
+        t0 = time.perf_counter()
+        control = self._build_batched_mixed_pd_control(ctrl, nsteps)
+        self._validate_batched_mixed_pd_control(control, nsteps)
+        control_spec = int(mujoco.mjtState.mjSTATE_CTRL)
+        control_traj = np.asarray(control.target_trajectory, dtype=np.float64)
+        xfrc_trajectory = self._pending_xfrc_trajectory(nsteps)
+        if xfrc_trajectory is not None:
+            control_spec |= int(mujoco.mjtState.mjSTATE_XFRC_APPLIED)
+            control_traj = np.concatenate((control_traj, xfrc_trajectory), axis=-1)
+        control_traj = np.ascontiguousarray(control_traj, dtype=np.float64)
+        pos_sensor_adr = self._scalar_sensor_addresses(control.position_sensor_names)
+        vel_sensor_adr = self._scalar_sensor_addresses(control.velocity_sensor_names)
+        set_ctrl_ms = (time.perf_counter() - t0) * 1000.0
+
+        native_pool = getattr(self._pool, "_pool", None)
+        if native_pool is None:  # pragma: no cover - guarded by _native_mixed_pd_ready
+            raise RuntimeError("MuJoCo native pool is not materialized")
+        t0 = time.perf_counter()
+        state_np, sensor_np, motor_ctrl_np = native_pool.step_mixed_pd(
+            nstep=int(nsteps),
+            control_spec=control_spec,
+            state0=np.ascontiguousarray(self._physics_state, dtype=np.float64),
+            control=control_traj,
+            kp=np.ascontiguousarray(control.kp, dtype=np.float64),
+            kd=np.ascontiguousarray(control.kd, dtype=np.float64),
+            torque_scale=np.ascontiguousarray(control.torque_scale, dtype=np.float64),
+            initial_joint_pos=np.ascontiguousarray(
+                control.initial_joint_pos, dtype=np.float64
+            ),
+            initial_joint_vel=np.ascontiguousarray(
+                control.initial_joint_vel, dtype=np.float64
+            ),
+            position_mask=np.ascontiguousarray(
+                control.position_control_mask, dtype=np.int32
+            ),
+            pos_sensor_adr=pos_sensor_adr,
+            vel_sensor_adr=vel_sensor_adr,
+            ctrl_lower=np.ascontiguousarray(control.ctrl_lower, dtype=np.float64),
+            ctrl_upper=np.ascontiguousarray(control.ctrl_upper, dtype=np.float64),
+            quantize_float32=np.dtype(self._np_dtype) == np.dtype(np.float32),
+            chunk_size=None,
+        )
+        self._clear_pending_xfrc()
+        self._physics_state[:] = state_np.astype(self._np_dtype)
+        physics_ms = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
+        self._sensor_data[:] = sensor_np.astype(self._np_dtype)
+        control.final_ctrl_out[:] = motor_ctrl_np.astype(control.final_ctrl_out.dtype)
+        refresh_cache_ms = (time.perf_counter() - t0) * 1000.0
+        return {
+            "timing": {
+                "set_ctrl_ms": set_ctrl_ms,
+                "physics_ms": physics_ms,
+                "refresh_cache_ms": refresh_cache_ms,
+            }
+        }
+
+    def _validate_batched_mixed_pd_control(
+        self, control: BatchedMixedPdControl, nsteps: int
+    ) -> None:
+        actuator_shape = (self._num_envs, self._model.nu)
+        expected_shapes = {
+            "target_trajectory": (self._num_envs, int(nsteps), self._model.nu),
+            "kp": actuator_shape,
+            "kd": actuator_shape,
+            "torque_scale": actuator_shape,
+            "initial_joint_pos": actuator_shape,
+            "initial_joint_vel": actuator_shape,
+            "final_ctrl_out": actuator_shape,
+            "position_control_mask": (self._model.nu,),
+            "ctrl_lower": (self._model.nu,),
+            "ctrl_upper": (self._model.nu,),
+        }
+        for name, expected in expected_shapes.items():
+            actual = np.shape(getattr(control, name))
+            if actual != expected:
+                raise ValueError(f"mixed-PD {name} must have shape {expected}, got {actual}")
+        if len(control.position_sensor_names) != self._model.nu:
+            raise ValueError("mixed-PD position sensor count must equal actuator count")
+        if len(control.velocity_sensor_names) != self._model.nu:
+            raise ValueError("mixed-PD velocity sensor count must equal actuator count")
+
+    def _scalar_sensor_addresses(self, names: Sequence[str]) -> np.ndarray:
+        addresses: list[int] = []
+        for name in names:
+            indices = self._sensor_indices.get(name)
+            if indices is None:
+                raise ValueError(f"mixed-PD sensor '{name}' was not found")
+            if len(indices) != 1:
+                raise ValueError(f"mixed-PD sensor '{name}' must be scalar")
+            addresses.append(int(indices[0]))
+        return np.asarray(addresses, dtype=np.int32)
+
     def _step_with_pre_step_control(
         self, ctrl: np.ndarray, nsteps: int
     ) -> dict[str, dict[str, float]]:
         set_ctrl_ms = 0.0
         physics_ms = 0.0
         refresh_cache_ms = 0.0
-        has_pending_xfrc = bool(np.any(self._pending_xfrc_applied))
+        xfrc_trajectory = self._pending_xfrc_trajectory(nsteps)
 
-        for _ in range(nsteps):
+        for substep in range(nsteps):
             t0 = time.perf_counter()
             native_ctrl = self._apply_pre_step_control(ctrl)
             control_traj = native_ctrl[:, None, :]
             control_spec = int(mujoco.mjtState.mjSTATE_CTRL)
-            if has_pending_xfrc:
+            if xfrc_trajectory is not None:
                 control_spec |= int(mujoco.mjtState.mjSTATE_XFRC_APPLIED)
-                xfrc_traj = self._pending_xfrc_applied[:, None, :]
+                xfrc_traj = xfrc_trajectory[:, substep : substep + 1, :]
                 control_traj = np.concatenate((control_traj, xfrc_traj), axis=-1)
             set_ctrl_ms += (time.perf_counter() - t0) * 1000.0
 
@@ -855,8 +990,7 @@ class MuJoCoBackend(SimBackend):
             self._sensor_data[:] = sensor_np.astype(self._np_dtype)
             refresh_cache_ms += (time.perf_counter() - t0) * 1000.0
 
-        if has_pending_xfrc:
-            self._pending_xfrc_applied.fill(0.0)
+        self._clear_pending_xfrc()
 
         return {
             "timing": {
@@ -865,6 +999,30 @@ class MuJoCoBackend(SimBackend):
                 "refresh_cache_ms": refresh_cache_ms,
             }
         }
+
+    def _pending_xfrc_trajectory(self, nsteps: int) -> np.ndarray | None:
+        trajectory = self._pending_xfrc_applied_trajectory
+        if trajectory is not None and trajectory.shape[1] != int(nsteps):
+            raise ValueError(
+                "pending body-force trajectory must contain one sample per physics substep: "
+                f"expected {int(nsteps)}, got {trajectory.shape[1]}"
+            )
+        has_static = bool(np.any(self._pending_xfrc_applied))
+        has_trajectory = trajectory is not None and bool(np.any(trajectory))
+        if not has_static and not has_trajectory:
+            return None
+        if trajectory is None:
+            return np.broadcast_to(
+                self._pending_xfrc_applied[:, None, :],
+                (self._num_envs, int(nsteps), self._pending_xfrc_applied.shape[-1]),
+            )
+        if not has_static:
+            return trajectory
+        return trajectory + self._pending_xfrc_applied[:, None, :]
+
+    def _clear_pending_xfrc(self) -> None:
+        self._pending_xfrc_applied.fill(0.0)
+        self._pending_xfrc_applied_trajectory = None
 
     def set_state(
         self,
@@ -910,6 +1068,7 @@ class MuJoCoBackend(SimBackend):
             supports_interval_push=self._push_body_id >= 0,
             supports_interval_body_velocity_delta=self._base_body_id >= 0,
             supports_interval_body_force=True,
+            supports_interval_body_force_trajectory=True,
         )
 
     def apply_init_randomization(self, plan: InitRandomizationPlan) -> None:
@@ -929,20 +1088,24 @@ class MuJoCoBackend(SimBackend):
     def apply_interval_randomization(self, plan: IntervalRandomizationPlan) -> None:
         if plan.is_empty():
             return
-        self._pending_xfrc_applied.fill(0.0)
+        self._clear_pending_xfrc()
         if plan.push_perturbation_limit is not None:
             self.push_robots(plan.push_perturbation_limit)
         if plan.body_force is not None:
             if plan.body_ids is None:
                 raise ValueError("Interval body-force perturbation requires body_ids")
             self.apply_body_force(plan.body_ids, plan.body_force)
+        if plan.body_force_trajectory is not None:
+            if plan.body_ids is None:
+                raise ValueError("Interval body-force trajectory requires body_ids")
+            self.apply_body_force_trajectory(plan.body_ids, plan.body_force_trajectory)
         if plan.body_linear_velocity_delta is not None:
             if plan.body_ids is None:
                 raise ValueError("Interval body-velocity perturbation requires body_ids")
             self.apply_body_linear_velocity_delta(plan.body_ids, plan.body_linear_velocity_delta)
 
     def push_robots(self, force_range: Sequence[float] | np.ndarray) -> None:
-        self._pending_xfrc_applied.fill(0.0)
+        self._clear_pending_xfrc()
         self._pending_xfrc_applied[:, self._push_body_force_slice] = self._sample_push_force(
             force_range
         )
@@ -1001,6 +1164,48 @@ class MuJoCoBackend(SimBackend):
             else:
                 start = 6 * int(body_id)
                 self._pending_xfrc_applied[:, start : start + 6] += force_np[:, body_offset, :]
+
+    def apply_body_force_trajectory(
+        self,
+        body_ids: np.ndarray,
+        force: np.ndarray,
+    ) -> None:
+        """Stage one world-frame force or wrench for each upcoming physics substep."""
+        body_ids_np = np.asarray(body_ids, dtype=np.int32).reshape(-1)
+        force_np = np.asarray(force, dtype=np.float64)
+        if (
+            force_np.ndim != 4
+            or force_np.shape[0] != self._num_envs
+            or force_np.shape[2] != body_ids_np.size
+            or force_np.shape[3] not in (3, 6)
+        ):
+            raise ValueError(
+                "body force trajectory must have shape "
+                f"({self._num_envs}, num_substeps, {body_ids_np.size}, 3|6), "
+                f"got {force_np.shape}"
+            )
+        trajectory = np.zeros(
+            (self._num_envs, force_np.shape[1], 6 * self._model.nbody),
+            dtype=np.float64,
+        )
+        for body_offset, body_id in enumerate(body_ids_np):
+            if int(body_id) < 0 or int(body_id) >= self._model.nbody:
+                raise ValueError(f"body id {int(body_id)} is out of range [0, {self._model.nbody})")
+            force_slice = self._resolve_push_body_force_slice(int(body_id))
+            if force_np.shape[-1] == 3:
+                trajectory[:, :, force_slice] += force_np[:, :, body_offset, :]
+            else:
+                start = 6 * int(body_id)
+                trajectory[:, :, start : start + 6] += force_np[:, :, body_offset, :]
+        if self._pending_xfrc_applied_trajectory is None:
+            self._pending_xfrc_applied_trajectory = trajectory
+        else:
+            if self._pending_xfrc_applied_trajectory.shape != trajectory.shape:
+                raise ValueError(
+                    "cannot combine body-force trajectories with different shapes: "
+                    f"{self._pending_xfrc_applied_trajectory.shape} and {trajectory.shape}"
+                )
+            self._pending_xfrc_applied_trajectory += trajectory
 
     def get_play_capabilities(self) -> BackendPlayCapabilities:
         return BackendPlayCapabilities(supports_physics_state_playback=True)

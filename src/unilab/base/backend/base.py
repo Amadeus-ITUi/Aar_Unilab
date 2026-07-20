@@ -17,6 +17,27 @@ PreStepControlFn = Callable[[Any, np.ndarray], np.ndarray]
 
 
 @dataclass(frozen=True)
+class BatchedMixedPdControl:
+    """One control interval for native mixed position/velocity PD stepping."""
+
+    target_trajectory: np.ndarray
+    kp: np.ndarray
+    kd: np.ndarray
+    torque_scale: np.ndarray
+    initial_joint_pos: np.ndarray
+    initial_joint_vel: np.ndarray
+    position_control_mask: np.ndarray
+    position_sensor_names: tuple[str, ...]
+    velocity_sensor_names: tuple[str, ...]
+    ctrl_lower: np.ndarray
+    ctrl_upper: np.ndarray
+    final_ctrl_out: np.ndarray
+
+
+BatchedMixedPdControlFn = Callable[[Any, np.ndarray, int], BatchedMixedPdControl]
+
+
+@dataclass(frozen=True)
 class BackendPlayCapabilities:
     """Backend-native play/render capabilities surfaced through env contracts."""
 
@@ -59,6 +80,7 @@ class SimBackend(abc.ABC):
     """Unified simulation backend contract."""
 
     _pre_step_control_fn: PreStepControlFn | None
+    _batched_mixed_pd_control_fn: BatchedMixedPdControlFn | None
     _scene_cleanup_handle: Any | None
     backend_type: str
 
@@ -196,6 +218,10 @@ class SimBackend(abc.ABC):
         """Return the backend body inertial-position table."""
         raise NotImplementedError(f"{self.__class__.__name__} does not expose body ipos")
 
+    def get_body_inertia(self) -> np.ndarray:
+        """Return the backend body diagonal inertia table."""
+        raise NotImplementedError(f"{self.__class__.__name__} does not expose body inertia")
+
     def get_dof_armature(self) -> np.ndarray:
         """Return the backend dof-armature table."""
         raise NotImplementedError(f"{self.__class__.__name__} does not expose dof armature")
@@ -263,6 +289,23 @@ class SimBackend(abc.ABC):
                 f"pre-step control must return shape {ctrl.shape}, got {converted.shape}"
             )
         return converted
+
+    def set_batched_mixed_pd_control(self, fn: BatchedMixedPdControlFn | None) -> None:
+        """Register an optional native multi-substep mixed-PD control builder."""
+        self._batched_mixed_pd_control_fn = fn
+
+    def _build_batched_mixed_pd_control(
+        self, ctrl: np.ndarray, nsteps: int
+    ) -> BatchedMixedPdControl:
+        if self._batched_mixed_pd_control_fn is None:
+            raise RuntimeError("batched mixed-PD control is not registered")
+        result = self._batched_mixed_pd_control_fn(self, ctrl, int(nsteps))
+        if not isinstance(result, BatchedMixedPdControl):
+            raise TypeError(
+                "batched mixed-PD callback must return BatchedMixedPdControl, "
+                f"got {type(result).__name__}"
+            )
+        return result
 
     @abc.abstractmethod
     def set_state(

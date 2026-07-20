@@ -39,7 +39,16 @@ class NoiseConfig(BaseNoiseConfig):
     scale_joint_vel: float = 1.5
     scale_gyro: float = 0.2
     scale_gravity: float = 0.2
-    scale_wheel_vel: float = 0.5
+    # Match the legacy all-joint velocity scale unless a task overrides wheels.
+    scale_wheel_vel: float = 1.5
+    curriculum: bool = False
+    curriculum_levels: list[float] = field(default_factory=lambda: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    # ``additive`` preserves the legacy per-axis projected-gravity noise.
+    # ``tilt`` applies a physical roll/pitch sensor-frame rotation instead.
+    gravity_noise_mode: str = "additive"
+    gravity_installation_bias_max_deg: float = 0.0
+    gravity_dynamic_noise_max_deg: float = 0.0
+    gravity_dynamic_noise_time_constant_s: float = 3.0
 
 
 @dataclass
@@ -49,9 +58,20 @@ class ControlConfig(PdControlConfig):
     clip_actions: float = 100.0
     wheel_clip_actions: float = 2.5
     simulate_action_latency: bool = True
+    action_delay_semantics: str = "pre_controller_command_fifo"
+    torque_delay_steps: int = 0
     action_delay_min_steps: int = 4
     action_delay_max_steps: int = 8
     resample_action_delay: bool = True
+    # ``None`` preserves the legacy behavior: PD is recomputed every physics
+    # substep.  A positive value adds an explicit inner motor-control rate;
+    # torque is zero-order-held between those updates.
+    motor_control_hz: float | None = None
+    # Optional fixed command-FIFO delay per joint, expressed in motor-control
+    # ticks and ordered like JOINT_SENSOR_PREFIXES.  This is a command delay
+    # before PD, never a torque-output delay.
+    action_delay_steps_by_joint: list[int] | None = None
+    use_native_batched_pd: bool = False
     Kp: list[float] = field(default_factory=lambda: [2.0, 8.0, 0.0, 2.0, 8.0, 0.0])  # noqa: N815
     Kd: list[float] = field(default_factory=lambda: [0.1, 0.8, 0.05, 0.1, 0.8, 0.05])  # noqa: N815
 

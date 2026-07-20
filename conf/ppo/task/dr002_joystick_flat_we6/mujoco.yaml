@@ -1,0 +1,54 @@
+# @package _global_
+# MuJoCo owner config for the WE6 Bode-PACE actuator and sensor model.
+defaults:
+  - /task/dr002_joystick_flat_we6/base
+  - _self_
+
+training:
+  task_name: DR002JoystickFlatWE6
+  sim_backend: mujoco
+
+env:
+  # Training retains the original 400 Hz physics / 50 Hz policy contract.
+  # The inner PD is recomputed at each 400 Hz physics step.
+  sim_dt: 0.0025
+  ctrl_dt: 0.02
+  noise_config:
+    # Four leg joints use real-log-informed noise with conservative margins.
+    # Gyro white noise is per-axis +/-0.1 rad/s and enters the actor unscaled.
+    # Joint velocity noise is injected before the observation x0.1 scale:
+    # leg +/-0.2 -> policy +/-0.02; wheel +/-0.3 -> policy +/-0.03.
+    scale_gyro: 0.1
+    scale_joint_angle: 0.001
+    scale_joint_vel: 0.2
+    scale_wheel_vel: 0.3
+    # Replace per-axis gravity white noise with a physical sensor-frame tilt.
+    # Installation roll/pitch is fixed for one episode; drift evolves at 50 Hz.
+    scale_gravity: 0.0
+    gravity_noise_mode: tilt
+    gravity_installation_bias_max_deg: 5.0
+    gravity_dynamic_noise_max_deg: 1.0
+    gravity_dynamic_noise_time_constant_s: 3.0
+  control_config:
+    simulate_action_latency: true
+    action_delay_semantics: pre_controller_command_fifo
+    torque_delay_steps: 0
+    motor_control_hz: 400.0
+    # Joint order: left thigh/calf/foot, right thigh/calf/foot.
+    # The fitted 34/16/24 ms command delays are quantized to the nearest
+    # 400 Hz physics tick: 35/15/25 ms.
+    action_delay_steps_by_joint: [14, 6, 10, 14, 6, 10]
+    action_delay_min_steps: 6
+    action_delay_max_steps: 14
+    resample_action_delay: false
+    # At 400 Hz there is one PD update per physics step, so the native batched
+    # path preserves command-FIFO semantics without a lower-rate torque ZOH.
+    use_native_batched_pd: true
+    # Command-delay Bode-magnitude optimum, mirrored by joint type.
+    Kp: [3.75, 4.04, 0.0, 3.75, 4.04, 0.0]
+    Kd: [0.145, 0.2, 0.202, 0.145, 0.2, 0.202]
+  domain_rand:
+    # Preserve the nominal identified actuator contract in this baseline.
+    randomize_dof_armature: false
+    randomize_kp: false
+    randomize_kd: false

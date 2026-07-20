@@ -174,8 +174,10 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
                 env,
                 num_reset,
                 base_body_mass=self._base_body_mass,
+                base_body_inertia=self._base_body_inertia,
                 base_geom_friction=self._base_geom_friction,
                 ground_geom_id=self._ground_geom_id,
+                robot_geom_ids=self._robot_geom_ids,
                 base_dof_armature=self._base_dof_armature,
             ),
         )
@@ -209,8 +211,10 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
             self,
             DR002JoystickRoughDomainRandomizationProvider(
                 base_body_mass=self._dr_base_body_mass,
+                base_body_inertia=self._dr_base_body_inertia,
                 base_geom_friction=self._dr_base_geom_friction,
                 ground_geom_id=self._dr_ground_geom_id,
+                robot_geom_ids=self._dr_robot_geom_ids,
                 base_dof_armature=self._dr_base_dof_armature,
             ),
         )

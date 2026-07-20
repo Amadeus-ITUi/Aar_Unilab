@@ -1,0 +1,298 @@
+{
+  "format": "we6_mujoco_bode_pace_v1",
+  "model_name": "WE6",
+  "joint_order": [
+    "left_thigh_joint",
+    "left_calf_joint",
+    "left_foot_joint",
+    "right_thigh_joint",
+    "right_calf_joint",
+    "right_foot_joint"
+  ],
+  "armature": {
+    "left_thigh_joint": 0.0030211368456830893,
+    "left_calf_joint": 0.020428934066981888,
+    "left_foot_joint": 0.00034739571346796935,
+    "right_thigh_joint": 0.0030211368456830893,
+    "right_calf_joint": 0.020428934066981888,
+    "right_foot_joint": 0.00034739571346796935
+  },
+  "viscous_damping": {
+    "left_thigh_joint": 0.0,
+    "left_calf_joint": 0.028598203906208486,
+    "left_foot_joint": 0.06467854502373717,
+    "right_thigh_joint": 0.0,
+    "right_calf_joint": 0.028598203906208486,
+    "right_foot_joint": 0.06467854502373717
+  },
+  "coulomb_friction": {
+    "left_thigh_joint": 0.0,
+    "left_calf_joint": 0.09300014369144381,
+    "left_foot_joint": 0.0,
+    "right_thigh_joint": 0.0,
+    "right_calf_joint": 0.09300014369144381,
+    "right_foot_joint": 0.0
+  },
+  "fixed_bias_or_zero_offset": {
+    "right_thigh_joint": -0.12,
+    "right_calf_joint": -0.12,
+    "right_foot_joint_total_assembly_coordinate": 0.8505884659,
+    "mirrored_to_left": false,
+    "identified_by_bode": false,
+    "applied_by_we6_runtime": false
+  },
+  "identification_fixture": {
+    "thigh_calf_free_joint_count": 1,
+    "thigh_calf_non_source_joint_count": 5,
+    "non_source_joint_lock": "mujoco_joint_equality_constraints",
+    "max_allowed_position_drift_rad": 1e-05,
+    "max_allowed_abs_velocity_rad_s": 0.001,
+    "max_allowed_real_non_source_range_rad": 1e-09,
+    "measured_lock_residuals": {
+      "thigh": {
+        "max_position_drift_rad": 1.2908045077253405e-08,
+        "max_abs_velocity_rad_s": 1.1172881488136942e-06,
+        "real_non_source_position_range_rad": 0.0,
+        "real_non_source_command_range_rad": 0.0
+      },
+      "calf": {
+        "max_position_drift_rad": 1.3053908731741615e-07,
+        "max_abs_velocity_rad_s": 3.1300201164697096e-06,
+        "real_non_source_position_range_rad": 0.0,
+        "real_non_source_command_range_rad": 0.0
+      }
+    },
+    "foot": "separate one-DOF total-assembly fixture"
+  },
+  "delay": {
+    "semantics": "pre_controller_command_fifo",
+    "torque_delay_steps": 0,
+    "identified_control_hz": 500.0,
+    "training_motor_control_hz": 400.0,
+    "seconds_by_joint_type": {
+      "thigh": 0.034,
+      "calf": 0.016,
+      "foot": 0.024
+    },
+    "steps_by_joint_type": {
+      "thigh": 17,
+      "calf": 8,
+      "foot": 12
+    },
+    "runtime_steps_by_joint": {
+      "left_thigh_joint": 14,
+      "left_calf_joint": 6,
+      "left_foot_joint": 10,
+      "right_thigh_joint": 14,
+      "right_calf_joint": 6,
+      "right_foot_joint": 10
+    },
+    "runtime_seconds_by_joint": {
+      "left_thigh_joint": 0.035,
+      "left_calf_joint": 0.015,
+      "left_foot_joint": 0.025,
+      "right_thigh_joint": 0.035,
+      "right_calf_joint": 0.015,
+      "right_foot_joint": 0.025
+    },
+    "runtime_quantization_error_seconds_by_joint_type": {
+      "thigh": 0.001,
+      "calf": -0.001,
+      "foot": 0.001
+    },
+    "runtime_uses_per_joint_fifo": true,
+    "note": "PACE identified delays at 500 Hz. WE6 training retains 400 Hz physics and 50 Hz policy control, so the command FIFO uses the nearest 400 Hz ticks."
+  },
+  "bode": {
+    "frequency_range_hz": [
+      0.1,
+      5.0
+    ],
+    "fit_window_margins_s": [
+      0.5,
+      0.25
+    ],
+    "optimization_estimator": "Welch/CSD",
+    "score": "magnitude_mse_db2 + 0.01 * circular_phase_mse_deg2",
+    "groups": {
+      "thigh": {
+        "target_kind": "position",
+        "magnitude_rmse_db": 2.0613430312318695,
+        "phase_rmse_deg": 13.778503299332606,
+        "combined_score": 6.1476066241053875,
+        "lock_non_source_joints": true,
+        "max_locked_position_drift_rad": 1.2908045077253405e-08,
+        "max_locked_abs_velocity_rad_s": 1.1172881488136942e-06
+      },
+      "calf": {
+        "target_kind": "position",
+        "magnitude_rmse_db": 1.7610872401647768,
+        "phase_rmse_deg": 15.55553829208922,
+        "combined_score": 5.521175983037731,
+        "lock_non_source_joints": true,
+        "max_locked_position_drift_rad": 1.3053908731741615e-07,
+        "max_locked_abs_velocity_rad_s": 3.1300201164697096e-06
+      },
+      "foot": {
+        "target_kind": "velocity",
+        "magnitude_rmse_db": 0.4508210138069543,
+        "phase_rmse_deg": 4.467808901567129,
+        "combined_score": 0.4028527502991548,
+        "lock_non_source_joints": null,
+        "max_locked_position_drift_rad": null,
+        "max_locked_abs_velocity_rad_s": null
+      }
+    }
+  },
+  "experiment": {
+    "sim_hz": 1000.0,
+    "control_hz": 500.0,
+    "sim_steps_per_control_step": 2.0,
+    "we6_runtime_policy_hz": 50.0,
+    "we6_runtime_kp": [
+      3.75,
+      4.04,
+      0.0,
+      3.75,
+      4.04,
+      0.0
+    ],
+    "we6_runtime_kd": [
+      0.145,
+      0.2,
+      0.202,
+      0.145,
+      0.2,
+      0.202
+    ],
+    "foot_position_plot": "original_source_csv_timestamps_and_m1_pos_rad"
+  },
+  "training_runtime": {
+    "sim_hz": 400.0,
+    "policy_hz": 50.0,
+    "motor_control_hz": 400.0,
+    "physics_steps_per_policy_step": 8,
+    "use_native_batched_pd": true,
+    "delay_semantics": "pre_controller_command_fifo",
+    "torque_delay_steps": 0,
+    "delay_steps_by_joint": [
+      14,
+      6,
+      10,
+      14,
+      6,
+      10
+    ],
+    "kp": [
+      3.75,
+      4.04,
+      0.0,
+      3.75,
+      4.04,
+      0.0
+    ],
+    "kd": [
+      0.145,
+      0.2,
+      0.202,
+      0.145,
+      0.2,
+      0.202
+    ],
+    "note": "The selected gains came from the 1000 Hz simulation / 500 Hz motor-control Bode scan and are reused for the requested 400 Hz / 50 Hz training runtime."
+  },
+  "pd_gain_scan": {
+    "delay_semantics": "pre_controller_command_fifo",
+    "selection_metric": "bode-mag",
+    "selection_formula": "magnitude_mse_db2",
+    "symmetric_gain_mirroring": true,
+    "gravity_enabled": true,
+    "fixed_base": true,
+    "sim_hz": 1000.0,
+    "control_hz": 500.0,
+    "frequency_range_hz": [
+      0.1,
+      5.0
+    ],
+    "best_by_joint_type": {
+      "thigh": {
+        "kp": 3.75,
+        "kd": 0.145,
+        "delay_steps": 17,
+        "bode_magnitude_mse_db2": 3.1945111942178586
+      },
+      "calf": {
+        "kp": 4.04,
+        "kd": 0.2,
+        "delay_steps": 8,
+        "bode_magnitude_mse_db2": 3.093222560901951
+      },
+      "foot": {
+        "kp": 0.0,
+        "kd": 0.202,
+        "delay_steps": 12,
+        "bode_magnitude_mse_db2": 0.20270337426034724
+      }
+    },
+    "summary": "we6_pd_gain_summary.json",
+    "summary_sha256": "50c1a8abb91f0b25e00f871f5aa46e28066547f8a0526481cd183386f7952dd1",
+    "best_gains_csv": "we6_pd_best_gains.csv",
+    "best_gains_csv_sha256": "908b610bd35492bfc53cd83e926b0c5170d5c48c3c9318094120711a3a484d29"
+  },
+  "sources": {
+    "thigh": {
+      "data": "real_sweep_joint04_right_thigh_joint_chirp_data.pt",
+      "data_sha256": "773b12978f2349a49235a3ef41056f24567f9087c221e611cf75cd8751d42eec",
+      "identification_model": "we6.xml",
+      "identification_model_sha256": "5e2a81c8e5aa9349e63c8c4c8d13fcce014c1d79e64a2666cd6b89858db319ef",
+      "equality_locked_replay_model_snapshot": "identification_model_snapshot.xml",
+      "equality_locked_replay_model_sha256": "143f19638fdaa75e38574c6f156dbd2cf34d316f4856f49da17042b6044cffa0",
+      "fit_params": "pace_best_params.json",
+      "fit_params_sha256": "dd530a0f3c94a900a96f63acebfbf5f5dc7baf095cf59bdfdce8be6830d668a8"
+    },
+    "calf": {
+      "data": "real_sweep_joint05_right_calf_joint_chirp_data.pt",
+      "data_sha256": "5bbd9fe5b30aa6a5ce6495efed3543017f691fe28618dd49b503eb9a829bfe96",
+      "identification_model": "we6.xml",
+      "identification_model_sha256": "5e2a81c8e5aa9349e63c8c4c8d13fcce014c1d79e64a2666cd6b89858db319ef",
+      "equality_locked_replay_model_snapshot": "identification_model_snapshot.xml",
+      "equality_locked_replay_model_sha256": "143f19638fdaa75e38574c6f156dbd2cf34d316f4856f49da17042b6044cffa0",
+      "fit_params": "pace_best_params.json",
+      "fit_params_sha256": "9baf6ea329209f18e718a7fd84d49777fdf41bd09cadb87d303b711486d290d7"
+    },
+    "foot": {
+      "data": "chirp_0.1-5hz_40s_20260719_205725.csv",
+      "data_sha256": "cd2bd1777cf5e045c8fa09e845448281f8494a3000b613f57cc436d5ee1ffcc5",
+      "identification_model": "total_assembly.xml",
+      "identification_model_sha256": "1e0e6b7f35317c3937ffd434dc6842081816f5152941f12e66f9e4453b47c7de",
+      "equality_locked_replay_model_snapshot": null,
+      "equality_locked_replay_model_sha256": null,
+      "fit_params": "total_assembly_pace_params.json",
+      "fit_params_sha256": "1a7c7b9fb25bd0847ed119ea4ed98ca26c56459a3ca396e0e86e6f0a65fd32ec"
+    }
+  },
+  "delay_scan_fit_params": {
+    "thigh": {
+      "path": "pace_best_params.json",
+      "sha256": "5718a32bcf3f089e336674181b684ff8844cc6b84b11a06eb110eb4479eb2045"
+    },
+    "calf": {
+      "path": "pace_best_params.json",
+      "sha256": "a3af5acad8af33d33dc9dc573e4b47f2373682af7a04565e19b230104b49220f"
+    }
+  },
+  "warnings": [
+    "Foot data was identified on a separate total-assembly MJCF; its motor-side parameters require full-WE6 replay validation.",
+    "Encoder bias/zero offset is frozen from a time-domain prior because Bode AC response does not identify DC offset; it is not embedded in the WE6 MJCF or runtime controller.",
+    "July-14 import manifests point to June-28 raw thigh/calf CSV recordings."
+  ],
+  "artifacts": {
+    "complete_report_png": "we6_pace_bode_complete.png",
+    "complete_report_pdf": "we6_pace_bode_complete.pdf",
+    "summary_csv": "we6_bode_summary.csv",
+    "reproduce_report_command": "reproduce_report_command.txt",
+    "markdown_report": "we6_pace_report.md",
+    "we6_model_snapshot": "we6_model_snapshot.xml",
+    "we6_model_snapshot_sha256": "5e2a81c8e5aa9349e63c8c4c8d13fcce014c1d79e64a2666cd6b89858db319ef"
+  }
+}
