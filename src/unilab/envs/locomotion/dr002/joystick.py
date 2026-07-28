@@ -72,6 +72,8 @@ _ISAACLAB_CRITIC_TERM_DIMS = (
 _LEGACY_CRITIC_DIM = 52
 _CRITIC_DIM = sum(_ISAACLAB_CRITIC_TERM_DIMS)
 assert _CRITIC_DIM == 144
+_CRITIC_WITH_MEASURED_MOMENT_DIM = _CRITIC_DIM + 3
+assert _CRITIC_WITH_MEASURED_MOMENT_DIM == 147
 
 
 @dataclass
@@ -88,6 +90,7 @@ class DR002Commands:
     ang_vel_z_range_multiplier: list[float] = field(default_factory=lambda: [0.3, 1.0])
     curriculum_threshold: float = 0.7
     curriculum_demote_threshold: float = 0.4
+    curriculum_allow_demotion: bool = True
     curriculum_step: float = 0.1
     curriculum_min_episode_fraction: float = 0.8
     curriculum_moving_command_threshold: float = 0.05
@@ -112,6 +115,26 @@ class DR002DomainRandConfig(DomainRandConfig):
     torque_scale_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
     randomize_default_joint_pos: bool = False
     default_joint_pos_offset_range: list[float] = field(default_factory=lambda: [-0.02, 0.02])
+    # When enabled, treat added base mass as preserving the base's nominal
+    # mass distribution: scale all three principal inertias by
+    # (nominal_mass + delta) / nominal_mass while leaving COM unchanged.
+    couple_base_inertia_to_added_mass: bool = False
+    # Preserve the existing UniLab behavior by default. Tasks that need exact
+    # IsaacLab startup-event semantics can opt into independent left/right
+    # non-base body draws and keep them fixed across episode resets.
+    body_mass_share_bilateral_scale: bool = True
+    body_mass_resample_on_reset: bool = True
+
+    # Optional body-frame linear-velocity jump for interval pushes. The
+    # provider rotates sampled vectors into the backend's world-frame contract.
+    push_linear_velocity_delta_limit: list[float] | None = None
+    # Optional one-control-step body-frame force that can be combined with the
+    # velocity jump. The provider rotates it into world coordinates before
+    # applying it. When both options are unset, max_force keeps the legacy
+    # force-only behavior.
+    push_force_limit: list[float] | None = None
+    # Sample one trigger time independently inside every push_interval window.
+    push_randomize_within_interval: bool = False
 
     csv_force_enabled: bool = False
     csv_force_path: str = "/home/esd_wch/lsaac_lab_ws/force_raw.csv"
@@ -120,6 +143,14 @@ class DR002DomainRandConfig(DomainRandConfig):
     csv_force_period: float = 10.0
     csv_force_transition_seconds: float = 0.1
     csv_force_start_delay_range_s: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    # Preserve legacy behavior by default: persistent standing-command
+    # episodes do not receive the measured CSV replay. WE9 opts in so standing
+    # changes only the command, not the independently sampled force level.
+    csv_force_apply_to_standing: bool = False
+    # Sample one scalar per environment at reset and hold it for the complete
+    # episode. The same scalar multiplies Fx/Fy/Fz/Mx/My/Mz, changing only the
+    # measured wrench amplitude while preserving its waveform and phase.
+    csv_force_amplitude_scale_range: list[float] = field(default_factory=lambda: [1.0, 1.0])
     csv_force_zero_fy: bool = False
     csv_force_rotation: list[float] = field(
         default_factory=lambda: [
@@ -130,8 +161,15 @@ class DR002DomainRandConfig(DomainRandConfig):
     )
     csv_force_body_name: str | None = None
     csv_force_push_point: list[float] = field(default_factory=lambda: [0.14543, 0.0, 0.1118])
+    # Apply the measured free moment Mx/My/Mz about csv_force_push_point.
+    # Disabled by default to preserve force-only legacy training contracts.
+    csv_force_apply_measured_moment: bool = False
     csv_force_apply_point_torque: bool = True
     csv_force_observation_force_normalization: float = 50.0
+    # Expose the rotated measured sensor moment Mx/My/Mz only to the privileged
+    # critic. This is independent from whether the moment is applied to physics.
+    csv_force_observation_include_measured_moment: bool = False
+    csv_force_observation_moment_normalization: float = 15.0
     csv_force_curriculum: bool = True
     csv_force_curriculum_window_episodes: int = 4096
     csv_force_curriculum_promote_tracking_threshold: float = 0.65
@@ -150,14 +188,32 @@ class WingAngleObservationConfig:
     curriculum_paths: list[str] = field(default_factory=list)
     normalization_deg: float = 180.0
     zero_offsets_deg: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    # Sample one scalar per environment at reset and apply it only to the
+    # positive-Hz CSV motor-position observation for the complete episode.
+    # Left/right share the scalar; physical CSV wrench playback is unaffected.
+    csv_amplitude_scale_range: list[float] = field(default_factory=lambda: [1.0, 1.0])
     standing_normalized_range: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    # Per-frame uniform actor-observation noise, specified as a physical-angle
+    # half range and normalized by ``normalization_deg`` before policy input.
+    noise_half_range_deg: float = 0.0
+    # Per-frame, per-motor multiplicative Gaussian noise. A value of 0.05 means
+    # obs *= 1 + Normal(0, 0.05). This is dimensionless and independent from
+    # the reset-owned CSV amplitude scale.
+    gaussian_noise_relative_std: float = 0.0
 
 
 @dataclass
 class RewardConfig:
     scales: dict[str, float]
     tracking_sigma: float = 0.25
+    # Optional forward-velocity width. None preserves the historical behavior
+    # of sharing tracking_sigma with yaw tracking.
+    track_lin_vel_x_std: float | None = None
     track_lin_vel_x_enhance_std: float = 0.8
+    # Per-term weighted reward-rate limit for the two forward-velocity terms.
+    # Keep the historical +/-1/s default; tasks using a larger scale can raise
+    # this limit explicitly so that the configured scale is not clipped away.
+    track_lin_vel_x_term_clip: float = 1.0
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
     only_positive_rewards: bool = False
@@ -206,6 +262,22 @@ class WE6JoystickSensor(JoystickSensor):
     )
 
 
+@dataclass
+class U9JoystickSensor(JoystickSensor):
+    """Contact sensors exposed by the reviewed U9 model."""
+
+    undesired_contacts: tuple[str, ...] = (
+        "base_link_touch",
+        "left_thigh_touch",
+        "left_calf_touch",
+        "right_thigh_touch",
+        "right_calf_touch",
+        "dandan_upper_left_touch",
+        "dandan_upper_right_touch",
+        "dandan_front_center_touch",
+    )
+
+
 @registry.envcfg("DR002JoystickFlat")
 @dataclass
 class DR002JoystickCfg(DR002BaseCfg):
@@ -246,6 +318,29 @@ class WE6ControlConfig(ControlConfig):
 
 
 @dataclass
+class WE9ControlConfig(ControlConfig):
+    """U9 PACE controller with a shared randomized command FIFO."""
+
+    # Preserve the WE6 wheel action-to-torque gain with Kd reduced 4x to 0.05.
+    wheel_action_scale: float = 10.0
+    wheel_clip_actions: float = 2.5
+    motor_control_hz: float | None = 200.0
+    action_delay_semantics: str = "pre_controller_command_fifo"
+    torque_delay_steps: int = 0
+    action_delay_min_steps: int = 2
+    action_delay_max_steps: int = 8
+    action_delay_steps_by_joint: list[int] | None = None
+    resample_action_delay: bool = True
+    use_native_batched_pd: bool = False
+    Kp: list[float] = field(  # noqa: N815
+        default_factory=lambda: [4.11, 3.91, 0.0, 4.11, 3.91, 0.0]
+    )
+    Kd: list[float] = field(  # noqa: N815
+        default_factory=lambda: [0.160, 0.193, 0.05, 0.160, 0.193, 0.05]
+    )
+
+
+@dataclass
 class WE6NoiseConfig(NoiseConfig):
     """WE6 sensor noise with episode-fixed mounting error and slow IMU drift."""
 
@@ -276,6 +371,22 @@ class DR002JoystickFlatWE6Cfg(DR002JoystickCfg):
     control_config: ControlConfig = field(default_factory=WE6ControlConfig)  # type: ignore[assignment]
     sensor: JoystickSensor = field(default_factory=WE6JoystickSensor)  # type: ignore[assignment]
     critic_obs_mode: str = "isaaclab"
+
+
+@registry.envcfg("DR002JoystickFlatWE9")
+@dataclass
+class DR002JoystickFlatWE9Cfg(DR002JoystickFlatWE6Cfg):
+    """Reviewed U9 morphology with its independently materialized PACE model."""
+
+    scene: SceneCfg = field(
+        default_factory=lambda: SceneCfg(
+            model_file=str(_DR002_ASSET_ROOT / "u9" / "scene_flat_u9_pace.xml")
+        )
+    )
+    control_config: ControlConfig = field(  # type: ignore[assignment]
+        default_factory=WE9ControlConfig
+    )
+    sensor: JoystickSensor = field(default_factory=U9JoystickSensor)  # type: ignore[assignment]
 
 
 def _sample_dr002_commands(
@@ -444,6 +555,71 @@ def _csv_replay_activity_weight(
     return weight * np.minimum(fade_in, fade_out)
 
 
+def _csv_replay_has_closed_seam(
+    samples: np.ndarray,
+    *,
+    period: float,
+    num_channels: int,
+) -> bool:
+    """Return whether the replay value at ``period`` exactly closes to its first row."""
+    return _csv_replay_channels_have_closed_seam(
+        samples,
+        period=period,
+        channel_columns=tuple(range(1, num_channels + 1)),
+    )
+
+
+def _csv_replay_channels_have_closed_seam(
+    samples: np.ndarray,
+    *,
+    period: float,
+    channel_columns: tuple[int, ...],
+) -> bool:
+    """Return whether selected CSV channels close across the replay period."""
+    values = np.asarray(samples, dtype=np.float64)
+    replay_period = float(period)
+    if (
+        replay_period <= 0.0
+        or not channel_columns
+        or values.ndim != 2
+        or values.shape[0] == 0
+        or min(channel_columns) < 1
+        or max(channel_columns) >= values.shape[1]
+        or not np.all(np.isfinite(values[:, (0, *channel_columns)]))
+    ):
+        return False
+
+    times = values[:, 0]
+    seam_atol = 1.0e-9
+    if times[0] != 0.0 or times[-1] < replay_period:
+        return False
+
+    seam_value = np.asarray(
+        [np.interp(replay_period, times, values[:, channel]) for channel in channel_columns],
+        dtype=np.float64,
+    )
+    return bool(
+        np.allclose(
+            seam_value,
+            values[0, channel_columns],
+            rtol=0.0,
+            atol=seam_atol,
+        )
+    )
+
+
+def _csv_wrench_effective_seam_columns(
+    domain_rand: DR002DomainRandConfig,
+) -> tuple[int, ...]:
+    force_columns = (1, 3) if domain_rand.csv_force_zero_fy else (1, 2, 3)
+    moment_is_used = bool(
+        domain_rand.csv_force_apply_measured_moment
+        or domain_rand.csv_force_observation_include_measured_moment
+    )
+    moment_columns = (4, 5, 6) if moment_is_used else ()
+    return force_columns + moment_columns
+
+
 def _sample_force_csv_replay(
     samples: np.ndarray,
     replay_t: np.ndarray,
@@ -451,6 +627,7 @@ def _sample_force_csv_replay(
     *,
     period: float,
     transition_seconds: float,
+    blend_period_tail: bool | None = None,
 ) -> np.ndarray:
     replay = np.asarray(replay_t, dtype=np.float64)
     flat_force = _interp_force_csv_batch(samples, replay.reshape(-1))
@@ -463,6 +640,15 @@ def _sample_force_csv_replay(
         transition_seconds=transition_seconds,
     )
     force *= weight[..., None]
+
+    if blend_period_tail is None:
+        blend_period_tail = not _csv_replay_has_closed_seam(
+            samples,
+            period=period,
+            num_channels=3,
+        )
+    if not blend_period_tail:
+        return force
 
     source_end = float(samples[-1, 0])
     transition = float(transition_seconds)
@@ -497,6 +683,52 @@ def _apply_csv_force_channel_options(
     return result
 
 
+def _transform_csv_wrench_to_base_com(
+    wrench_sensor: np.ndarray,
+    *,
+    sensor_to_base_rotation: np.ndarray,
+    moment_arm_base: np.ndarray,
+    zero_fy: bool,
+    apply_measured_moment: bool,
+    apply_point_torque: bool,
+) -> np.ndarray:
+    """Express a sensor-origin wrench about the target body's COM in base axes."""
+    wrench = np.asarray(wrench_sensor, dtype=np.float64)
+    if wrench.shape[-1] != 6:
+        raise ValueError(f"CSV wrench must have six channels, got shape {wrench.shape}")
+    rotation = np.asarray(sensor_to_base_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError(f"sensor-to-base rotation must have shape (3, 3), got {rotation.shape}")
+    moment_arm = np.asarray(moment_arm_base, dtype=np.float64)
+    if moment_arm.shape[-1] != 3:
+        raise ValueError(f"base-frame moment arm must have three channels, got {moment_arm.shape}")
+
+    force_sensor = _apply_csv_force_channel_options(wrench[..., :3], zero_fy=zero_fy)
+    force_base = force_sensor @ rotation.T
+    try:
+        leading_shape = np.broadcast_shapes(force_base.shape[:-1], moment_arm.shape[:-1])
+    except ValueError as exc:
+        raise ValueError(
+            "CSV wrench and base-frame moment arm leading dimensions are not broadcastable: "
+            f"{wrench.shape[:-1]} and {moment_arm.shape[:-1]}"
+        ) from exc
+    force_base = np.broadcast_to(force_base, (*leading_shape, 3))
+    moment_arm = np.broadcast_to(moment_arm, (*leading_shape, 3))
+
+    moment_base = np.zeros((*leading_shape, 3), dtype=np.float64)
+    if apply_measured_moment:
+        # A proper rotation maps both polar force vectors and axial moment
+        # vectors with the same matrix. Mx/My/Mz remain referenced at the
+        # physical sensor origin, which coincides with csv_force_push_point.
+        measured_moment_base = wrench[..., 3:6] @ rotation.T
+        moment_base += np.broadcast_to(measured_moment_base, (*leading_shape, 3))
+    if apply_point_torque:
+        # MuJoCo xfrc_applied is a COM-based body wrench, so transport the
+        # push-site force to the (possibly randomized) body COM exactly once.
+        moment_base += np.cross(moment_arm, force_base)
+    return np.concatenate([force_base, moment_base], axis=-1)
+
+
 def _sample_wrench_csv_replay(
     samples: np.ndarray,
     replay_t: np.ndarray,
@@ -504,6 +736,7 @@ def _sample_wrench_csv_replay(
     *,
     period: float,
     transition_seconds: float,
+    blend_period_tail: bool | None = None,
 ) -> np.ndarray:
     replay = np.asarray(replay_t, dtype=np.float64)
     flat_wrench = _interp_wrench_csv_batch(samples, replay.reshape(-1))
@@ -516,6 +749,15 @@ def _sample_wrench_csv_replay(
         transition_seconds=transition_seconds,
     )
     wrench *= weight[..., None]
+
+    if blend_period_tail is None:
+        blend_period_tail = not _csv_replay_has_closed_seam(
+            samples,
+            period=period,
+            num_channels=6,
+        )
+    if not blend_period_tail:
+        return wrench
 
     source_end = float(samples[-1, 0])
     transition = float(transition_seconds)
@@ -603,6 +845,20 @@ def _wing_angle_path_for_level(
     return paths[positive_path_index]
 
 
+def _wing_angle_obs_csv_amplitude_scale_bounds(
+    cfg: WingAngleObservationConfig,
+) -> tuple[float, float]:
+    scale_range = np.asarray(cfg.csv_amplitude_scale_range, dtype=np.float64)
+    if scale_range.shape != (2,):
+        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must contain [min, max]")
+    if not np.all(np.isfinite(scale_range)):
+        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must contain finite values")
+    low, high = float(scale_range[0]), float(scale_range[1])
+    if low < 0.0 or high < low:
+        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must satisfy 0 <= min <= max")
+    return low, high
+
+
 def _validate_wing_angle_observation_mapping(
     domain_rand: DR002DomainRandConfig,
     cfg: WingAngleObservationConfig,
@@ -613,6 +869,15 @@ def _validate_wing_angle_observation_mapping(
         raise ValueError("wing_angle_obs.enabled requires domain_rand.csv_force_enabled")
     if float(cfg.normalization_deg) <= 0.0:
         raise ValueError("wing_angle_obs.normalization_deg must be positive")
+    _wing_angle_obs_csv_amplitude_scale_bounds(cfg)
+    noise_half_range_deg = float(cfg.noise_half_range_deg)
+    if not np.isfinite(noise_half_range_deg) or noise_half_range_deg < 0.0:
+        raise ValueError("wing_angle_obs.noise_half_range_deg must be finite and non-negative")
+    gaussian_noise_relative_std = float(cfg.gaussian_noise_relative_std)
+    if not np.isfinite(gaussian_noise_relative_std) or gaussian_noise_relative_std < 0.0:
+        raise ValueError(
+            "wing_angle_obs.gaussian_noise_relative_std must be finite and non-negative"
+        )
     zero_offsets = np.asarray(cfg.zero_offsets_deg, dtype=np.float64)
     if zero_offsets.shape != (_WING_ANGLE_OBS_DIM,) or not np.all(np.isfinite(zero_offsets)):
         raise ValueError("wing_angle_obs.zero_offsets_deg must contain two finite values")
@@ -746,6 +1011,40 @@ def _validate_csv_force_curriculum_mapping(domain_rand: DR002DomainRandConfig) -
         )
 
 
+def _csv_force_curriculum_level_paths(
+    domain_rand: DR002DomainRandConfig,
+) -> list[str | None]:
+    return [
+        _csv_force_curriculum_path_for_level(domain_rand, level)
+        for level in range(_csv_force_curriculum_num_levels(domain_rand))
+    ]
+
+
+def _checkpoint_stable_asset_path(path: str | None) -> str | None:
+    if path is None:
+        return None
+    expanded = Path(path).expanduser()
+    try:
+        relative = expanded.relative_to(ASSETS_ROOT_PATH)
+    except ValueError:
+        return str(expanded)
+    return f"asset://{relative.as_posix()}"
+
+
+def _csv_force_curriculum_checkpoint_paths(
+    domain_rand: DR002DomainRandConfig,
+) -> tuple[list[str], list[str | None]]:
+    paths = [
+        str(_checkpoint_stable_asset_path(path))
+        for path in _csv_force_curriculum_paths(domain_rand)
+    ]
+    level_paths = [
+        _checkpoint_stable_asset_path(path)
+        for path in _csv_force_curriculum_level_paths(domain_rand)
+    ]
+    return paths, level_paths
+
+
 def _noise_curriculum_levels(noise_cfg: Any) -> np.ndarray:
     levels = np.asarray(
         getattr(noise_cfg, "curriculum_levels", []),
@@ -760,6 +1059,54 @@ def _noise_curriculum_levels(noise_cfg: Any) -> np.ndarray:
     return levels
 
 
+def _sample_dr002_body_mass_multipliers(
+    env: Any,
+    num_samples: int,
+    body_mass_template: np.ndarray,
+) -> np.ndarray:
+    domain_rand = env.cfg.domain_rand
+    template = np.asarray(body_mass_template, dtype=np.float64)
+    if template.ndim != 1:
+        raise ValueError(
+            "body mass randomization requires body mass shape (nbody,), "
+            f"got {template.shape}"
+        )
+    bounds = np.asarray(domain_rand.body_mass_multiplier_range, dtype=np.float64)
+    if bounds.shape != (2,) or np.any(~np.isfinite(bounds)) or bounds[1] < bounds[0]:
+        raise ValueError(
+            "body_mass_multiplier_range must contain finite [low, high] bounds"
+        )
+    multipliers = np.random.uniform(
+        float(bounds[0]),
+        float(bounds[1]),
+        size=(num_samples, template.size),
+    )
+    base_body_id = int(env._backend.get_body_id(env.cfg.asset.base_name))
+    if not 0 <= base_body_id < template.size:
+        raise ValueError(f"base body id is outside the cached body mass table: {base_body_id}")
+    multipliers[:, base_body_id] = 1.0
+
+    if bool(getattr(domain_rand, "body_mass_share_bilateral_scale", True)):
+        for suffix in ("thigh_joint", "calf_joint", "foot_joint"):
+            try:
+                left_id = int(env._backend.get_body_id(f"left_{suffix}"))
+                right_id = int(env._backend.get_body_id(f"right_{suffix}"))
+            except (KeyError, ValueError):
+                continue
+            if not 0 <= left_id < template.size or not 0 <= right_id < template.size:
+                raise ValueError(
+                    f"bilateral body ids for {suffix} are outside the cached body mass table"
+                )
+            pair_scale = np.random.uniform(
+                float(bounds[0]),
+                float(bounds[1]),
+                size=(num_samples,),
+            )
+            multipliers[:, left_id] = pair_scale
+            multipliers[:, right_id] = pair_scale
+    return multipliers
+
+
 def build_dr002_backend_reset_randomization(
     env: Any,
     num_reset: int,
@@ -770,6 +1117,7 @@ def build_dr002_backend_reset_randomization(
     ground_geom_id: int | None = None,
     robot_geom_ids: np.ndarray | None = None,
     base_dof_armature: np.ndarray | None = None,
+    body_mass_multipliers: np.ndarray | None = None,
 ) -> ResetRandomizationPayload | None:
     domain_rand = getattr(env.cfg, "domain_rand", None)
     if domain_rand is None:
@@ -778,9 +1126,73 @@ def build_dr002_backend_reset_randomization(
     payload = ResetRandomizationPayload()
     body_inertia = None
     body_inertia_template = None
+    coupled_base_body_id: int | None = None
+    coupled_base_inertia_scale: np.ndarray | None = None
+    couple_base_inertia = bool(getattr(domain_rand, "couple_base_inertia_to_added_mass", False))
+    if couple_base_inertia and not getattr(domain_rand, "randomize_base_mass", False):
+        raise ValueError("couple_base_inertia_to_added_mass requires randomize_base_mass=True")
     if getattr(domain_rand, "randomize_base_mass", False):
-        low, high = domain_rand.added_mass_range
+        if couple_base_inertia:
+            added_mass_range = np.asarray(domain_rand.added_mass_range, dtype=np.float64)
+            if added_mass_range.shape != (2,):
+                raise ValueError(
+                    f"coupled added_mass_range must have shape (2,), got {added_mass_range.shape}"
+                )
+            low, high = (float(value) for value in added_mass_range)
+            if np.any(~np.isfinite(added_mass_range)) or high < low:
+                raise ValueError("coupled added_mass_range must contain finite [low, high] bounds")
+            if base_body_mass is None:
+                raise ValueError("base mass-inertia coupling requires cached body mass")
+            if base_body_inertia is None:
+                raise ValueError("base mass-inertia coupling requires cached body inertia")
+            body_mass_template = np.asarray(base_body_mass, dtype=np.float64)
+            body_inertia_template = np.asarray(base_body_inertia, dtype=np.float64)
+            if body_mass_template.ndim != 1:
+                raise ValueError(
+                    "base mass-inertia coupling requires body mass shape (nbody,), "
+                    f"got {body_mass_template.shape}"
+                )
+            if body_inertia_template.shape != (body_mass_template.size, 3):
+                raise ValueError(
+                    "base mass-inertia coupling requires principal inertia shape "
+                    f"({body_mass_template.size}, 3), got {body_inertia_template.shape}"
+                )
+            coupled_base_body_id = int(env._backend.get_body_id(env.cfg.asset.base_name))
+            if not 0 <= coupled_base_body_id < body_mass_template.size:
+                raise ValueError(
+                    f"base body id is outside the cached body mass table: {coupled_base_body_id}"
+                )
+            nominal_base_mass = float(body_mass_template[coupled_base_body_id])
+            if not np.isfinite(nominal_base_mass) or nominal_base_mass <= 0.0:
+                raise ValueError(
+                    "base mass-inertia coupling requires a finite positive nominal base mass"
+                )
+            nominal_base_inertia = body_inertia_template[coupled_base_body_id]
+            if np.any(~np.isfinite(nominal_base_inertia)) or np.any(nominal_base_inertia <= 0.0):
+                raise ValueError(
+                    "base mass-inertia coupling requires three finite positive "
+                    "base principal inertias"
+                )
+            if nominal_base_mass + float(low) <= 0.0:
+                raise ValueError(
+                    "coupled added_mass_range must keep the base mass positive "
+                    "for every possible draw"
+                )
+        else:
+            low, high = domain_rand.added_mass_range
         payload.base_mass_delta = np.random.uniform(low, high, size=(num_reset,))
+        if couple_base_inertia:
+            assert body_mass_template is not None
+            assert coupled_base_body_id is not None
+            nominal_base_mass = float(body_mass_template[coupled_base_body_id])
+            effective_base_mass = nominal_base_mass + np.asarray(
+                payload.base_mass_delta, dtype=np.float64
+            )
+            if np.any(~np.isfinite(effective_base_mass)) or np.any(effective_base_mass <= 0.0):
+                raise ValueError(
+                    "added_mass_range must keep the coupled effective base mass positive"
+                )
+            coupled_base_inertia_scale = effective_base_mass / nominal_base_mass
     if getattr(domain_rand, "randomize_body_mass", False):
         if base_body_mass is None:
             raise ValueError("body mass randomization requires cached body mass")
@@ -788,20 +1200,25 @@ def build_dr002_backend_reset_randomization(
             raise ValueError("body mass inertia recompute requires cached body inertia")
         body_mass_template = np.asarray(base_body_mass, dtype=np.float64)
         body_inertia_template = np.asarray(base_body_inertia, dtype=np.float64)
-        low, high = domain_rand.body_mass_multiplier_range
-        multipliers = np.random.uniform(low, high, size=(num_reset, body_mass_template.size))
-        body_names = ("thigh_joint", "calf_joint", "foot_joint")
-        try:
-            base_body_id = env._backend.get_body_id(env.cfg.asset.base_name)
-            multipliers[:, int(base_body_id)] = 1.0
-            for suffix in body_names:
-                left_id = env._backend.get_body_id(f"left_{suffix}")
-                right_id = env._backend.get_body_id(f"right_{suffix}")
-                pair_scale = np.random.uniform(low, high, size=(num_reset,))
-                multipliers[:, int(left_id)] = pair_scale
-                multipliers[:, int(right_id)] = pair_scale
-        except Exception:
-            pass
+        if body_mass_multipliers is None:
+            multipliers = _sample_dr002_body_mass_multipliers(
+                env,
+                num_reset,
+                body_mass_template,
+            )
+        else:
+            multipliers = np.asarray(body_mass_multipliers, dtype=np.float64)
+            expected_shape = (num_reset, body_mass_template.size)
+            if multipliers.shape != expected_shape:
+                raise ValueError(
+                    "body_mass_multipliers must have shape "
+                    f"{expected_shape}, got {multipliers.shape}"
+                )
+            if np.any(~np.isfinite(multipliers)) or np.any(multipliers <= 0.0):
+                raise ValueError("body_mass_multipliers must contain finite positive values")
+            base_body_id = int(env._backend.get_body_id(env.cfg.asset.base_name))
+            if not np.allclose(multipliers[:, base_body_id], 1.0, rtol=0.0, atol=0.0):
+                raise ValueError("body_mass_multipliers must leave the base body unchanged")
         body_mass = np.broadcast_to(body_mass_template, multipliers.shape).copy()
         randomized = body_mass_template > 0.0
         body_mass[:, randomized] *= multipliers[:, randomized]
@@ -810,6 +1227,14 @@ def build_dr002_backend_reset_randomization(
             body_inertia_template, (num_reset, *body_inertia_template.shape)
         ).copy()
         body_inertia[:, randomized, :] *= multipliers[:, randomized, None]
+    if coupled_base_inertia_scale is not None:
+        assert coupled_base_body_id is not None
+        assert body_inertia_template is not None
+        if body_inertia is None:
+            body_inertia = np.broadcast_to(
+                body_inertia_template, (num_reset, *body_inertia_template.shape)
+            ).copy()
+        body_inertia[:, coupled_base_body_id, :] *= coupled_base_inertia_scale[:, None]
     if getattr(domain_rand, "randomize_body_inertia", False):
         if body_inertia_template is None:
             if base_body_inertia is None:
@@ -902,6 +1327,44 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         self._robot_geom_ids = robot_geom_ids
         self._base_dof_armature = base_dof_armature
         self._force_samples_by_path: dict[str, np.ndarray] = {}
+        self._force_blend_period_tail_by_key: dict[tuple[str, float, tuple[int, ...]], bool] = {}
+        self._push_next_elapsed_steps: np.ndarray | None = None
+        self._startup_body_mass_multipliers: np.ndarray | None = None
+
+    def _body_mass_multipliers_for_reset(
+        self,
+        env: Any,
+        env_ids: np.ndarray,
+    ) -> np.ndarray | None:
+        domain_rand = env.cfg.domain_rand
+        if not bool(getattr(domain_rand, "randomize_body_mass", False)):
+            return None
+        if self._base_body_mass is None:
+            raise ValueError("body mass randomization requires cached body mass")
+
+        rows = np.asarray(env_ids, dtype=np.int32).reshape(-1)
+        if bool(getattr(domain_rand, "body_mass_resample_on_reset", True)):
+            return _sample_dr002_body_mass_multipliers(
+                env,
+                rows.size,
+                self._base_body_mass,
+            )
+
+        expected_shape = (int(env._num_envs), np.asarray(self._base_body_mass).size)
+        if self._startup_body_mass_multipliers is None:
+            self._startup_body_mass_multipliers = _sample_dr002_body_mass_multipliers(
+                env,
+                int(env._num_envs),
+                self._base_body_mass,
+            )
+        elif self._startup_body_mass_multipliers.shape != expected_shape:
+            raise ValueError(
+                "cached startup body mass multipliers have shape "
+                f"{self._startup_body_mass_multipliers.shape}, expected {expected_shape}"
+            )
+        if np.any(rows < 0) or np.any(rows >= int(env._num_envs)):
+            raise ValueError("reset environment ids are outside the startup multiplier table")
+        return self._startup_body_mass_multipliers[rows].copy()
 
     def validate(self, env: Any, capabilities: DomainRandomizationCapabilities) -> None:
         payload = build_dr002_backend_reset_randomization(
@@ -921,10 +1384,23 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 raise NotImplementedError(
                     f"{env._backend.backend_type} backend does not support DR002 reset randomization terms: {names}"
                 )
-        if env.cfg.domain_rand.push_robots and not capabilities.supports_interval_body_force:
-            raise NotImplementedError(
-                f"{env._backend.backend_type} backend does not support interval body force perturbation"
-            )
+        push_velocity_limit = self._push_linear_velocity_delta_limit(env.cfg.domain_rand)
+        push_force_limit = self._push_force_limit(
+            env.cfg.domain_rand,
+            fallback_to_max_force=push_velocity_limit is None,
+        )
+        if env.cfg.domain_rand.push_robots:
+            if (
+                push_velocity_limit is not None
+                and not capabilities.supports_interval_body_velocity_delta
+            ):
+                raise NotImplementedError(
+                    f"{env._backend.backend_type} backend does not support interval body velocity perturbation"
+                )
+            if push_force_limit is not None and not capabilities.supports_interval_body_force:
+                raise NotImplementedError(
+                    f"{env._backend.backend_type} backend does not support interval body force perturbation"
+                )
         if env.cfg.domain_rand.csv_force_enabled and not capabilities.supports_interval_body_force:
             raise NotImplementedError(
                 f"{env._backend.backend_type} backend does not support interval CSV force perturbation"
@@ -941,6 +1417,24 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             rotation = np.asarray(env.cfg.domain_rand.csv_force_rotation, dtype=np.float64)
             if rotation.size != 9:
                 raise ValueError("domain_rand.csv_force_rotation must contain 9 row-major values")
+            rotation = rotation.reshape(3, 3)
+            if not np.all(np.isfinite(rotation)):
+                raise ValueError("domain_rand.csv_force_rotation must contain finite values")
+            if not np.allclose(
+                rotation @ rotation.T,
+                np.eye(3, dtype=np.float64),
+                rtol=1.0e-6,
+                atol=1.0e-6,
+            ) or not np.isclose(
+                np.linalg.det(rotation),
+                1.0,
+                rtol=1.0e-6,
+                atol=1.0e-6,
+            ):
+                raise ValueError(
+                    "domain_rand.csv_force_rotation must be an orthonormal "
+                    "right-handed sensor-to-base rotation"
+                )
             if float(env.cfg.domain_rand.csv_force_period) < 0.0:
                 raise ValueError("domain_rand.csv_force_period must be >= 0")
             transition_seconds = float(env.cfg.domain_rand.csv_force_transition_seconds)
@@ -972,36 +1466,150 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         domain_rand = env.cfg.domain_rand
         body_ids: np.ndarray | None = None
         push_force: np.ndarray | None = None
+        push_velocity_delta: np.ndarray | None = None
         episode_steps = env.episode_steps()
         elapsed_after_startup = episode_steps - int(getattr(env, "_startup_stand_steps", 0))
         push_robots_enabled = bool(domain_rand.push_robots)
         if push_robots_enabled and domain_rand.push_interval > 0:
-            push_due = (elapsed_after_startup > 0) & ((elapsed_after_startup % domain_rand.push_interval) == 0)
+            push_due = self._interval_push_due(
+                elapsed_after_startup,
+                interval_steps=int(domain_rand.push_interval),
+                randomize_within_interval=bool(domain_rand.push_randomize_within_interval),
+            )
             if np.any(push_due):
                 num_push = int(np.count_nonzero(push_due))
                 body_id = env._backend.get_body_id(env.cfg.asset.base_name)
                 body_ids = np.asarray([body_id], dtype=np.int32)
-                force_limit = np.asarray(domain_rand.max_force, dtype=np.float64)
-                if force_limit.shape != (3,):
-                    raise ValueError(f"domain_rand.max_force must have shape (3,), got {force_limit.shape}")
-                push_force = np.zeros((env._num_envs, 1, 6), dtype=np.float64)
-                push_force[push_due, 0, :3] = (
-                    np.random.uniform(-1.0, 1.0, size=(num_push, 3)) * force_limit[None, :]
+                velocity_limit = self._push_linear_velocity_delta_limit(domain_rand)
+                force_limit = self._push_force_limit(
+                    domain_rand,
+                    fallback_to_max_force=velocity_limit is None,
                 )
+                push_quat: np.ndarray | None = None
+                if velocity_limit is not None or domain_rand.push_force_limit is not None:
+                    base_quat = np.asarray(env._backend.get_base_quat(), dtype=np.float64)
+                    expected_quat_shape = (env._num_envs, 4)
+                    if base_quat.shape != expected_quat_shape:
+                        raise ValueError(
+                            "base quaternion batch must have shape "
+                            f"{expected_quat_shape}, got {base_quat.shape}"
+                        )
+                    push_quat = base_quat[push_due]
+                if velocity_limit is not None:
+                    assert push_quat is not None
+                    push_velocity_delta = np.zeros((env._num_envs, 1, 3), dtype=np.float64)
+                    velocity_delta_body = (
+                        np.random.uniform(-1.0, 1.0, size=(num_push, 3)) * velocity_limit[None, :]
+                    )
+                    push_velocity_delta[push_due, 0, :] = np_quat_apply(
+                        push_quat,
+                        velocity_delta_body,
+                    )
+                if force_limit is not None:
+                    push_force = np.zeros((env._num_envs, 1, 6), dtype=np.float64)
+                    sampled_force = (
+                        np.random.uniform(-1.0, 1.0, size=(num_push, 3)) * force_limit[None, :]
+                    )
+                    if domain_rand.push_force_limit is not None:
+                        assert push_quat is not None
+                        sampled_force = np_quat_apply(push_quat, sampled_force)
+                    push_force[push_due, 0, :3] = sampled_force
 
         body_force_trajectory = self._build_csv_force_trajectory(env, step_counter)
         if push_force is not None and hasattr(env, "_external_disturbance_current_wrench"):
             env._external_disturbance_current_wrench += push_force[:, 0, :]
-        if push_force is None and body_force_trajectory is None:
+        if push_force is None and push_velocity_delta is None and body_force_trajectory is None:
             return None
         if body_ids is None:
             body_name = domain_rand.csv_force_body_name or env.cfg.asset.base_name
             body_ids = np.asarray([env._backend.get_body_id(body_name)], dtype=np.int32)
         return IntervalRandomizationPlan(
             body_ids=body_ids,
+            body_linear_velocity_delta=push_velocity_delta,
             body_force=push_force,
             body_force_trajectory=body_force_trajectory,
         )
+
+    @staticmethod
+    def _push_linear_velocity_delta_limit(domain_rand: DR002DomainRandConfig) -> np.ndarray | None:
+        configured = domain_rand.push_linear_velocity_delta_limit
+        if configured is None:
+            return None
+        limit = np.asarray(configured, dtype=np.float64)
+        if limit.shape != (3,):
+            raise ValueError(
+                "domain_rand.push_linear_velocity_delta_limit must have shape (3,), "
+                f"got {limit.shape}"
+            )
+        if not np.all(np.isfinite(limit)) or np.any(limit < 0.0):
+            raise ValueError(
+                "domain_rand.push_linear_velocity_delta_limit must contain finite, "
+                "non-negative values"
+            )
+        if not np.any(limit > 0.0):
+            raise ValueError(
+                "domain_rand.push_linear_velocity_delta_limit must enable at least one axis"
+            )
+        return limit
+
+    def _interval_push_due(
+        self,
+        elapsed_after_startup: np.ndarray,
+        *,
+        interval_steps: int,
+        randomize_within_interval: bool,
+    ) -> np.ndarray:
+        elapsed = np.asarray(elapsed_after_startup, dtype=np.int64)
+        if not randomize_within_interval:
+            return (elapsed > 0) & ((elapsed % interval_steps) == 0)
+
+        if (
+            self._push_next_elapsed_steps is None
+            or self._push_next_elapsed_steps.shape != elapsed.shape
+        ):
+            self._push_next_elapsed_steps = np.zeros(elapsed.shape, dtype=np.int64)
+
+        at_startup_boundary = elapsed == 0
+        if np.any(at_startup_boundary):
+            self._push_next_elapsed_steps[at_startup_boundary] = np.random.randint(
+                1,
+                interval_steps + 1,
+                size=int(np.count_nonzero(at_startup_boundary)),
+            )
+
+        push_due = (elapsed > 0) & (elapsed >= self._push_next_elapsed_steps)
+        push_due &= self._push_next_elapsed_steps > 0
+        if np.any(push_due):
+            due_elapsed = elapsed[push_due]
+            next_window_start = ((due_elapsed - 1) // interval_steps + 1) * interval_steps
+            self._push_next_elapsed_steps[push_due] = next_window_start + np.random.randint(
+                1,
+                interval_steps + 1,
+                size=int(np.count_nonzero(push_due)),
+            )
+        return push_due
+
+    @staticmethod
+    def _push_force_limit(
+        domain_rand: DR002DomainRandConfig,
+        *,
+        fallback_to_max_force: bool,
+    ) -> np.ndarray | None:
+        configured = domain_rand.push_force_limit
+        field_name = "push_force_limit"
+        if configured is None:
+            if not fallback_to_max_force:
+                return None
+            configured = domain_rand.max_force
+            field_name = "max_force"
+        limit = np.asarray(configured, dtype=np.float64)
+        if limit.shape != (3,):
+            raise ValueError(f"domain_rand.{field_name} must have shape (3,), got {limit.shape}")
+        if not np.all(np.isfinite(limit)) or np.any(limit < 0.0):
+            raise ValueError(f"domain_rand.{field_name} must contain finite, non-negative values")
+        if not np.any(limit > 0.0):
+            raise ValueError(f"domain_rand.{field_name} must enable at least one axis")
+        return limit
 
     def _build_csv_force_trajectory(self, env: Any, step_counter: int) -> np.ndarray | None:
         domain_rand = env.cfg.domain_rand
@@ -1009,6 +1617,8 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             env._external_disturbance_current_wrench.fill(0.0)
         if hasattr(env, "_measured_csv_force_base"):
             env._measured_csv_force_base.fill(0.0)
+        if hasattr(env, "_measured_csv_moment_base"):
+            env._measured_csv_moment_base.fill(0.0)
         if not domain_rand.csv_force_enabled:
             return None
         if domain_rand.csv_force_curriculum:
@@ -1019,7 +1629,17 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 int(getattr(env, "_csv_force_curriculum_level", 0)),
             )
             levels = np.full((env._num_envs,), level, dtype=np.int32)
-        if env._standing_envs_episode_persistent:
+        resume_suppressed_getter = getattr(env, "csv_force_resume_suppressed", None)
+        if callable(resume_suppressed_getter):
+            resume_suppressed = np.asarray(resume_suppressed_getter(), dtype=np.bool_)
+            if resume_suppressed.shape != (env._num_envs,):
+                raise ValueError(
+                    "CSV force resume suppression must match the number of environments"
+                )
+        else:
+            resume_suppressed = np.zeros((env._num_envs,), dtype=np.bool_)
+        amplitude_scales = env.csv_force_amplitude_scales()
+        if env._standing_envs_episode_persistent and not domain_rand.csv_force_apply_to_standing:
             levels = np.array(levels, copy=True)
             levels[env.episode_standing_mask()] = 0
 
@@ -1053,41 +1673,60 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         moment_arm_base = push_point_base[None, :] - body_com
         for level in np.unique(levels):
             level_int = int(level)
-            rows = levels == level_int
+            rows = (levels == level_int) & ~resume_suppressed
             source_hz = _csv_force_curriculum_source_hz(domain_rand, level_int)
             force_path = _csv_force_curriculum_path_for_level(domain_rand, level_int)
             if source_hz <= 0.0 or force_path is None or not np.any(rows):
                 continue
             if force_path not in self._force_samples_by_path:
-                self._force_samples_by_path[force_path] = _load_force_csv(force_path)
-            force_samples = self._force_samples_by_path[force_path]
-            force_sensor_batch = _sample_force_csv_replay(
-                force_samples,
+                wrench_samples = _load_force_csv(force_path)
+                self._force_samples_by_path[force_path] = wrench_samples
+            wrench_samples = self._force_samples_by_path[force_path]
+            seam_columns = _csv_wrench_effective_seam_columns(domain_rand)
+            seam_key = (force_path, float(domain_rand.csv_force_period), seam_columns)
+            if seam_key not in self._force_blend_period_tail_by_key:
+                self._force_blend_period_tail_by_key[seam_key] = not (
+                    _csv_replay_channels_have_closed_seam(
+                        wrench_samples,
+                        period=float(domain_rand.csv_force_period),
+                        channel_columns=seam_columns,
+                    )
+                )
+            wrench_sensor_batch = _sample_wrench_csv_replay(
+                wrench_samples,
                 replay_t[rows],
                 elapsed_s[rows],
                 period=float(domain_rand.csv_force_period),
                 transition_seconds=float(domain_rand.csv_force_transition_seconds),
+                blend_period_tail=self._force_blend_period_tail_by_key[seam_key],
             )
-            force_sensor_batch[elapsed_after_startup[rows] < 0] = 0.0
-            force_sensor_batch = _apply_csv_force_channel_options(
-                force_sensor_batch,
+            wrench_sensor_batch[elapsed_after_startup[rows] < 0] = 0.0
+            wrench_sensor_batch *= amplitude_scales[rows, None, None]
+            wrench_base_batch = _transform_csv_wrench_to_base_com(
+                wrench_sensor_batch,
+                sensor_to_base_rotation=rotation,
+                moment_arm_base=moment_arm_base[rows, None, :],
                 zero_fy=bool(domain_rand.csv_force_zero_fy),
+                apply_measured_moment=bool(domain_rand.csv_force_apply_measured_moment),
+                apply_point_torque=bool(domain_rand.csv_force_apply_point_torque),
             )
-            force_base_batch = force_sensor_batch @ rotation.T
+            force_base_batch = wrench_base_batch[..., :3]
+            torque_base_batch = wrench_base_batch[..., 3:6]
             if hasattr(env, "_measured_csv_force_base"):
                 env._measured_csv_force_base[rows] = force_base_batch[:, -1, :]
+            if hasattr(env, "_measured_csv_moment_base"):
+                measured_moment_base_batch = wrench_sensor_batch[..., 3:6] @ rotation.T
+                env._measured_csv_moment_base[rows] = measured_moment_base_batch[:, -1, :]
             row_count = int(np.count_nonzero(rows))
             repeated_quat = np.repeat(base_quat[rows], num_substeps, axis=0)
             force_world[rows] = np.asarray(
                 np_quat_apply(repeated_quat, force_base_batch.reshape(-1, 3)),
                 dtype=np.float64,
             ).reshape(row_count, num_substeps, 3)
-            if domain_rand.csv_force_apply_point_torque:
-                torque_base = np.cross(moment_arm_base[rows, None, :], force_base_batch)
-                torque_world[rows] = np.asarray(
-                    np_quat_apply(repeated_quat, torque_base.reshape(-1, 3)),
-                    dtype=np.float64,
-                ).reshape(row_count, num_substeps, 3)
+            torque_world[rows] = np.asarray(
+                np_quat_apply(repeated_quat, torque_base_batch.reshape(-1, 3)),
+                dtype=np.float64,
+            ).reshape(row_count, num_substeps, 3)
         wrench_world = np.concatenate([force_world, torque_world], axis=2)
         if hasattr(env, "_external_disturbance_current_wrench"):
             env._external_disturbance_current_wrench[: wrench_world.shape[0]] = wrench_world[:, -1, :]
@@ -1121,7 +1760,14 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         env.set_episode_standing_mask(env_ids, standing_mask)
         csv_force_levels = env.sample_reset_csv_force_levels(num_reset)
         csv_force_start_delay_steps = env.sample_reset_csv_force_start_delay_steps(num_reset)
-        if env._standing_envs_episode_persistent:
+        csv_force_amplitude_scales = env.sample_reset_csv_force_amplitude_scales(num_reset)
+        wing_angle_obs_amplitude_scales = env.sample_reset_wing_angle_obs_amplitude_scales(
+            num_reset
+        )
+        if (
+            env._standing_envs_episode_persistent
+            and not env.cfg.domain_rand.csv_force_apply_to_standing
+        ):
             csv_force_levels[standing_mask] = 0
             csv_force_start_delay_steps[standing_mask] = 0
         zero_hz_wing_angle_obs = env.sample_reset_zero_hz_wing_angle_obs(
@@ -1130,6 +1776,9 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         env.set_zero_hz_wing_angle_obs(env_ids, zero_hz_wing_angle_obs)
         env.set_csv_force_active_levels(env_ids, csv_force_levels)
         env.set_csv_force_start_delay_steps(env_ids, csv_force_start_delay_steps)
+        env.set_csv_force_amplitude_scales(env_ids, csv_force_amplitude_scales)
+        env.set_wing_angle_obs_amplitude_scales(env_ids, wing_angle_obs_amplitude_scales)
+        body_mass_multipliers = self._body_mass_multipliers_for_reset(env, env_ids)
         reset_randomization = build_dr002_backend_reset_randomization(
             env,
             num_reset,
@@ -1139,6 +1788,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             ground_geom_id=self._ground_geom_id,
             robot_geom_ids=self._robot_geom_ids,
             base_dof_armature=self._base_dof_armature,
+            body_mass_multipliers=body_mass_multipliers,
         )
         env.set_privileged_reset_randomization(env_ids, reset_randomization)
         info_updates: dict[str, Any] = {
@@ -1192,6 +1842,8 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
 @registry.env("DR002JoystickFlat", sim_backend="mujoco")
 class DR002JoystickEnv(DR002BaseEnv):
     _cfg: DR002JoystickCfg
+    _TRAINING_STATE_KIND = "unilab.dr002_joystick.curriculum"
+    _TRAINING_STATE_VERSION = 1
 
     def __init__(self, cfg: DR002JoystickCfg, num_envs=1, backend_type="mujoco"):
         if cfg.reward_config is None:
@@ -1223,9 +1875,17 @@ class DR002JoystickEnv(DR002BaseEnv):
                 f"got {critic_obs_mode!r}"
             )
         self._use_isaaclab_critic = critic_obs_mode == "isaaclab"
-        # WE6 mirrors IsaacLab's 144-d privileged critic while existing DR002
-        # tasks retain their 52-d checkpoint contract.
-        self._critic_dim = _CRITIC_DIM if self._use_isaaclab_critic else _LEGACY_CRITIC_DIM
+        self._critic_includes_measured_moment = self._use_isaaclab_critic and bool(
+            cfg.domain_rand.csv_force_observation_include_measured_moment
+        )
+        # Force-only IsaacLab critics retain 144D. WE9 can opt into the rotated
+        # measured Mx/My/Mz for 147D, while legacy DR002 stays checkpoint-safe.
+        if not self._use_isaaclab_critic:
+            self._critic_dim = _LEGACY_CRITIC_DIM
+        elif self._critic_includes_measured_moment:
+            self._critic_dim = _CRITIC_WITH_MEASURED_MOMENT_DIM
+        else:
+            self._critic_dim = _CRITIC_DIM
         self._wing_angle_samples_by_path: dict[Path, np.ndarray] = {}
         self._wing_angle_force_samples_by_path: dict[str, np.ndarray] = {}
         self._enable_reward_log = True
@@ -1364,6 +2024,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._zero_hz_wing_angle_obs = np.zeros(
             (num_envs, _WING_ANGLE_OBS_DIM), dtype=self._np_dtype
         )
+        self._wing_angle_obs_amplitude_scales = np.ones((num_envs,), dtype=self._np_dtype)
         self._standing_window_episodes = 0
         self._standing_window_fail_count = 0
         self._standing_window_episode_length_fraction_sum = 0.0
@@ -1393,6 +2054,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._csv_force_curriculum_level = 0
         self._csv_force_active_levels = np.zeros((num_envs,), dtype=np.int32)
         self._csv_force_start_delay_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._csv_force_resume_pending_reset = np.zeros((num_envs,), dtype=np.bool_)
+        self._csv_force_amplitude_scales = np.ones((num_envs,), dtype=get_global_dtype())
         self._csv_force_curriculum_num_promoted = 0
         self._csv_force_curriculum_num_demoted = 0
         self._csv_force_curriculum_last_direction = 0
@@ -1432,11 +2095,13 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._measured_csv_force_base = np.zeros(
             (num_envs, 3), dtype=get_global_dtype()
         )
+        self._measured_csv_moment_base = np.zeros((num_envs, 3), dtype=get_global_dtype())
         self._validate_csv_force_curriculum_cfg()
         _validate_wing_angle_observation_mapping(cfg.domain_rand, cfg.wing_angle_obs)
         self._validate_noise_curriculum_cfg()
         self._episode_track_lin_vel_x_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_ang_vel_z_sum = np.zeros((num_envs,), dtype=np.float64)
+        self._episode_force_track_lin_vel_x_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_lin_vel_x_steps = np.zeros((num_envs,), dtype=np.int32)
         self._episode_track_total_steps = np.zeros((num_envs,), dtype=np.int32)
         self._episode_alive_sum = np.zeros((num_envs,), dtype=np.float64)
@@ -1453,12 +2118,19 @@ class DR002JoystickEnv(DR002BaseEnv):
         if cfg.control_config.use_native_batched_pd:
             self._backend.set_batched_mixed_pd_control(self._batched_motor_control)
         self._init_reward_functions()
+        couple_base_inertia = cfg.domain_rand.couple_base_inertia_to_added_mass
         self._dr_base_body_mass = (
-            self._backend.get_body_mass() if cfg.domain_rand.randomize_body_mass else None
+            self._backend.get_body_mass()
+            if cfg.domain_rand.randomize_body_mass or couple_base_inertia
+            else None
         )
         self._dr_base_body_inertia = (
             self._backend.get_body_inertia()
-            if cfg.domain_rand.randomize_body_mass or cfg.domain_rand.randomize_body_inertia
+            if (
+                cfg.domain_rand.randomize_body_mass
+                or cfg.domain_rand.randomize_body_inertia
+                or couple_base_inertia
+            )
             else None
         )
         self._dr_base_geom_friction = None
@@ -1496,6 +2168,310 @@ class DR002JoystickEnv(DR002BaseEnv):
     def obs_groups_spec(self) -> dict[str, int]:
         return {"obs": self._actor_dim, "critic": self._critic_dim, "privileged_target": 3}
 
+    def training_state_dict(self) -> dict[str, Any]:
+        """Serialize aggregate curriculum progress without per-environment runtime state."""
+        domain_rand = self._cfg.domain_rand
+        noise_cfg = self._cfg.noise_config
+        noise_curriculum_enabled = bool(getattr(noise_cfg, "curriculum", False))
+        noise_levels = (
+            _noise_curriculum_levels(noise_cfg).tolist() if noise_curriculum_enabled else []
+        )
+        checkpoint_paths, checkpoint_level_paths = _csv_force_curriculum_checkpoint_paths(
+            domain_rand
+        )
+        return {
+            "kind": self._TRAINING_STATE_KIND,
+            "version": self._TRAINING_STATE_VERSION,
+            "command_curriculum": {
+                "scale": float(self._command_curriculum_scale),
+                "yaw_scale": float(self._command_curriculum_yaw_scale),
+            },
+            "csv_force_curriculum": {
+                "level": int(self._csv_force_curriculum_level),
+                "num_promoted": int(self._csv_force_curriculum_num_promoted),
+                "num_demoted": int(self._csv_force_curriculum_num_demoted),
+                "last_direction": int(self._csv_force_curriculum_last_direction),
+                "config": {
+                    "hz_values": _csv_force_curriculum_hz_values(domain_rand),
+                    "paths": checkpoint_paths,
+                    "level_paths": checkpoint_level_paths,
+                },
+            },
+            "noise_curriculum": {
+                "level": int(self._noise_curriculum_level),
+                "num_promoted": int(self._noise_curriculum_num_promoted),
+                "num_demoted": int(self._noise_curriculum_num_demoted),
+                "last_direction": int(self._noise_curriculum_last_direction),
+                "config": {
+                    "enabled": noise_curriculum_enabled,
+                    "follows_csv_force": bool(self._noise_curriculum_follows_csv_force()),
+                    "levels": noise_levels,
+                },
+            },
+        }
+
+    def load_training_state_dict(self, state: dict[str, Any]) -> None:
+        """Restore global progress, restart partial windows, and safely phase in replay."""
+        if not isinstance(state, dict):
+            raise TypeError("DR002 training state must be a dictionary")
+        if state.get("kind") != self._TRAINING_STATE_KIND:
+            raise ValueError(f"unsupported DR002 training state kind: {state.get('kind')!r}")
+        if state.get("version") != self._TRAINING_STATE_VERSION:
+            raise ValueError(f"unsupported DR002 training state version: {state.get('version')!r}")
+
+        command_state = state.get("command_curriculum")
+        force_state = state.get("csv_force_curriculum")
+        noise_state = state.get("noise_curriculum")
+        if (
+            not isinstance(command_state, dict)
+            or not isinstance(force_state, dict)
+            or not isinstance(noise_state, dict)
+        ):
+            raise ValueError(
+                "DR002 training state must contain command, CSV-force, and noise curricula"
+            )
+
+        def finite_float(payload: dict[str, Any], key: str) -> float:
+            value = float(payload[key])
+            if not np.isfinite(value):
+                raise ValueError(f"DR002 training state field {key!r} must be finite")
+            return value
+
+        def nonnegative_int(payload: dict[str, Any], key: str) -> int:
+            raw = payload[key]
+            value = int(raw)
+            if isinstance(raw, (float, np.floating)) and float(raw) != float(value):
+                raise ValueError(f"DR002 training state field {key!r} must be an integer")
+            if value < 0:
+                raise ValueError(f"DR002 training state field {key!r} must be non-negative")
+            return value
+
+        def direction(payload: dict[str, Any]) -> int:
+            value = int(payload["last_direction"])
+            if value not in (-1, 0, 1):
+                raise ValueError("DR002 curriculum last_direction must be -1, 0, or 1")
+            return value
+
+        def optional_path_list(value: Any) -> list[str | None]:
+            if not isinstance(value, (list, tuple)):
+                return []
+            return [None if path is None else str(path) for path in value]
+
+        def float_list(value: Any) -> list[float]:
+            if not isinstance(value, (list, tuple)):
+                return []
+            try:
+                values = [float(item) for item in value]
+            except (TypeError, ValueError):
+                return []
+            return values if np.all(np.isfinite(values)) else []
+
+        def restore_level(
+            *,
+            saved_level: int,
+            saved_values: list[float],
+            current_values: list[float],
+            saved_paths: list[str | None] | None = None,
+            current_paths: list[str | None] | None = None,
+            mapping_matches: bool,
+        ) -> int:
+            current_size = len(current_values) or len(current_paths or [])
+            max_level = max(current_size - 1, 0)
+            if mapping_matches:
+                return int(np.clip(saved_level, 0, max_level))
+            if not current_values:
+                if saved_paths and current_paths:
+                    saved_index = int(np.clip(saved_level, 0, len(saved_paths) - 1))
+                    saved_path = saved_paths[saved_index]
+                    matching = [
+                        index for index, path in enumerate(current_paths) if path == saved_path
+                    ]
+                    return matching[0] if matching else 0
+                return 0
+
+            saved_index = int(np.clip(saved_level, 0, max(len(saved_values) - 1, 0)))
+            saved_value = saved_values[saved_index] if saved_values else float("nan")
+            saved_path = (
+                saved_paths[saved_index]
+                if saved_paths is not None and saved_index < len(saved_paths)
+                else None
+            )
+            identity_matches = [
+                index
+                for index, current_value in enumerate(current_values)
+                if np.isclose(current_value, saved_value, rtol=0.0, atol=1.0e-9)
+                and (
+                    saved_paths is None
+                    or current_paths is None
+                    or (index < len(current_paths) and current_paths[index] == saved_path)
+                )
+            ]
+            if identity_matches:
+                saved_identity_rank = 0
+                for index in range(saved_index):
+                    same_value = index < len(saved_values) and np.isclose(
+                        saved_values[index],
+                        saved_value,
+                        rtol=0.0,
+                        atol=1.0e-9,
+                    )
+                    same_path = (
+                        saved_paths is None
+                        or index >= len(saved_paths)
+                        or saved_paths[index] == saved_path
+                    )
+                    if same_value and same_path:
+                        saved_identity_rank += 1
+                return int(identity_matches[min(saved_identity_rank, len(identity_matches) - 1)])
+            same_value_matches = [
+                index
+                for index, current_value in enumerate(current_values)
+                if np.isclose(current_value, saved_value, rtol=0.0, atol=1.0e-9)
+            ]
+            if same_value_matches:
+                saved_value_rank = sum(
+                    1
+                    for value in saved_values[:saved_index]
+                    if np.isclose(value, saved_value, rtol=0.0, atol=1.0e-9)
+                )
+                return int(same_value_matches[min(saved_value_rank, len(same_value_matches) - 1)])
+            if np.isfinite(saved_value):
+                eligible = [
+                    (current_value, index)
+                    for index, current_value in enumerate(current_values)
+                    if current_value <= saved_value + 1.0e-9
+                ]
+                if eligible:
+                    easiest_at_best_value = min(
+                        index
+                        for value, index in eligible
+                        if value == max(item[0] for item in eligible)
+                    )
+                    return int(easiest_at_best_value)
+            return 0
+
+        self._command_curriculum_scale = float(
+            np.clip(
+                finite_float(command_state, "scale"),
+                min(
+                    self._command_curriculum_initial_scale,
+                    self._command_curriculum_final_scale,
+                ),
+                max(
+                    self._command_curriculum_initial_scale,
+                    self._command_curriculum_final_scale,
+                ),
+            )
+        )
+        self._command_curriculum_yaw_scale = float(
+            np.clip(
+                finite_float(command_state, "yaw_scale"),
+                min(
+                    self._command_curriculum_yaw_initial_scale,
+                    self._command_curriculum_yaw_final_scale,
+                ),
+                max(
+                    self._command_curriculum_yaw_initial_scale,
+                    self._command_curriculum_yaw_final_scale,
+                ),
+            )
+        )
+
+        domain_rand = self._cfg.domain_rand
+        current_hz_values = _csv_force_curriculum_hz_values(domain_rand)
+        current_paths, current_level_paths = _csv_force_curriculum_checkpoint_paths(domain_rand)
+        saved_config = force_state.get("config")
+        if not isinstance(saved_config, dict):
+            saved_config = {}
+        saved_hz_values = float_list(saved_config.get("hz_values"))
+        saved_paths = optional_path_list(saved_config.get("paths"))
+        saved_level_paths = optional_path_list(saved_config.get("level_paths"))
+        force_mapping_matches = (
+            saved_hz_values == current_hz_values
+            and saved_paths == current_paths
+            and saved_level_paths == current_level_paths
+        )
+        saved_force_level = nonnegative_int(force_state, "level")
+        restored_force_level = restore_level(
+            saved_level=saved_force_level,
+            saved_values=saved_hz_values,
+            current_values=current_hz_values,
+            saved_paths=saved_level_paths,
+            current_paths=current_level_paths,
+            mapping_matches=force_mapping_matches,
+        )
+        self._csv_force_curriculum_num_promoted = nonnegative_int(force_state, "num_promoted")
+        self._csv_force_curriculum_num_demoted = nonnegative_int(force_state, "num_demoted")
+        self._csv_force_curriculum_last_direction = direction(force_state)
+        command_is_full = self._command_curriculum_is_full()
+        self._csv_force_curriculum_level = int(restored_force_level) if command_is_full else 0
+
+        self._reset_csv_force_curriculum_window()
+
+        noise_cfg = self._cfg.noise_config
+        current_noise_enabled = bool(getattr(noise_cfg, "curriculum", False))
+        current_noise_follows = self._noise_curriculum_follows_csv_force()
+        current_noise_levels = (
+            _noise_curriculum_levels(noise_cfg).tolist() if current_noise_enabled else []
+        )
+        saved_noise_config = noise_state.get("config")
+        if not isinstance(saved_noise_config, dict):
+            saved_noise_config = {}
+        saved_noise_levels = float_list(saved_noise_config.get("levels"))
+        noise_mapping_matches = saved_noise_levels == current_noise_levels
+        saved_noise_level = nonnegative_int(noise_state, "level")
+        restored_noise_level = restore_level(
+            saved_level=saved_noise_level,
+            saved_values=saved_noise_levels,
+            current_values=current_noise_levels,
+            mapping_matches=noise_mapping_matches,
+        )
+        self._noise_curriculum_num_promoted = nonnegative_int(noise_state, "num_promoted")
+        self._noise_curriculum_num_demoted = nonnegative_int(noise_state, "num_demoted")
+        self._noise_curriculum_last_direction = direction(noise_state)
+        if not command_is_full or not current_noise_enabled:
+            self._noise_curriculum_level = 0
+        elif current_noise_follows:
+            self._noise_curriculum_level = int(self._csv_force_curriculum_level)
+        else:
+            self._noise_curriculum_level = int(restored_noise_level)
+
+        self._reset_noise_curriculum_window()
+
+        # The concrete environment clock is deliberately staggered at startup.
+        # Suppress replay/paired observations and ignore each transition episode
+        # until its first natural reset installs a fresh level and start delay.
+        self._csv_force_active_levels.fill(0)
+        self._csv_force_start_delay_steps.fill(0)
+        self._csv_force_resume_pending_reset.fill(True)
+        self._external_disturbance_current_wrench.fill(0.0)
+        self._measured_csv_force_base.fill(0.0)
+        self._measured_csv_moment_base.fill(0.0)
+        current_state = getattr(self, "_state", None)
+        current_obs = getattr(current_state, "obs", None)
+        if bool(getattr(self, "_wing_angle_obs_enabled", False)):
+            self._history_terms[-2].fill(0.0)
+            if isinstance(current_obs, dict) and "obs" in current_obs:
+                current_obs["obs"][:] = np.concatenate(
+                    [hist.reshape(self._num_envs, -1) for hist in self._history_terms],
+                    axis=1,
+                )
+        if bool(getattr(self, "_use_isaaclab_critic", False)) and isinstance(current_obs, dict):
+            critic = current_obs.get("critic")
+            if isinstance(critic, np.ndarray):
+                measured_wrench_dim = (
+                    6 if bool(getattr(self, "_critic_includes_measured_moment", False)) else 3
+                )
+                critic[:, -measured_wrench_dim:] = 0.0
+        self._last_csv_force_window_tracking = np.nan
+        self._last_csv_force_window_fail_rate = np.nan
+        self._last_csv_force_window_mean_episode_length_fraction = np.nan
+        self._last_csv_force_window_mature_fraction = np.nan
+        self._last_noise_window_tracking = np.nan
+        self._last_noise_window_fail_rate = np.nan
+        self._last_noise_window_mean_episode_length_fraction = np.nan
+        self._last_noise_window_mature_fraction = np.nan
+
     def reset(self, env_indices: np.ndarray) -> tuple[dict[str, np.ndarray], dict]:
         env_ids = np.asarray(env_indices, dtype=np.int32)
         if hasattr(self, "_episode_standing_mask"):
@@ -1507,6 +2483,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._reset_gravity_tilt_noise(env_ids)
         self._external_disturbance_current_wrench[env_ids] = 0.0
         self._measured_csv_force_base[env_ids] = 0.0
+        self._measured_csv_moment_base[env_ids] = 0.0
         obs, info = super().reset(env_ids)
         dof_vel = self.get_dof_vel()
         if dof_vel.shape[0] == self._num_envs:
@@ -1520,6 +2497,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._reset_action_delay(env_ids, resample=self._cfg.control_config.resample_action_delay)
         self._episode_track_lin_vel_x_sum[env_ids] = 0.0
         self._episode_track_ang_vel_z_sum[env_ids] = 0.0
+        self._episode_force_track_lin_vel_x_sum[env_ids] = 0.0
         self._episode_track_lin_vel_x_steps[env_ids] = 0
         self._episode_track_total_steps[env_ids] = 0
         self._episode_alive_sum[env_ids] = 0.0
@@ -1669,9 +2647,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             dtype=np.float64,
         )
         if delay_range.shape != (2,):
-            raise ValueError(
-                "domain_rand.csv_force_start_delay_range_s must contain [min, max]"
-            )
+            raise ValueError("domain_rand.csv_force_start_delay_range_s must contain [min, max]")
         if not np.all(np.isfinite(delay_range)):
             raise ValueError("domain_rand.csv_force_start_delay_range_s must be finite")
         low_s, high_s = float(delay_range[0]), float(delay_range[1])
@@ -1700,6 +2676,65 @@ class DR002JoystickEnv(DR002BaseEnv):
             dtype=np.int32,
         )
 
+    def _csv_force_amplitude_scale_bounds(self) -> tuple[float, float]:
+        scale_range = np.asarray(
+            self._cfg.domain_rand.csv_force_amplitude_scale_range,
+            dtype=np.float64,
+        )
+        if scale_range.shape != (2,):
+            raise ValueError("domain_rand.csv_force_amplitude_scale_range must contain [min, max]")
+        if not np.all(np.isfinite(scale_range)):
+            raise ValueError(
+                "domain_rand.csv_force_amplitude_scale_range must contain finite values"
+            )
+        low, high = float(scale_range[0]), float(scale_range[1])
+        if low < 0.0 or high < low:
+            raise ValueError(
+                "domain_rand.csv_force_amplitude_scale_range must satisfy 0 <= min <= max"
+            )
+        return low, high
+
+    def sample_reset_csv_force_amplitude_scales(self, num_reset: int) -> np.ndarray:
+        low, high = self._csv_force_amplitude_scale_bounds()
+        if num_reset <= 0:
+            return np.ones((0,), dtype=get_global_dtype())
+        if high <= low:
+            return np.full((num_reset,), low, dtype=get_global_dtype())
+        return np.asarray(
+            np.random.uniform(low, high, size=(num_reset,)),
+            dtype=get_global_dtype(),
+        )
+
+    def set_csv_force_amplitude_scales(
+        self,
+        env_ids: np.ndarray,
+        amplitude_scales: np.ndarray,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        values = np.asarray(amplitude_scales, dtype=get_global_dtype()).reshape(-1)
+        if values.shape != (rows.size,):
+            raise ValueError(
+                f"CSV force amplitude scales must have shape ({rows.size},), got {values.shape}"
+            )
+        low, high = self._csv_force_amplitude_scale_bounds()
+        tolerance = max(1.0, abs(low), abs(high)) * 1.0e-6
+        if (
+            not np.all(np.isfinite(values))
+            or np.any(values < low - tolerance)
+            or np.any(values > high + tolerance)
+        ):
+            raise ValueError(
+                "CSV force amplitude scales must be finite and inside the configured "
+                f"[{low}, {high}] range"
+            )
+        self._csv_force_amplitude_scales[rows] = values
+
+    def csv_force_amplitude_scales(self) -> np.ndarray:
+        return np.asarray(
+            self._csv_force_amplitude_scales[: self._num_envs],
+            dtype=np.float64,
+        )
+
     def set_csv_force_active_levels(self, env_ids: np.ndarray, levels: np.ndarray) -> None:
         rows = np.asarray(env_ids, dtype=np.int32)
         if rows.size == 0:
@@ -1712,6 +2747,15 @@ class DR002JoystickEnv(DR002BaseEnv):
         return np.asarray(
             np.clip(self._csv_force_active_levels[: self._num_envs], 0, max_level),
             dtype=np.int32,
+        )
+
+    def csv_force_resume_suppressed(self) -> np.ndarray:
+        resume_pending = getattr(self, "_csv_force_resume_pending_reset", None)
+        if resume_pending is None:
+            return np.zeros((self._num_envs,), dtype=np.bool_)
+        return np.asarray(
+            resume_pending[: self._num_envs],
+            dtype=np.bool_,
         )
 
     def set_csv_force_start_delay_steps(
@@ -1785,7 +2829,9 @@ class DR002JoystickEnv(DR002BaseEnv):
 
         if randomization.body_mass is not None and self._dr_base_body_mass is not None:
             body_mass = np.asarray(randomization.body_mass, dtype=np.float64).reshape(num_reset, -1)
-            baseline = np.asarray(self._dr_base_body_mass, dtype=np.float64)[self._privileged_body_ids]
+            baseline = np.asarray(self._dr_base_body_mass, dtype=np.float64)[
+                self._privileged_body_ids
+            ]
             self._privileged_body_mass_scale[rows] = self._safe_scale_ratio(
                 body_mass[:, self._privileged_body_ids],
                 baseline,
@@ -1797,20 +2843,26 @@ class DR002JoystickEnv(DR002BaseEnv):
             ).reshape(num_reset, 3)
 
         if randomization.body_inertia is not None and self._dr_base_body_inertia is not None:
-            body_inertia = np.asarray(randomization.body_inertia, dtype=np.float64).reshape(num_reset, -1, 3)
+            body_inertia = np.asarray(randomization.body_inertia, dtype=np.float64).reshape(
+                num_reset, -1, 3
+            )
             base_body_id = self._backend.get_body_id(self._cfg.asset.base_name)
             baseline = np.asarray(self._dr_base_body_inertia, dtype=np.float64)[int(base_body_id)]
             ratio = self._safe_scale_ratio(body_inertia[:, int(base_body_id), :], baseline)
             self._privileged_base_inertia_scale[rows, 0] = np.mean(ratio, axis=1)
 
         if randomization.geom_friction is not None and self._dr_base_geom_friction is not None:
-            geom_friction = np.asarray(randomization.geom_friction, dtype=np.float64).reshape(num_reset, -1, 3)
+            geom_friction = np.asarray(randomization.geom_friction, dtype=np.float64).reshape(
+                num_reset, -1, 3
+            )
             base_geom_friction = np.asarray(self._dr_base_geom_friction, dtype=np.float64)
             if self._dr_ground_geom_id is not None:
                 ground_id = int(self._dr_ground_geom_id)
                 baseline = base_geom_friction[ground_id, 0]
                 if abs(float(baseline)) > 1.0e-12:
-                    self._privileged_ground_friction_scale[rows, 0] = geom_friction[:, ground_id, 0] / baseline
+                    self._privileged_ground_friction_scale[rows, 0] = (
+                        geom_friction[:, ground_id, 0] / baseline
+                    )
             if self._dr_robot_geom_ids is not None and self._dr_robot_geom_ids.size > 0:
                 ids = np.asarray(self._dr_robot_geom_ids, dtype=np.int32)
                 baseline = base_geom_friction[ids, 0]
@@ -1820,8 +2872,12 @@ class DR002JoystickEnv(DR002BaseEnv):
                     self._privileged_robot_friction_scale[rows, 0] = np.mean(ratios, axis=1)
 
         if randomization.dof_armature is not None and self._dr_base_dof_armature is not None:
-            dof_armature = np.asarray(randomization.dof_armature, dtype=np.float64).reshape(num_reset, -1)
-            baseline = np.asarray(self._dr_base_dof_armature, dtype=np.float64)[self._privileged_joint_dof_ids]
+            dof_armature = np.asarray(randomization.dof_armature, dtype=np.float64).reshape(
+                num_reset, -1
+            )
+            baseline = np.asarray(self._dr_base_dof_armature, dtype=np.float64)[
+                self._privileged_joint_dof_ids
+            ]
             self._privileged_dof_armature_scale[rows] = self._safe_scale_ratio(
                 dof_armature[:, self._privileged_joint_dof_ids],
                 baseline,
@@ -1871,9 +2927,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         rows = np.asarray(env_ids, dtype=np.int32)
         mask = np.asarray(standing_mask, dtype=np.bool_).reshape(-1)
         if mask.shape != (rows.shape[0],):
-            raise ValueError(
-                f"standing_mask must have shape ({rows.shape[0]},), got {mask.shape}"
-            )
+            raise ValueError(f"standing_mask must have shape ({rows.shape[0]},), got {mask.shape}")
         self._episode_standing_mask[rows] = mask
 
     def episode_standing_mask(self) -> np.ndarray:
@@ -1915,6 +2969,50 @@ class DR002JoystickEnv(DR002BaseEnv):
             )
         self._zero_hz_wing_angle_obs[rows] = values
 
+    def sample_reset_wing_angle_obs_amplitude_scales(self, num_reset: int) -> np.ndarray:
+        if num_reset <= 0:
+            return np.ones((0,), dtype=self._np_dtype)
+        if not self._wing_angle_obs_enabled:
+            return np.ones((num_reset,), dtype=self._np_dtype)
+        low, high = _wing_angle_obs_csv_amplitude_scale_bounds(self._cfg.wing_angle_obs)
+        if high <= low:
+            return np.full((num_reset,), low, dtype=self._np_dtype)
+        return np.asarray(
+            np.random.uniform(low, high, size=(num_reset,)),
+            dtype=self._np_dtype,
+        )
+
+    def set_wing_angle_obs_amplitude_scales(
+        self,
+        env_ids: np.ndarray,
+        amplitude_scales: np.ndarray,
+    ) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        values = np.asarray(amplitude_scales, dtype=self._np_dtype).reshape(-1)
+        if values.shape != (rows.size,):
+            raise ValueError(
+                "wing-angle observation amplitude scales must have shape "
+                f"({rows.size},), got {values.shape}"
+            )
+        low, high = _wing_angle_obs_csv_amplitude_scale_bounds(self._cfg.wing_angle_obs)
+        tolerance = max(1.0, abs(low), abs(high)) * 1.0e-6
+        if (
+            not np.all(np.isfinite(values))
+            or np.any(values < low - tolerance)
+            or np.any(values > high + tolerance)
+        ):
+            raise ValueError(
+                "wing-angle observation amplitude scales must be finite and inside "
+                f"the configured [{low}, {high}] range"
+            )
+        self._wing_angle_obs_amplitude_scales[rows] = values
+
+    def wing_angle_obs_amplitude_scales(self) -> np.ndarray:
+        return np.asarray(
+            self._wing_angle_obs_amplitude_scales[: self._num_envs],
+            dtype=np.float64,
+        )
+
     def sample_commands(
         self,
         num_samples: int,
@@ -1954,10 +3052,16 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _validate_csv_force_curriculum_cfg(self) -> None:
         domain_rand = self._cfg.domain_rand
         self._csv_force_start_delay_step_bounds()
+        self._csv_force_amplitude_scale_bounds()
         force_normalization = float(domain_rand.csv_force_observation_force_normalization)
         if not np.isfinite(force_normalization) or force_normalization <= 0.0:
             raise ValueError(
                 "domain_rand.csv_force_observation_force_normalization must be positive"
+            )
+        moment_normalization = float(domain_rand.csv_force_observation_moment_normalization)
+        if not np.isfinite(moment_normalization) or moment_normalization <= 0.0:
+            raise ValueError(
+                "domain_rand.csv_force_observation_moment_normalization must be positive"
             )
         if int(domain_rand.csv_force_curriculum_window_episodes) <= 0:
             raise ValueError("domain_rand.csv_force_curriculum_window_episodes must be positive")
@@ -1983,9 +3087,9 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _validate_noise_curriculum_cfg(self) -> None:
         noise_cfg = self._cfg.noise_config
-        gravity_noise_mode = str(
-            getattr(noise_cfg, "gravity_noise_mode", "additive")
-        ).strip().lower()
+        gravity_noise_mode = (
+            str(getattr(noise_cfg, "gravity_noise_mode", "additive")).strip().lower()
+        )
         if gravity_noise_mode not in {"additive", "tilt"}:
             raise ValueError(
                 "noise_config.gravity_noise_mode must be 'additive' or 'tilt', "
@@ -1999,14 +3103,14 @@ class DR002JoystickEnv(DR002BaseEnv):
             value = float(getattr(noise_cfg, name, 0.0))
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"noise_config.{name} must be finite and non-negative")
-        dynamic_max_deg = float(
-            getattr(noise_cfg, "gravity_dynamic_noise_max_deg", 0.0)
-        )
+        dynamic_max_deg = float(getattr(noise_cfg, "gravity_dynamic_noise_max_deg", 0.0))
         dynamic_time_constant_s = float(
             getattr(noise_cfg, "gravity_dynamic_noise_time_constant_s", 3.0)
         )
-        if gravity_noise_mode == "tilt" and dynamic_max_deg > 0.0 and (
-            not np.isfinite(dynamic_time_constant_s) or dynamic_time_constant_s <= 0.0
+        if (
+            gravity_noise_mode == "tilt"
+            and dynamic_max_deg > 0.0
+            and (not np.isfinite(dynamic_time_constant_s) or dynamic_time_constant_s <= 0.0)
         ):
             raise ValueError(
                 "noise_config.gravity_dynamic_noise_time_constant_s must be finite and "
@@ -2064,6 +3168,22 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._select_env_rows(self.csv_force_active_levels(), num_obs, env_ids),
             dtype=np.int32,
         )
+        resume_suppressed = np.asarray(
+            self._select_env_rows(
+                self.csv_force_resume_suppressed(),
+                num_obs,
+                env_ids,
+            ),
+            dtype=np.bool_,
+        )
+        amplitude_scales = np.asarray(
+            self._select_env_rows(
+                self.wing_angle_obs_amplitude_scales(),
+                num_obs,
+                env_ids,
+            ),
+            dtype=np.float64,
+        )
         if episode_steps_override is None:
             state = getattr(self, "_state", None)
             if state is None:
@@ -2093,8 +3213,8 @@ class DR002JoystickEnv(DR002BaseEnv):
             float(self._cfg.ctrl_dt),
             start_delay_steps=start_delay_steps,
         )
-        elapsed_s = (
-            np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(self._cfg.ctrl_dt)
+        elapsed_s = np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(
+            self._cfg.ctrl_dt
         )
 
         zero_offsets = np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64)
@@ -2133,7 +3253,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             relative_deg = angles_deg - zero_offsets[None, :]
             wrapped_deg = np.mod(relative_deg + 180.0, 360.0) - 180.0
             result[active_indices] = np.asarray(
-                (wrapped_deg / normalization_deg) * activity_weight[active_local, None],
+                (wrapped_deg / normalization_deg)
+                * activity_weight[active_local, None]
+                * amplitude_scales[active_indices, None],
                 dtype=get_global_dtype(),
             )
         zero_hz_mask = _csv_force_zero_hz_mask(domain_rand, levels)
@@ -2144,6 +3266,7 @@ class DR002JoystickEnv(DR002BaseEnv):
                 env_ids,
             )
             result[zero_hz_mask] = zero_hz_obs[zero_hz_mask]
+        result[resume_suppressed] = 0.0
         return result
 
     @staticmethod
@@ -2157,10 +3280,25 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
         return data + noise
 
+    @staticmethod
+    def _obs_multiplicative_gaussian_noise_at_level(
+        data: np.ndarray,
+        relative_std: float,
+        level: float,
+    ) -> np.ndarray:
+        if float(level) <= 0.0 or float(relative_std) <= 0.0:
+            return data
+        relative_noise = (
+            np.random.normal(0.0, 1.0, data.shape).astype(data.dtype)
+            * float(level)
+            * float(relative_std)
+        )
+        return data * (1.0 + relative_noise)
+
     def _gravity_noise_mode(self) -> str:
-        return str(
-            getattr(self._cfg.noise_config, "gravity_noise_mode", "additive")
-        ).strip().lower()
+        return (
+            str(getattr(self._cfg.noise_config, "gravity_noise_mode", "additive")).strip().lower()
+        )
 
     def _reset_gravity_tilt_noise(self, env_ids: np.ndarray) -> None:
         rows = np.asarray(env_ids, dtype=np.intp)
@@ -2200,9 +3338,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._gravity_dynamic_noise_rp[rows] = 0.0
             return
 
-        time_constant_s = float(
-            self._cfg.noise_config.gravity_dynamic_noise_time_constant_s
-        )
+        time_constant_s = float(self._cfg.noise_config.gravity_dynamic_noise_time_constant_s)
         rho = float(np.exp(-float(self._cfg.ctrl_dt) / time_constant_s))
         # Treat the configured bound as three stationary standard deviations,
         # then clip exactly so every roll/pitch sample remains inside it.
@@ -2213,9 +3349,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             1.0,
             size=(rows.size, 2),
         )
-        innovation = (
-            np.clip(standard_normal, -3.0, 3.0) * innovation_std
-        ).astype(self._np_dtype)
+        innovation = (np.clip(standard_normal, -3.0, 3.0) * innovation_std).astype(self._np_dtype)
         next_noise = rho * self._gravity_dynamic_noise_rp[rows] + innovation
         self._gravity_dynamic_noise_rp[rows] = np.clip(
             next_noise,
@@ -2290,10 +3424,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
         if advance_dynamic:
             self._advance_gravity_dynamic_noise(rows, noise_level)
-        roll_pitch = (
-            self._gravity_installation_bias_rp[rows]
-            + self._gravity_dynamic_noise_rp[rows]
-        )
+        roll_pitch = self._gravity_installation_bias_rp[rows] + self._gravity_dynamic_noise_rp[rows]
         return self._rotate_and_normalize_projected_gravity(
             projected_gravity,
             roll_pitch,
@@ -2313,7 +3444,9 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def apply_action(self, actions: np.ndarray, state: NpEnvState) -> np.ndarray:
         clipped_actions = self._clip_policy_actions(actions)
-        state.info["last_actions"] = state.info.get("current_actions", np.zeros_like(clipped_actions))
+        state.info["last_actions"] = state.info.get(
+            "current_actions", np.zeros_like(clipped_actions)
+        )
         state.info["current_actions"] = clipped_actions
 
         ctrl = np.zeros((clipped_actions.shape[0], NUM_DR002_ACTIONS), dtype=self._np_dtype)
@@ -2408,7 +3541,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._update_standing_step_stats(linvel, gyro)
         self._accumulate_command_curriculum(state.info, linvel)
         self._log_command_curriculum(state.info)
-        obs = self._compute_obs(state.info, linvel, gyro, gravity, projected_gravity, dof_pos, dof_vel)
+        obs = self._compute_obs(
+            state.info, linvel, gyro, gravity, projected_gravity, dof_pos, dof_vel
+        )
         return state.replace(obs=obs, reward=reward, terminated=terminated)
 
     def _compute_terminated(self, gravity: np.ndarray) -> np.ndarray:
@@ -2424,13 +3559,19 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._lingzu_contact_fail_accum_steps + 1,
             0,
         )
-        fail_steps = max(int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1)
+        fail_steps = max(
+            int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1
+        )
         contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
         gravity_done = self._lingzu_fail_steps >= fail_steps
         contact_done = self._lingzu_contact_fail_accum_steps >= contact_fail_steps
         self._last_termination_contact_now_fraction = float(np.mean(contact_failed_now))
-        self._last_termination_contact_accum_mean = float(np.mean(self._lingzu_contact_fail_accum_steps))
-        self._last_termination_contact_accum_max = float(np.max(self._lingzu_contact_fail_accum_steps))
+        self._last_termination_contact_accum_mean = float(
+            np.mean(self._lingzu_contact_fail_accum_steps)
+        )
+        self._last_termination_contact_accum_max = float(
+            np.max(self._lingzu_contact_fail_accum_steps)
+        )
         self._last_termination_contact_done_fraction = float(np.mean(contact_done))
         self._last_termination_gravity_done_fraction = float(np.mean(gravity_done))
         return gravity_done | contact_done
@@ -2461,7 +3602,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         if startup_steps > 0:
             startup_mask = steps < startup_steps
             if np.any(startup_mask):
-                commands_arr[startup_mask] = self.startup_commands(int(np.count_nonzero(startup_mask)))
+                commands_arr[startup_mask] = self.startup_commands(
+                    int(np.count_nonzero(startup_mask))
+                )
             elapsed_after_startup = steps.astype(np.int64) - startup_steps
             resample_mask = (steps == startup_steps) | (
                 (steps > startup_steps) & ((elapsed_after_startup % interval) == 0)
@@ -2485,6 +3628,13 @@ class DR002JoystickEnv(DR002BaseEnv):
             return
         lin_error = np.square(commands[:, 0] - linvel[:, 0])
         lin_tracking = np.exp(-lin_error / (self._reward_cfg.tracking_sigma**2))
+        configured_std = self._reward_cfg.track_lin_vel_x_std
+        force_tracking_std = (
+            self._reward_cfg.tracking_sigma
+            if configured_std is None
+            else max(float(configured_std), 1.0e-6)
+        )
+        force_lin_tracking = np.exp(-lin_error / (force_tracking_std**2))
         try:
             gyro = self.get_gyro()
         except Exception:
@@ -2497,18 +3647,15 @@ class DR002JoystickEnv(DR002BaseEnv):
         num_envs = lin_tracking.shape[0]
         self._episode_track_total_steps[:num_envs] += 1
         threshold = max(float(self._cfg.commands.curriculum_moving_command_threshold), 0.0)
-        moving = (
-            ~self._episode_standing_mask[:num_envs]
-            & (
-                (np.abs(commands[:, 0]) > threshold)
-                | (np.abs(commands[:, 1]) > threshold)
-            )
+        moving = ~self._episode_standing_mask[:num_envs] & (
+            (np.abs(commands[:, 0]) > threshold) | (np.abs(commands[:, 1]) > threshold)
         )
         if not np.any(moving):
             return
         env_rows = np.nonzero(moving)[0]
         self._episode_track_lin_vel_x_sum[env_rows] += lin_tracking[env_rows]
         self._episode_track_ang_vel_z_sum[env_rows] += yaw_tracking[env_rows]
+        self._episode_force_track_lin_vel_x_sum[env_rows] += force_lin_tracking[env_rows]
         self._episode_track_lin_vel_x_steps[env_rows] += 1
 
     def _update_standing_step_stats(self, linvel: np.ndarray, gyro: np.ndarray) -> None:
@@ -2570,7 +3717,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._reset_standing_episode_window()
 
     def _alive_values(self, num_envs: int) -> np.ndarray:
-        fail_steps = max(int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1)
+        fail_steps = max(
+            int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1
+        )
         contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
         alive = (self._lingzu_fail_steps[:num_envs] < fail_steps) & (
             self._lingzu_contact_fail_accum_steps[:num_envs] < contact_fail_steps
@@ -2590,7 +3739,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         steps = self._episode_alive_steps[env_ids]
         done = np.ones_like(steps, dtype=np.bool_)
         if self._state is not None:
-            done = np.asarray(self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_)
+            done = np.asarray(
+                self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_
+            )
         valid = (steps > 0) & done
         if not np.any(valid):
             return
@@ -2639,12 +3790,22 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _update_command_curriculum(self, env_ids: np.ndarray) -> None:
         if env_ids.size == 0:
             return
+        resume_pending = getattr(self, "_csv_force_resume_pending_reset", None)
+        if isinstance(resume_pending, np.ndarray):
+            skip_transition_episode = resume_pending[env_ids]
+            if np.any(skip_transition_episode):
+                resume_pending[env_ids[skip_transition_episode]] = False
+                env_ids = env_ids[~skip_transition_episode]
+                if env_ids.size == 0:
+                    return
         moving_steps = self._episode_track_lin_vel_x_steps[env_ids]
         total_steps = self._episode_track_total_steps[env_ids]
         done = np.ones_like(total_steps, dtype=np.bool_)
         failed = np.zeros_like(total_steps, dtype=np.bool_)
         if self._state is not None:
-            done = np.asarray(self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_)
+            done = np.asarray(
+                self._state.terminated[env_ids] | self._state.truncated[env_ids], dtype=np.bool_
+            )
             failed = np.asarray(self._state.terminated[env_ids], dtype=np.bool_)
         episode_valid = (total_steps > 0) & done
         if not np.any(episode_valid):
@@ -2654,13 +3815,18 @@ class DR002JoystickEnv(DR002BaseEnv):
         failed = failed[episode_valid]
         tracking_mask = valid_moving_steps > 0
         tracking = np.zeros((valid_total_steps.size,), dtype=np.float64)
+        force_tracking = np.zeros((valid_total_steps.size,), dtype=np.float64)
         if np.any(tracking_mask):
             lin_tracking = self._episode_track_lin_vel_x_sum[env_ids][episode_valid][tracking_mask]
             yaw_tracking = self._episode_track_ang_vel_z_sum[env_ids][episode_valid][tracking_mask]
+            force_lin_tracking = self._episode_force_track_lin_vel_x_sum[env_ids][episode_valid][
+                tracking_mask
+            ]
             moving_denominator = np.maximum(valid_moving_steps[tracking_mask], 1)
             tracking[tracking_mask] = 0.5 * (
                 lin_tracking / moving_denominator + yaw_tracking / moving_denominator
             )
+            force_tracking[tracking_mask] = force_lin_tracking / moving_denominator
 
         min_fraction = float(self._cfg.commands.curriculum_min_episode_fraction)
         if min_fraction < 0.0:
@@ -2680,9 +3846,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._last_command_curriculum_mean_moving_steps = float(
                 np.mean(valid_moving_steps[tracking_mask])
             )
-            self._last_command_curriculum_mature_fraction = float(
-                np.mean(mature[tracking_mask])
-            )
+            self._last_command_curriculum_mature_fraction = float(np.mean(mature[tracking_mask]))
             if np.any(mature_tracking_mask):
                 mature_mean_tracking = float(np.mean(tracking[mature_tracking_mask]))
             self._last_command_curriculum_mature_mean_tracking = mature_mean_tracking
@@ -2695,17 +3859,18 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._reset_noise_curriculum_window()
             if not np.isfinite(mean_tracking):
                 return
-            if mean_tracking < float(self._cfg.commands.curriculum_demote_threshold):
+            if bool(self._cfg.commands.curriculum_allow_demotion) and mean_tracking < float(
+                self._cfg.commands.curriculum_demote_threshold
+            ):
                 self._update_command_velocity_curriculum(promote=False)
-            elif (
-                np.isfinite(mature_mean_tracking)
-                and mature_mean_tracking > float(self._cfg.commands.curriculum_threshold)
+            elif np.isfinite(mature_mean_tracking) and mature_mean_tracking > float(
+                self._cfg.commands.curriculum_threshold
             ):
                 self._update_command_velocity_curriculum(promote=True)
             return
 
         self._update_csv_force_curriculum_from_window(
-            tracking=tracking,
+            tracking=force_tracking,
             tracking_mask=tracking_mask,
             valid_steps=valid_total_steps,
             mature=mature,
@@ -2768,13 +3933,15 @@ class DR002JoystickEnv(DR002BaseEnv):
             else np.nan
         )
         window_fail_rate = self._csv_force_window_fail_count / float(window_episodes)
-        window_mean_length_fraction = (
-            self._csv_force_window_episode_length_fraction_sum / float(window_episodes)
+        window_mean_length_fraction = self._csv_force_window_episode_length_fraction_sum / float(
+            window_episodes
         )
         window_mature_fraction = self._csv_force_window_mature_count / float(window_episodes)
         self._last_csv_force_window_tracking = float(window_tracking)
         self._last_csv_force_window_fail_rate = float(window_fail_rate)
-        self._last_csv_force_window_mean_episode_length_fraction = float(window_mean_length_fraction)
+        self._last_csv_force_window_mean_episode_length_fraction = float(
+            window_mean_length_fraction
+        )
         self._last_csv_force_window_mature_fraction = float(window_mature_fraction)
 
         should_promote = (
@@ -2787,7 +3954,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         should_demote = bool(domain_rand.csv_force_curriculum_allow_demotion) and (
             (
                 np.isfinite(window_tracking)
-                and window_tracking <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
+                and window_tracking
+                <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
             )
             or window_fail_rate >= float(domain_rand.csv_force_curriculum_demote_fail_rate_min)
             or window_mean_length_fraction
@@ -2850,8 +4018,8 @@ class DR002JoystickEnv(DR002BaseEnv):
             else np.nan
         )
         window_fail_rate = self._noise_window_fail_count / float(window_episodes)
-        window_mean_length_fraction = (
-            self._noise_window_episode_length_fraction_sum / float(window_episodes)
+        window_mean_length_fraction = self._noise_window_episode_length_fraction_sum / float(
+            window_episodes
         )
         window_mature_fraction = self._noise_window_mature_count / float(window_episodes)
         self._last_noise_window_tracking = float(window_tracking)
@@ -2869,7 +4037,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         should_demote = bool(domain_rand.csv_force_curriculum_allow_demotion) and (
             (
                 np.isfinite(window_tracking)
-                and window_tracking <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
+                and window_tracking
+                <= float(domain_rand.csv_force_curriculum_demote_tracking_threshold)
             )
             or window_fail_rate >= float(domain_rand.csv_force_curriculum_demote_fail_rate_min)
             or window_mean_length_fraction
@@ -2902,7 +4071,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         return lin_full and yaw_full
 
     @staticmethod
-    def _curriculum_value_reached(current: float, initial: float, final: float, *, eps: float) -> bool:
+    def _curriculum_value_reached(
+        current: float, initial: float, final: float, *, eps: float
+    ) -> bool:
         if final >= initial:
             return current >= final - eps
         return current <= final + eps
@@ -3118,7 +4289,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             )
             log["force_curriculum/num_promoted"] = float(self._csv_force_curriculum_num_promoted)
             log["force_curriculum/num_demoted"] = float(self._csv_force_curriculum_num_demoted)
-            log["force_curriculum/last_direction"] = float(self._csv_force_curriculum_last_direction)
+            log["force_curriculum/last_direction"] = float(
+                self._csv_force_curriculum_last_direction
+            )
             log["force_curriculum/allow_demotion"] = float(
                 bool(domain_rand.csv_force_curriculum_allow_demotion)
             )
@@ -3152,7 +4325,9 @@ class DR002JoystickEnv(DR002BaseEnv):
                 active_level_hz = _csv_force_curriculum_source_hz(domain_rand, active_level)
                 if not np.isfinite(active_level_hz):
                     continue
-                hz_label = int(active_level_hz) if float(active_level_hz).is_integer() else active_level_hz
+                hz_label = (
+                    int(active_level_hz) if float(active_level_hz).is_integer() else active_level_hz
+                )
                 log[f"force_curriculum/active_fraction_{hz_label}hz"] = float(
                     np.mean(active_levels == active_level)
                 )
@@ -3231,6 +4406,17 @@ class DR002JoystickEnv(DR002BaseEnv):
                     np.zeros((num_obs,), dtype=np.int64) if reset_history else None
                 ),
             )
+            wing_angle_obs = self._obs_multiplicative_gaussian_noise_at_level(
+                wing_angle_obs,
+                float(self._cfg.wing_angle_obs.gaussian_noise_relative_std),
+                noise_level,
+            )
+            wing_angle_obs = self._obs_noise_at_level(
+                wing_angle_obs,
+                float(self._cfg.wing_angle_obs.noise_half_range_deg)
+                / float(self._cfg.wing_angle_obs.normalization_deg),
+                noise_level,
+            )
             frame_terms.append(wing_angle_obs)
         frame_terms.append(commands)
         actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
@@ -3252,8 +4438,7 @@ class DR002JoystickEnv(DR002BaseEnv):
                     linvel,
                     gyro,
                     projected_gravity,
-                    dof_pos[:, LEG_ACTION_INDICES]
-                    - self.default_angles[LEG_ACTION_INDICES],
+                    dof_pos[:, LEG_ACTION_INDICES] - self.default_angles[LEG_ACTION_INDICES],
                     dof_vel_obs * 0.1,
                     current_actions,
                     commands,
@@ -3299,9 +4484,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._select_env_rows(self._measured_csv_force_base, num_obs, env_ids),
             dtype=get_global_dtype(),
         ).copy()
-        measured_csv_force /= float(
-            self._cfg.domain_rand.csv_force_observation_force_normalization
-        )
+        measured_csv_force /= float(self._cfg.domain_rand.csv_force_observation_force_normalization)
         critic_terms = [
             linvel,
             gyro,
@@ -3321,6 +4504,15 @@ class DR002JoystickEnv(DR002BaseEnv):
             material_properties,
             measured_csv_force,
         ]
+        if self._critic_includes_measured_moment:
+            measured_csv_moment = np.asarray(
+                self._select_env_rows(self._measured_csv_moment_base, num_obs, env_ids),
+                dtype=get_global_dtype(),
+            ).copy()
+            measured_csv_moment /= float(
+                self._cfg.domain_rand.csv_force_observation_moment_normalization
+            )
+            critic_terms.append(measured_csv_moment)
         critic = np.concatenate(
             critic_terms,
             axis=1,
@@ -3352,7 +4544,9 @@ class DR002JoystickEnv(DR002BaseEnv):
                 for hist, frame in zip(self._history_terms, frame_terms, strict=True):
                     hist[:, :-1] = hist[:, 1:]
                     hist[:, -1] = frame
-            return np.concatenate([hist.reshape(self._num_envs, -1) for hist in self._history_terms], axis=1)
+            return np.concatenate(
+                [hist.reshape(self._num_envs, -1) for hist in self._history_terms], axis=1
+            )
 
         env_ids = np.asarray(env_ids, dtype=np.intp)
         if reset_history:
@@ -3362,7 +4556,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             for hist, frame in zip(self._history_terms, frame_terms, strict=True):
                 hist[env_ids, :-1] = hist[env_ids, 1:]
                 hist[env_ids, -1] = frame
-        return np.concatenate([hist[env_ids].reshape(len(env_ids), -1) for hist in self._history_terms], axis=1)
+        return np.concatenate(
+            [hist[env_ids].reshape(len(env_ids), -1) for hist in self._history_terms], axis=1
+        )
 
     def _compute_reward(self, info: dict, linvel, gyro, gravity, dof_pos, dof_vel) -> np.ndarray:
         base_height = self._reward_base_height_values(linvel.shape[0])
@@ -3390,7 +4586,11 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._accumulate_alive_episode(ctx.num_envs)
         self._log_alive_reward(info, ctx.num_envs)
         step_count = info.get("steps", np.zeros((ctx.num_envs,), dtype=np.uint32))
-        if self._enable_reward_log and int(step_count[0]) % 4 == 0 and base_height.shape[0] == ctx.num_envs:
+        if (
+            self._enable_reward_log
+            and int(step_count[0]) % 4 == 0
+            and base_height.shape[0] == ctx.num_envs
+        ):
             target = np.asarray(info["commands"], dtype=get_global_dtype())[:, 2]
             height_error = base_height - target
             log = info.setdefault("log", {})
@@ -3405,7 +4605,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             log["termination/gravity_done_frac"] = self._last_termination_gravity_done_fraction
         return reward
 
-    def _clip_lingzu_reward(self, name: str, reward: np.ndarray, clip_single_reward: float = 1.0) -> np.ndarray:
+    def _clip_lingzu_reward(
+        self, name: str, reward: np.ndarray, clip_single_reward: float = 1.0
+    ) -> np.ndarray:
         scale = float(self._reward_cfg.scales.get(name, 0.0))
         if scale == 0.0:
             return np.asarray(reward, dtype=get_global_dtype())
@@ -3430,14 +4632,24 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _reward_track_lin_vel_x(self, ctx: RewardContext) -> np.ndarray:
         error = np.square(ctx.info["commands"][:, 0] - ctx.linvel[:, 0])
-        reward = np.asarray(np.exp(-error / (ctx.tracking_sigma**2)), dtype=get_global_dtype())
-        return self._clip_lingzu_reward("track_lin_vel_x", reward)
+        configured_std = self._reward_cfg.track_lin_vel_x_std
+        std = ctx.tracking_sigma if configured_std is None else max(float(configured_std), 1.0e-6)
+        reward = np.asarray(np.exp(-error / (std * std)), dtype=get_global_dtype())
+        return self._clip_lingzu_reward(
+            "track_lin_vel_x",
+            reward,
+            clip_single_reward=float(self._reward_cfg.track_lin_vel_x_term_clip),
+        )
 
     def _reward_track_lin_vel_x_enhance(self, ctx: RewardContext) -> np.ndarray:
         error = np.square(ctx.info["commands"][:, 0] - ctx.linvel[:, 0])
         std = max(float(self._reward_cfg.track_lin_vel_x_enhance_std), 1.0e-6)
         reward = np.asarray(np.exp(-error / (std * std)) - 1.0, dtype=get_global_dtype())
-        return self._clip_lingzu_reward("track_lin_vel_x_enhance", reward)
+        return self._clip_lingzu_reward(
+            "track_lin_vel_x_enhance",
+            reward,
+            clip_single_reward=float(self._reward_cfg.track_lin_vel_x_term_clip),
+        )
 
     def _reward_track_ang_vel_z(self, ctx: RewardContext) -> np.ndarray:
         error = np.square(ctx.info["commands"][:, 1] - ctx.gyro[:, 2])
@@ -3454,13 +4666,17 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _reward_orientation_lingzu(self, ctx: RewardContext) -> np.ndarray:
         assert ctx.gravity is not None
-        reward = np.asarray(np.square(ctx.gravity[:, 0]) + np.square(ctx.gravity[:, 1]), dtype=get_global_dtype())
+        reward = np.asarray(
+            np.square(ctx.gravity[:, 0]) + np.square(ctx.gravity[:, 1]), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("orientation", reward)
 
     def _reward_base_height_cmd(self, ctx: RewardContext) -> np.ndarray:
         target = ctx.info["commands"][:, 2]
         std = max(float(self._reward_cfg.base_height_std), 1.0e-6)
-        reward = np.asarray(np.square(ctx.base_height - target) / (std * std), dtype=get_global_dtype())
+        reward = np.asarray(
+            np.square(ctx.base_height - target) / (std * std), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward(
             "base_height",
             reward,
@@ -3468,28 +4684,50 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
 
     def _reward_joint_torques_l2(self, ctx: RewardContext) -> np.ndarray:
-        torques = np.asarray(ctx.info.get("torques", np.zeros((ctx.num_envs, self._num_action))), dtype=get_global_dtype())
-        reward = np.asarray(np.sum(np.square(torques[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype())
+        torques = np.asarray(
+            ctx.info.get("torques", np.zeros((ctx.num_envs, self._num_action))),
+            dtype=get_global_dtype(),
+        )
+        reward = np.asarray(
+            np.sum(np.square(torques[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("joint_torques_l2", reward)
 
     def _reward_joint_torques_wheel_l2(self, ctx: RewardContext) -> np.ndarray:
-        torques = np.asarray(ctx.info.get("torques", np.zeros((ctx.num_envs, self._num_action))), dtype=get_global_dtype())
-        reward = np.asarray(np.sum(np.square(torques[:, WHEEL_ACTION_INDICES]), axis=1), dtype=get_global_dtype())
+        torques = np.asarray(
+            ctx.info.get("torques", np.zeros((ctx.num_envs, self._num_action))),
+            dtype=get_global_dtype(),
+        )
+        reward = np.asarray(
+            np.sum(np.square(torques[:, WHEEL_ACTION_INDICES]), axis=1), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("joint_torques_wheel_l2", reward)
 
     def _reward_joint_vel_l2(self, ctx: RewardContext) -> np.ndarray:
         assert ctx.dof_vel is not None
-        reward = np.asarray(np.sum(np.square(ctx.dof_vel[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype())
+        reward = np.asarray(
+            np.sum(np.square(ctx.dof_vel[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("joint_vel_l2", reward)
 
     def _reward_joint_acc_l2(self, ctx: RewardContext) -> np.ndarray:
-        qacc = np.asarray(ctx.info.get("qacc", np.zeros((ctx.num_envs, NUM_DR002_ACTIONS))), dtype=get_global_dtype())
-        reward = np.asarray(np.sum(np.square(qacc[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype())
+        qacc = np.asarray(
+            ctx.info.get("qacc", np.zeros((ctx.num_envs, NUM_DR002_ACTIONS))),
+            dtype=get_global_dtype(),
+        )
+        reward = np.asarray(
+            np.sum(np.square(qacc[:, LEG_ACTION_INDICES]), axis=1), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("joint_acc_l2", reward)
 
     def _reward_joint_acc_wheel_l2(self, ctx: RewardContext) -> np.ndarray:
-        qacc = np.asarray(ctx.info.get("qacc", np.zeros((ctx.num_envs, NUM_DR002_ACTIONS))), dtype=get_global_dtype())
-        reward = np.asarray(np.sum(np.square(qacc[:, WHEEL_ACTION_INDICES]), axis=1), dtype=get_global_dtype())
+        qacc = np.asarray(
+            ctx.info.get("qacc", np.zeros((ctx.num_envs, NUM_DR002_ACTIONS))),
+            dtype=get_global_dtype(),
+        )
+        reward = np.asarray(
+            np.sum(np.square(qacc[:, WHEEL_ACTION_INDICES]), axis=1), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("joint_acc_wheel_l2", reward)
 
     def _reward_joint_pos_limits(self, ctx: RewardContext) -> np.ndarray:
@@ -3507,7 +4745,9 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _reward_nominal_state_lingzu(self, ctx: RewardContext) -> np.ndarray:
         thigh_error = ctx.dof_pos[:, 0] - ctx.dof_pos[:, 3]
         calf_error = ctx.dof_pos[:, 1] - ctx.dof_pos[:, 4]
-        reward = np.asarray(np.square(thigh_error) + np.square(calf_error), dtype=get_global_dtype())
+        reward = np.asarray(
+            np.square(thigh_error) + np.square(calf_error), dtype=get_global_dtype()
+        )
         return self._clip_lingzu_reward("nominal_state_lingzu", reward)
 
     def _reward_action_rate_lingzu(self, ctx: RewardContext) -> np.ndarray:
@@ -3519,7 +4759,11 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _reward_action_smooth_lingzu(self, ctx: RewardContext) -> np.ndarray:
         current = np.asarray(ctx.info["current_actions"], dtype=get_global_dtype())
         leg = LEG_ACTION_INDICES
-        diff = current[:, leg] - 2.0 * self._lingzu_prev_action[:, leg] + self._lingzu_prev_prev_action[:, leg]
+        diff = (
+            current[:, leg]
+            - 2.0 * self._lingzu_prev_action[:, leg]
+            + self._lingzu_prev_prev_action[:, leg]
+        )
         reward = np.asarray(np.sum(np.square(diff), axis=1), dtype=get_global_dtype())
         reward *= self._lingzu_action_history_count >= 2
         self._lingzu_prev_prev_action[:] = self._lingzu_prev_action
@@ -3541,3 +4785,4 @@ class DR002JoystickEnv(DR002BaseEnv):
 
 registry.register_env("DR002JoystickFlat", DR002JoystickEnv, sim_backend="motrix")
 registry.register_env("DR002JoystickFlatWE6", DR002JoystickEnv, sim_backend="mujoco")
+registry.register_env("DR002JoystickFlatWE9", DR002JoystickEnv, sim_backend="mujoco")

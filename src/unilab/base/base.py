@@ -67,6 +67,14 @@ class ABEnv(abc.ABC):
         """Return env-facing play/render capabilities."""
         return EnvPlayCapabilities()
 
+    def training_state_dict(self) -> dict[str, Any] | None:
+        """Return cold-path environment state that must survive training resume."""
+        return None
+
+    def load_training_state_dict(self, state: dict[str, Any]) -> None:
+        """Restore cold-path environment training state from a checkpoint."""
+        del state
+
     def resolve_play_render_plan(
         self,
         *,

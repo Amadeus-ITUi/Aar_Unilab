@@ -22,10 +22,26 @@ class FinalObservationAwarePPO(PPO):
         *args: Any,
         enable_compile: bool = False,
         adaptation_loss_coef: float = 0.0,
+        adaptive_kl_threshold_factor: float = 2.0,
+        adaptive_lr_decay_factor: float = 1.5,
+        adaptive_lr_growth_factor: float = 1.5,
+        adaptive_lr_update_mode: str = "minibatch",
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.adaptation_loss_coef = float(adaptation_loss_coef)
+        self.adaptive_kl_threshold_factor = float(adaptive_kl_threshold_factor)
+        self.adaptive_lr_decay_factor = float(adaptive_lr_decay_factor)
+        self.adaptive_lr_growth_factor = float(adaptive_lr_growth_factor)
+        self.adaptive_lr_update_mode = str(adaptive_lr_update_mode)
+        if self.adaptive_kl_threshold_factor < 1.0:
+            raise ValueError("adaptive_kl_threshold_factor must be >= 1.0")
+        if self.adaptive_lr_decay_factor <= 1.0:
+            raise ValueError("adaptive_lr_decay_factor must be > 1.0")
+        if self.adaptive_lr_growth_factor <= 1.0:
+            raise ValueError("adaptive_lr_growth_factor must be > 1.0")
+        if self.adaptive_lr_update_mode not in {"minibatch", "iteration"}:
+            raise ValueError("adaptive_lr_update_mode must be 'minibatch' or 'iteration'")
         self.enable_compile = (
             bool(enable_compile)
             and torch.device(self.device).type == "cuda"
@@ -34,6 +50,30 @@ class FinalObservationAwarePPO(PPO):
         self._minibatch_loss_fn = self._minibatch_loss_tensors
         if self.enable_compile:
             self._compile_training_methods()
+
+    def _learning_rate_after_kl(self, kl_value: float) -> float:
+        """Apply the configured adaptive-KL learning-rate rule."""
+        learning_rate = float(self.learning_rate)
+        upper = float(self.desired_kl) * self.adaptive_kl_threshold_factor
+        lower = float(self.desired_kl) / self.adaptive_kl_threshold_factor
+        if kl_value > upper:
+            return max(1e-5, learning_rate / self.adaptive_lr_decay_factor)
+        if 0.0 < kl_value < lower:
+            return min(1e-2, learning_rate * self.adaptive_lr_growth_factor)
+        return learning_rate
+
+    def _apply_adaptive_learning_rate(self, kl_value: float) -> None:
+        """Adjust and synchronize the optimizer LR from one KL statistic."""
+        if not self.is_multi_gpu or self.gpu_global_rank == 0:
+            self.learning_rate = self._learning_rate_after_kl(kl_value)
+
+        if self.is_multi_gpu:
+            lr_tensor = torch.tensor(self.learning_rate, device=self.device)
+            torch.distributed.broadcast(lr_tensor, src=0)
+            self.learning_rate = lr_tensor.item()
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = self.learning_rate
 
     def _compile_training_methods(self) -> None:
         compile_fn = getattr(torch, "compile", None)
@@ -155,6 +195,8 @@ class FinalObservationAwarePPO(PPO):
         mean_surrogate_loss = 0.0
         mean_entropy = 0.0
         mean_adaptation_loss = 0.0
+        mean_kl = 0.0
+        num_kl_updates = 0
         mean_rnd_loss = 0.0 if self.rnd else None
         mean_symmetry_loss = 0.0 if self.symmetry else None
 
@@ -209,19 +251,11 @@ class FinalObservationAwarePPO(PPO):
                         torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
                         kl_mean /= self.gpu_world_size
 
-                    if self.gpu_global_rank == 0:
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
-
-                    if self.is_multi_gpu:
-                        lr_tensor = torch.tensor(self.learning_rate, device=self.device)
-                        torch.distributed.broadcast(lr_tensor, src=0)
-                        self.learning_rate = lr_tensor.item()
-
-                    for param_group in self.optimizer.param_groups:
-                        param_group["lr"] = self.learning_rate
+                    kl_value = float(kl_mean)
+                    mean_kl += kl_value
+                    num_kl_updates += 1
+                    if self.adaptive_lr_update_mode == "minibatch":
+                        self._apply_adaptive_learning_rate(kl_value)
 
             ratio = torch.exp(actions_log_prob - torch.squeeze(batch.old_actions_log_prob))
             surrogate = -torch.squeeze(batch.advantages) * ratio
@@ -301,6 +335,13 @@ class FinalObservationAwarePPO(PPO):
                 mean_symmetry_loss += symmetry_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
+        if (
+            self.desired_kl is not None
+            and self.schedule == "adaptive"
+            and self.adaptive_lr_update_mode == "iteration"
+            and num_kl_updates > 0
+        ):
+            self._apply_adaptive_learning_rate(mean_kl / num_kl_updates)
         self.storage.clear()
         loss_dict = {
             "value": mean_value_loss / num_updates,
@@ -308,6 +349,8 @@ class FinalObservationAwarePPO(PPO):
             "entropy": mean_entropy / num_updates,
             "adaptation": mean_adaptation_loss / num_updates,
         }
+        if num_kl_updates > 0:
+            loss_dict["kl"] = mean_kl / num_kl_updates
         if mean_rnd_loss is not None:
             loss_dict["rnd"] = mean_rnd_loss / num_updates
         if mean_symmetry_loss is not None:
@@ -324,6 +367,8 @@ class FinalObservationAwarePPO(PPO):
         mean_value_loss = 0.0
         mean_surrogate_loss = 0.0
         mean_entropy = 0.0
+        mean_kl = 0.0
+        num_kl_updates = 0
 
         generator = self.storage.mini_batch_generator(
             self.num_mini_batches, self.num_learning_epochs
@@ -361,15 +406,10 @@ class FinalObservationAwarePPO(PPO):
 
             if self.desired_kl is not None and self.schedule == "adaptive":
                 kl_value = float(kl_mean.detach())
-                learning_rate = float(self.learning_rate)
-                if kl_value > self.desired_kl * 2.0:
-                    learning_rate = max(1e-5, learning_rate / 1.5)
-                elif kl_value < self.desired_kl / 2.0 and kl_value > 0.0:
-                    learning_rate = min(1e-2, learning_rate * 1.5)
-
-                self.learning_rate = learning_rate
-                for param_group in self.optimizer.param_groups:
-                    param_group["lr"] = learning_rate
+                mean_kl += kl_value
+                num_kl_updates += 1
+                if self.adaptive_lr_update_mode == "minibatch":
+                    self._apply_adaptive_learning_rate(kl_value)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -382,12 +422,22 @@ class FinalObservationAwarePPO(PPO):
             mean_entropy += entropy.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
+        if (
+            self.desired_kl is not None
+            and self.schedule == "adaptive"
+            and self.adaptive_lr_update_mode == "iteration"
+            and num_kl_updates > 0
+        ):
+            self._apply_adaptive_learning_rate(mean_kl / num_kl_updates)
         self.storage.clear()
-        return {
+        loss_dict = {
             "value": mean_value_loss / num_updates,
             "surrogate": mean_surrogate_loss / num_updates,
             "entropy": mean_entropy / num_updates,
         }
+        if num_kl_updates > 0:
+            loss_dict["kl"] = mean_kl / num_kl_updates
+        return loss_dict
 
     def process_env_step(
         self,

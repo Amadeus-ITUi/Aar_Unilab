@@ -50,6 +50,7 @@ class NpEnv(ABEnv):
         self._init_randomization_applied = False
         self._nan_guard: NanGuard | None = None
         self._autoreset = True
+        self._preserve_initial_episode_steps = False
 
     @property
     def cfg(self) -> EnvCfg:
@@ -97,7 +98,11 @@ class NpEnv(ABEnv):
         info: dict = {"steps": steps}
 
         self._state = NpEnvState(obs, reward, terminated, truncated, info)
-        self._reset_done_envs()
+        self._preserve_initial_episode_steps = True
+        try:
+            self._reset_done_envs()
+        finally:
+            self._preserve_initial_episode_steps = False
         self._clear_step_final_observation()
         return self._state
 
@@ -183,7 +188,8 @@ class NpEnv(ABEnv):
             return
 
         env_indices = np.flatnonzero(done).astype(np.int32)
-        self._state.info["steps"][env_indices] = 0
+        if not self._preserve_initial_episode_steps:
+            self._state.info["steps"][env_indices] = 0
 
         final_observation = self._ensure_final_observation_scratch()
         compat_final_observation, compat_terminal_mask = (
