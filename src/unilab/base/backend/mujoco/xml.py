@@ -472,8 +472,8 @@ def materialize_mujoco_hfield_attached_scene(
     output_path.mkdir(parents=True, exist_ok=True)
     _copy_robot_asset_dir(robot_path, output_path)
 
-    hfield_rel = Path("hfields") / "hfield.png"
-    generated = TerrainGenerator(terrain_cfg).write_png(output_path / hfield_rel)
+    hfield_rel = Path("hfields") / "hfield.hfield"
+    generated = TerrainGenerator(terrain_cfg).write_mujoco_hfield(output_path / hfield_rel)
 
     spec = mujoco.MjSpec()
     spec.compiler.autolimits = True

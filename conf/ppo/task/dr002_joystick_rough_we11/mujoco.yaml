@@ -1,0 +1,26 @@
+# @package _global_
+# WE11 rough keeps the complete flat WE11 policy/physics contract and adds
+# procedural heightfield terrain, critic height scan, and terrain curriculum.
+defaults:
+  - /task/dr002_joystick_flat_we11/mujoco
+  - _self_
+
+training:
+  task_name: DR002JoystickRoughWE11
+  sim_backend: mujoco
+
+env:
+  terrain_scan:
+    enabled: true
+    geom_name: floor
+  terrain_curriculum:
+    enabled: true
+    use_path_length: true
+    demote_requires_commanded_distance: true
+    demote_commanded_distance_frac: 0.25
+    unlock_after_force_curriculum: true
+    initial_level: null
+    seed: 42
+  termination_config:
+    terrain_out_of_bounds: true
+    terrain_distance_buffer: 3.0

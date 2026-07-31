@@ -31,10 +31,42 @@ class BatchedMixedPdControl:
     velocity_sensor_names: tuple[str, ...]
     ctrl_lower: np.ndarray
     ctrl_upper: np.ndarray
+    torque_delay_steps_by_joint: np.ndarray
+    initial_torque_delay_buffer: np.ndarray
+    final_torque_delay_buffer: np.ndarray
     final_ctrl_out: np.ndarray
 
 
 BatchedMixedPdControlFn = Callable[[Any, np.ndarray, int], BatchedMixedPdControl]
+
+
+@dataclass(frozen=True)
+class BatchedCommandDelayPdControl:
+    """One native interval for decimated PD with a pre-controller command FIFO."""
+
+    target_trajectory: np.ndarray
+    kp: np.ndarray
+    kd: np.ndarray
+    torque_scale: np.ndarray
+    initial_joint_pos: np.ndarray
+    initial_joint_vel: np.ndarray
+    position_control_mask: np.ndarray
+    position_sensor_names: tuple[str, ...]
+    velocity_sensor_names: tuple[str, ...]
+    ctrl_lower: np.ndarray
+    ctrl_upper: np.ndarray
+    motor_control_decimation: int
+    initial_motor_substep_index: int
+    command_delay_steps: np.ndarray
+    initial_command_delay_buffer: np.ndarray
+    final_command_delay_buffer: np.ndarray
+    initial_ctrl: np.ndarray
+    final_ctrl_out: np.ndarray
+    final_computed_ctrl_out: np.ndarray
+    set_final_motor_substep_index: Callable[[int], None]
+
+
+BatchedCommandDelayPdControlFn = Callable[[Any, np.ndarray, int], BatchedCommandDelayPdControl]
 
 
 @dataclass(frozen=True)
@@ -81,6 +113,7 @@ class SimBackend(abc.ABC):
 
     _pre_step_control_fn: PreStepControlFn | None
     _batched_mixed_pd_control_fn: BatchedMixedPdControlFn | None
+    _batched_command_delay_pd_control_fn: BatchedCommandDelayPdControlFn | None
     _scene_cleanup_handle: Any | None
     backend_type: str
 
@@ -304,6 +337,25 @@ class SimBackend(abc.ABC):
             raise TypeError(
                 "batched mixed-PD callback must return BatchedMixedPdControl, "
                 f"got {type(result).__name__}"
+            )
+        return result
+
+    def set_batched_command_delay_pd_control(
+        self, fn: BatchedCommandDelayPdControlFn | None
+    ) -> None:
+        """Register native decimated PD with a pre-controller command FIFO."""
+        self._batched_command_delay_pd_control_fn = fn
+
+    def _build_batched_command_delay_pd_control(
+        self, ctrl: np.ndarray, nsteps: int
+    ) -> BatchedCommandDelayPdControl:
+        if self._batched_command_delay_pd_control_fn is None:
+            raise RuntimeError("batched command-delay PD control is not registered")
+        result = self._batched_command_delay_pd_control_fn(self, ctrl, int(nsteps))
+        if not isinstance(result, BatchedCommandDelayPdControl):
+            raise TypeError(
+                "batched command-delay PD callback must return "
+                f"BatchedCommandDelayPdControl, got {type(result).__name__}"
             )
         return result
 

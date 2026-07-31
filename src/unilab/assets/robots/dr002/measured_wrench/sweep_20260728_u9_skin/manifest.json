@@ -1,0 +1,419 @@
+{
+  "artifact_version": 1,
+  "coordinate_frame": {
+    "caveat": "the latest raw CSV does not independently declare sensor mounting/frame",
+    "evidence": "logger channel names match the previous sensor-local acquisition",
+    "output": "force-sensor local channel convention expected by WE9"
+  },
+  "files": {
+    "1hz.csv": {
+      "frequency_hz": 1.0,
+      "output": {
+        "channels": {
+          "Fx": {
+            "fundamental_amplitude": 0.10282645212996765,
+            "fundamental_phase_deg": 20.11711659285973,
+            "max": 0.7965328164343672,
+            "mean": 0.2729126566250931,
+            "min": -0.1313617431542223,
+            "peak_to_peak": 0.9278945595885896,
+            "rms": 0.3551188544803568
+          },
+          "Fy": {
+            "fundamental_amplitude": 0.08846972530699154,
+            "fundamental_phase_deg": -113.16969697825736,
+            "max": 0.5539794756636899,
+            "mean": -0.09109414917942502,
+            "min": -0.4222742104682476,
+            "peak_to_peak": 0.9762536861319375,
+            "rms": 0.17120879749831516
+          },
+          "Fz": {
+            "fundamental_amplitude": 3.564853107069509,
+            "fundamental_phase_deg": 23.777457055151267,
+            "max": 4.179313668464647,
+            "mean": 0.11854157234738104,
+            "min": -4.006004809353273,
+            "peak_to_peak": 8.185318477817919,
+            "rms": 2.5705831888028325
+          },
+          "Mx": {
+            "fundamental_amplitude": 0.13563434826973075,
+            "fundamental_phase_deg": 48.45882516215092,
+            "max": 0.23876616680309712,
+            "mean": -0.018629154143328365,
+            "min": -0.24081408497976153,
+            "peak_to_peak": 0.4795802517828587,
+            "rms": 0.10809590342076786
+          },
+          "My": {
+            "fundamental_amplitude": 0.520541794307463,
+            "fundamental_phase_deg": 18.09163872614573,
+            "max": 0.7243159577702242,
+            "mean": 0.08881603741104059,
+            "min": -0.5665839474570081,
+            "peak_to_peak": 1.2908999052272323,
+            "rms": 0.3950925928063934
+          },
+          "Mz": {
+            "fundamental_amplitude": 0.03597199878630047,
+            "fundamental_phase_deg": 32.45361037367822,
+            "max": 0.17110140693598477,
+            "mean": 0.013793061170857197,
+            "min": -0.23619674243185707,
+            "peak_to_peak": 0.4072981493678418,
+            "rms": 0.07164488113303859
+          }
+        },
+        "filename": "1hz.csv",
+        "max_internal_step_abs": {
+          "Fx": 0.09680809096175831,
+          "Fy": 0.08121846073251116,
+          "Fz": 0.08429551580629013,
+          "Mx": 0.008117404160742442,
+          "My": 0.011636944209527655,
+          "Mz": 0.015154060403803703
+        },
+        "max_seam_abs": 0.0,
+        "rows": 10001,
+        "seam_step_abs": {
+          "Fx": 0.019714401000280657,
+          "Fy": 0.020690480724122204,
+          "Fz": 0.009909178147923026,
+          "Mx": 0.0021574203208480427,
+          "My": 0.0003054834916645932,
+          "Mz": 0.0002824904247720611
+        },
+        "sha256": "3b5d4a71aeb85ad4272d20a679bd3239054f47b5d3c5649758058716f57cbf69"
+      },
+      "phase_reference": {
+        "filename": "1hz.csv",
+        "latest_m1_fit": {
+          "amplitude": 25.036091987123086,
+          "dc": 19.624694303170596,
+          "phase_deg": -104.298091562256,
+          "samples": 3400
+        },
+        "old_motor7_fit": {
+          "amplitude": 24.971092335703613,
+          "dc": 19.982488482952007,
+          "phase_deg": 88.97799795443838,
+          "samples": 500
+        },
+        "old_motor7_initial": {
+          "forward_slope_deg_s": -130.16650349999992,
+          "position_deg": 20.207838215
+        },
+        "phase_advance_deg": 193.27608951669438,
+        "sha256": "9c3cc03af9c8ea6d359fd7588b014436c7c29559f499c1e94fca2e6d96362f3b",
+        "source_time_advance_s": 0.5368780264352622
+      },
+      "source": {
+        "discarded_repeated_force_rows": 0,
+        "discarded_repeated_motor_rows": 0,
+        "drop_initial_stale_force_frame": false,
+        "filename": "010_1hz_20cyc.csv",
+        "first_force_age_s": 0.000581,
+        "first_force_t_abs_s": 1785209784.142187,
+        "force_age_s": {
+          "max": 0.00233,
+          "median": 0.0005525,
+          "min": 5.9e-05,
+          "p99": 0.0012831399999999969
+        },
+        "force_sample_rate_hz": 199.9948191476483,
+        "max_force_timestamp_gap_s": 0.007064104080200195,
+        "raw_rows": 4000,
+        "retained_force_duration_s": 19.99551796913147,
+        "retained_force_frames": 4000,
+        "retained_motor_feedback_rows": 4000,
+        "sha256": "78924ebb40274aeb326d50c02245bc037d8ec93cb71594f6475c2747cc27df7d"
+      }
+    },
+    "2hz.csv": {
+      "frequency_hz": 2.0,
+      "output": {
+        "channels": {
+          "Fx": {
+            "fundamental_amplitude": 0.7349678241239957,
+            "fundamental_phase_deg": 4.3610030780456785,
+            "max": 5.866018665300907,
+            "mean": 1.8339978463919993,
+            "min": -0.6559285794436914,
+            "peak_to_peak": 6.521947244744599,
+            "rms": 2.438411219359508
+          },
+          "Fy": {
+            "fundamental_amplitude": 0.08671700947352316,
+            "fundamental_phase_deg": 144.24348809062056,
+            "max": 0.5182756647532004,
+            "mean": -0.20532038618318374,
+            "min": -0.9365845393186226,
+            "peak_to_peak": 1.454860204071823,
+            "rms": 0.33037747234984327
+          },
+          "Fz": {
+            "fundamental_amplitude": 9.654257078084603,
+            "fundamental_phase_deg": 1.73424151470566,
+            "max": 11.549309586305913,
+            "mean": 0.1715535860748592,
+            "min": -12.074228905524553,
+            "peak_to_peak": 23.623538491830466,
+            "rms": 7.008867092700198
+          },
+          "Mx": {
+            "fundamental_amplitude": 0.13110265085709924,
+            "fundamental_phase_deg": -51.96195088662965,
+            "max": 0.28207992053770264,
+            "mean": 0.10666782010686066,
+            "min": -0.0770365424986024,
+            "peak_to_peak": 0.35911646303630507,
+            "rms": 0.14807977519641044
+          },
+          "My": {
+            "fundamental_amplitude": 1.4280047418139687,
+            "fundamental_phase_deg": -7.903418662231471,
+            "max": 2.7634734296968473,
+            "mean": 0.38773840373819496,
+            "min": -1.6107193508712825,
+            "peak_to_peak": 4.37419278056813,
+            "rms": 1.2223861248216121
+          },
+          "Mz": {
+            "fundamental_amplitude": 0.041906626991366776,
+            "fundamental_phase_deg": 162.82716271068963,
+            "max": 0.2010837632772154,
+            "mean": -0.004399527531424941,
+            "min": -0.2866927745569923,
+            "peak_to_peak": 0.4877765378342077,
+            "rms": 0.11280924162277699
+          }
+        },
+        "filename": "2hz.csv",
+        "max_internal_step_abs": {
+          "Fx": 0.5132841528793834,
+          "Fy": 0.20382735663748142,
+          "Fz": 0.2538342507159854,
+          "Mx": 0.015297482140251895,
+          "My": 0.04898985735856565,
+          "Mz": 0.024932353978492777
+        },
+        "max_seam_abs": 0.0,
+        "rows": 10001,
+        "seam_step_abs": {
+          "Fx": 0.013172888973037367,
+          "Fy": 0.0013462530264010675,
+          "Fz": 0.0724858874190879,
+          "Mx": 0.0025715057629511207,
+          "My": 0.0006373863644921762,
+          "Mz": 0.001040093076318263
+        },
+        "sha256": "151daa924287fdcc2a778051a735e152e15e8ce4079a26e2de8ee1d923e2b2fd"
+      },
+      "phase_reference": {
+        "filename": "2hz.csv",
+        "latest_m1_fit": {
+          "amplitude": 21.76234562547094,
+          "dc": 19.50432072769211,
+          "phase_deg": -112.53555633987807,
+          "samples": 1699
+        },
+        "old_motor7_fit": {
+          "amplitude": 24.981405209983514,
+          "dc": 20.008235592288003,
+          "phase_deg": 88.31682390942092,
+          "samples": 250
+        },
+        "old_motor7_initial": {
+          "forward_slope_deg_s": -265.64017799999993,
+          "position_deg": 20.402423495
+        },
+        "phase_advance_deg": 200.852380249299,
+        "sha256": "146a74ba8f3de1dcc52acc0d3496439201bb7255f53114265efca9719ce77ec0",
+        "source_time_advance_s": 0.2789616392351375
+      },
+      "source": {
+        "discarded_repeated_force_rows": 0,
+        "discarded_repeated_motor_rows": 1,
+        "drop_initial_stale_force_frame": false,
+        "filename": "020_2hz_20cyc.csv",
+        "first_force_age_s": 7.9e-05,
+        "first_force_t_abs_s": 1785209927.936387,
+        "force_age_s": {
+          "max": 0.00221,
+          "median": 0.000524,
+          "min": 6.3e-05,
+          "p99": 0.001432
+        },
+        "force_sample_rate_hz": 200.00010013585336,
+        "max_force_timestamp_gap_s": 0.007498979568481445,
+        "raw_rows": 2001,
+        "retained_force_duration_s": 9.999994993209839,
+        "retained_force_frames": 2001,
+        "retained_motor_feedback_rows": 2000,
+        "sha256": "48617082695e2ead03bf8eb13a15f29363e0ae6471f5837c6f75b91cfda0f285"
+      }
+    },
+    "3hz.csv": {
+      "frequency_hz": 3.0,
+      "output": {
+        "channels": {
+          "Fx": {
+            "fundamental_amplitude": 1.5592091383569207,
+            "fundamental_phase_deg": -35.098099822192076,
+            "max": 11.483275542925762,
+            "mean": 2.5128288535690584,
+            "min": -4.032563727656023,
+            "peak_to_peak": 15.515839270581786,
+            "rms": 4.210800182771197
+          },
+          "Fy": {
+            "fundamental_amplitude": 0.16014958715815844,
+            "fundamental_phase_deg": 120.03157399175375,
+            "max": 1.1502748185078222,
+            "mean": -0.17762476349326559,
+            "min": -1.5409306061583619,
+            "peak_to_peak": 2.691205424666184,
+            "rms": 0.5462307000866088
+          },
+          "Fz": {
+            "fundamental_amplitude": 11.759728870018403,
+            "fundamental_phase_deg": -18.33581709227252,
+            "max": 15.222980933788918,
+            "mean": 0.8397239715770902,
+            "min": -13.949818298514332,
+            "peak_to_peak": 29.172799232303248,
+            "rms": 9.139233327016257
+          },
+          "Mx": {
+            "fundamental_amplitude": 0.15153273740268977,
+            "fundamental_phase_deg": -84.47426682677091,
+            "max": 0.2856133760344754,
+            "mean": 0.024788227235648427,
+            "min": -0.26388828404804854,
+            "peak_to_peak": 0.549501660082524,
+            "rms": 0.14665483752380942
+          },
+          "My": {
+            "fundamental_amplitude": 2.0820506708999407,
+            "fundamental_phase_deg": -34.20116886918259,
+            "max": 4.736938550361151,
+            "mean": 0.6053532275988546,
+            "min": -2.0473362238137316,
+            "peak_to_peak": 6.784274774174882,
+            "rms": 1.9880333280410682
+          },
+          "Mz": {
+            "fundamental_amplitude": 0.014975069155831197,
+            "fundamental_phase_deg": -7.903806136030094,
+            "max": 0.5673438209134085,
+            "mean": 0.019713025038168932,
+            "min": -0.3262790107907559,
+            "peak_to_peak": 0.8936228317041643,
+            "rms": 0.21265725500065472
+          }
+        },
+        "filename": "3hz.csv",
+        "max_internal_step_abs": {
+          "Fx": 0.7549439151952928,
+          "Fy": 0.2760134080119547,
+          "Fz": 0.6408334298861313,
+          "Mx": 0.044151250163889086,
+          "My": 0.1478172292241814,
+          "Mz": 0.04047661604149072
+        },
+        "max_seam_abs": 0.0,
+        "rows": 10001,
+        "seam_step_abs": {
+          "Fx": 0.14305426258504128,
+          "Fy": 0.07324495321898639,
+          "Fz": 0.23932101213247936,
+          "Mx": 0.018251134155794782,
+          "My": 0.03941019748455665,
+          "Mz": 0.0187459390303897
+        },
+        "sha256": "3750a4788a2025f0cd2341abbd47786aa0e50572a2dea1aa46431c871f0b8c14"
+      },
+      "phase_reference": {
+        "filename": "3hz.csv",
+        "latest_m1_fit": {
+          "amplitude": 16.35796718453444,
+          "dc": 19.925936409273145,
+          "phase_deg": -75.66645192287463,
+          "samples": 1133
+        },
+        "old_motor7_fit": {
+          "amplitude": 25.226022634472898,
+          "dc": 20.01592965804995,
+          "phase_deg": 88.06834569876013,
+          "samples": 168
+        },
+        "old_motor7_initial": {
+          "forward_slope_deg_s": -448.1284904669723,
+          "position_deg": 21.3478851
+        },
+        "phase_advance_deg": 163.73479762163475,
+        "sha256": "00561e09dfdf42a7d361323af8033dabffeb2d859242525df0011d2b93317c43",
+        "source_time_advance_s": 0.15160629409410625
+      },
+      "source": {
+        "discarded_repeated_force_rows": 0,
+        "discarded_repeated_motor_rows": 0,
+        "drop_initial_stale_force_frame": false,
+        "filename": "030_3hz_20cyc.csv",
+        "first_force_age_s": 0.000856,
+        "first_force_t_abs_s": 1785210010.780943,
+        "force_age_s": {
+          "max": 0.002244,
+          "median": 0.00051,
+          "min": 6.5e-05,
+          "p99": 0.001368040000000001
+        },
+        "force_sample_rate_hz": 199.99847012636266,
+        "max_force_timestamp_gap_s": 0.007163047790527344,
+        "raw_rows": 1334,
+        "retained_force_duration_s": 6.665050983428955,
+        "retained_force_frames": 1334,
+        "retained_motor_feedback_rows": 1334,
+        "sha256": "6161270db2c79c793c1ca582ec4d338d28bcdf30068b29e69dc31a8f0324a96c"
+      }
+    }
+  },
+  "phase_alignment": {
+    "convention": "positive source_time_advance means aligned(t) = unaligned((t + advance) modulo one cycle)",
+    "identity_caveat": "latest m1 has no CAN ID; its positive envelope is a high-confidence, not independently proven, match to old motor7",
+    "source": "latest m1_pos_deg timed by m1_rx_abs_s relative to force_t_abs_s",
+    "target": "retained old motor7 wing-angle replay fundamental phase"
+  },
+  "preprocessing": {
+    "averaged_cycles": 17,
+    "deduplicate_force_key": "force_frame_count",
+    "drop_initial_stale_force_frame": false,
+    "drop_reason": "latest first force frames are fresh; stale-frame drop was specific to the old batch",
+    "endpoint_policy": "10 s endpoint duplicates 0 s for an exact periodic seam",
+    "output_duration_s": 10.0,
+    "output_sample_rate_hz": 1000,
+    "remove_per_file_mean": false,
+    "steady_cycle_interval": "[2/f, 19/f)",
+    "time_source": "force_t_abs_s relative to first retained force frame"
+  },
+  "schema": [
+    "time",
+    "Fx",
+    "Fy",
+    "Fz",
+    "Mx",
+    "My",
+    "Mz"
+  ],
+  "source_batch": "7.28\u5e26\u8499\u76ae",
+  "units": {
+    "Fx": "N",
+    "Fy": "N",
+    "Fz": "N",
+    "Mx": "N*m",
+    "My": "N*m",
+    "Mz": "N*m",
+    "time": "s"
+  }
+}

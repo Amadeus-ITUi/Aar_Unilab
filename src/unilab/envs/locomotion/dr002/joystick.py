@@ -10,7 +10,7 @@ import numpy as np
 from unilab.assets import ASSETS_ROOT_PATH
 from unilab.base import registry
 from unilab.base.backend import create_backend
-from unilab.base.backend.base import BatchedMixedPdControl
+from unilab.base.backend.base import BatchedCommandDelayPdControl, BatchedMixedPdControl
 from unilab.base.np_env import NpEnvState
 from unilab.base.scene import SceneCfg
 from unilab.dr import (
@@ -144,7 +144,7 @@ class DR002DomainRandConfig(DomainRandConfig):
     csv_force_transition_seconds: float = 0.1
     csv_force_start_delay_range_s: list[float] = field(default_factory=lambda: [0.0, 0.0])
     # Preserve legacy behavior by default: persistent standing-command
-    # episodes do not receive the measured CSV replay. WE9 opts in so standing
+    # episodes do not receive the measured CSV replay. WE11 opts in so standing
     # changes only the command, not the independently sampled force level.
     csv_force_apply_to_standing: bool = False
     # Sample one scalar per environment at reset and hold it for the complete
@@ -154,9 +154,15 @@ class DR002DomainRandConfig(DomainRandConfig):
     csv_force_zero_fy: bool = False
     csv_force_rotation: list[float] = field(
         default_factory=lambda: [
-            0.7907964138, 0.0, -0.6120792693,
-            0.0, 1.0, 0.0,
-            0.6120792693, 0.0, 0.7907964138,
+            0.7907964138,
+            0.0,
+            -0.6120792693,
+            0.0,
+            1.0,
+            0.0,
+            0.6120792693,
+            0.0,
+            0.7907964138,
         ]
     )
     csv_force_body_name: str | None = None
@@ -183,8 +189,19 @@ class DR002DomainRandConfig(DomainRandConfig):
 
 
 @dataclass
+class WE5DomainRandConfig(DR002DomainRandConfig):
+    """WE5 randomization defaults aligned with the IsaacLab main task."""
+
+    randomize_torque_scale: bool = True
+    torque_scale_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
+
+
+@dataclass
 class WingAngleObservationConfig:
     enabled: bool = False
+    # Preserve the two-channel observation/history contract while replacing
+    # the generated motor-position frame with exact zeros at actor input.
+    force_zero_output: bool = False
     curriculum_paths: list[str] = field(default_factory=list)
     normalization_deg: float = 180.0
     zero_offsets_deg: list[float] = field(default_factory=lambda: [0.0, 0.0])
@@ -244,37 +261,25 @@ class JoystickSensor:
         "ancestor_dante_tail_mid_touch",
         "ancestor_dante_front_center_touch",
     )
+    # None preserves the historical contract where every penalized contact
+    # can also terminate. Tasks may provide a subset when a body contact
+    # should remain reward-visible without ending the episode.
+    termination_contacts: tuple[str, ...] | None = None
 
 
 @dataclass
-class WE6JoystickSensor(JoystickSensor):
-    """Contact sensors available in the streamlined WE6 model."""
+class WE11JoystickSensor(JoystickSensor):
+    """Contact sensors exposed by the self-contained WE11 model."""
 
     undesired_contacts: tuple[str, ...] = (
         "base_link_touch",
         "left_thigh_touch",
-        "left_calf_touch",
+        "left_calf_shaft_touch",
         "right_thigh_touch",
-        "right_calf_touch",
-        "ancestor_dante_upper_left_touch",
-        "ancestor_dante_upper_right_touch",
-        "ancestor_dante_front_center_touch",
-    )
-
-
-@dataclass
-class U9JoystickSensor(JoystickSensor):
-    """Contact sensors exposed by the reviewed U9 model."""
-
-    undesired_contacts: tuple[str, ...] = (
-        "base_link_touch",
-        "left_thigh_touch",
-        "left_calf_touch",
-        "right_thigh_touch",
-        "right_calf_touch",
-        "dandan_upper_left_touch",
-        "dandan_upper_right_touch",
-        "dandan_front_center_touch",
+        "right_calf_shaft_touch",
+        "ancient_upper_left_touch",
+        "ancient_upper_right_touch",
+        "ancient_front_center_touch",
     )
 
 
@@ -296,53 +301,35 @@ class DR002JoystickCfg(DR002BaseCfg):
 
 
 @dataclass
-class WE6ControlConfig(ControlConfig):
-    """WE6's 400 Hz training PD and pre-controller command FIFO."""
-
-    motor_control_hz: float | None = 400.0
-    action_delay_semantics: str = "pre_controller_command_fifo"
-    torque_delay_steps: int = 0
-    action_delay_min_steps: int = 6
-    action_delay_max_steps: int = 14
-    action_delay_steps_by_joint: list[int] | None = field(
-        default_factory=lambda: [14, 6, 10, 14, 6, 10]
-    )
-    resample_action_delay: bool = False
-    use_native_batched_pd: bool = True
-    Kp: list[float] = field(  # noqa: N815
-        default_factory=lambda: [3.75, 4.04, 0.0, 3.75, 4.04, 0.0]
-    )
-    Kd: list[float] = field(  # noqa: N815
-        default_factory=lambda: [0.145, 0.2, 0.202, 0.145, 0.2, 0.202]
-    )
-
-
-@dataclass
-class WE9ControlConfig(ControlConfig):
-    """U9 PACE controller with a shared randomized command FIFO."""
+class WE11ControlConfig(ControlConfig):
+    """WE11 PACE controller with a shared randomized command FIFO."""
 
     # Preserve the WE6 wheel action-to-torque gain with Kd reduced 4x to 0.05.
     wheel_action_scale: float = 10.0
     wheel_clip_actions: float = 2.5
     motor_control_hz: float | None = 200.0
     action_delay_semantics: str = "pre_controller_command_fifo"
-    torque_delay_steps: int = 0
+    torque_delay_steps: int | None = None
     action_delay_min_steps: int = 2
     action_delay_max_steps: int = 8
     action_delay_steps_by_joint: list[int] | None = None
+    torque_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [0, 0, 0, 0, 0, 0]
+    )
     resample_action_delay: bool = True
     use_native_batched_pd: bool = False
     Kp: list[float] = field(  # noqa: N815
-        default_factory=lambda: [4.11, 3.91, 0.0, 4.11, 3.91, 0.0]
+        default_factory=lambda: [2.0, 7.59, 0.0, 2.0, 7.59, 0.0]
     )
     Kd: list[float] = field(  # noqa: N815
-        default_factory=lambda: [0.160, 0.193, 0.05, 0.160, 0.193, 0.05]
+        default_factory=lambda: [0.080, 0.682, 0.05, 0.080, 0.682, 0.05]
     )
+    use_native_command_delay_pd: bool = True
 
 
 @dataclass
-class WE6NoiseConfig(NoiseConfig):
-    """WE6 sensor noise with episode-fixed mounting error and slow IMU drift."""
+class WE11NoiseConfig(NoiseConfig):
+    """WE11 sensor noise, owned locally instead of inherited from another task."""
 
     scale_gyro: float = 0.1
     scale_joint_angle: float = 0.001
@@ -355,38 +342,83 @@ class WE6NoiseConfig(NoiseConfig):
     gravity_dynamic_noise_time_constant_s: float = 3.0
 
 
-@registry.envcfg("DR002JoystickFlatWE6")
 @dataclass
-class DR002JoystickFlatWE6Cfg(DR002JoystickCfg):
-    """Walking Eagle 6 with Bode-PACE actuator dynamics."""
+class WE5NoiseConfig(NoiseConfig):
+    """WE5 observation noise kept independent from shared defaults."""
 
-    scene: SceneCfg = field(
-        default_factory=lambda: SceneCfg(
-            model_file=str(_DR002_ASSET_ROOT / "we6" / "scene_flat_we6.xml")
-        )
+    scale_gyro: float = 0.2
+    scale_joint_angle: float = 0.08
+    scale_joint_vel: float = 1.5
+    scale_wheel_vel: float = 2.25
+    scale_gravity: float = 0.2
+    gravity_noise_mode: str = "additive"
+    gravity_installation_bias_max_deg: float = 0.0
+    gravity_dynamic_noise_max_deg: float = 0.0
+    gravity_dynamic_noise_time_constant_s: float = 3.0
+
+
+@dataclass
+class WE5CommandDelayControlConfig(ControlConfig):
+    """WE5 controller matched to the command-delay sweep bundle."""
+
+    motor_control_hz: float | None = 400.0
+    action_delay_semantics: str = "pre_controller_command_fifo"
+    torque_delay_steps: int | None = None
+    action_delay_min_steps: int = 0
+    action_delay_max_steps: int = 0
+    action_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [4, 4, 4, 4, 4, 4]
     )
-    sim_dt: float = 0.0025
-    ctrl_dt: float = 0.02
-    noise_config: NoiseConfig = field(default_factory=WE6NoiseConfig)  # type: ignore[assignment]
-    control_config: ControlConfig = field(default_factory=WE6ControlConfig)  # type: ignore[assignment]
-    sensor: JoystickSensor = field(default_factory=WE6JoystickSensor)  # type: ignore[assignment]
-    critic_obs_mode: str = "isaaclab"
+    torque_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [0, 0, 0, 0, 0, 0]
+    )
+    resample_action_delay: bool = False
+    use_native_batched_pd: bool = True
+    Kp: list[float] = field(  # noqa: N815
+        default_factory=lambda: [3.72, 4.0, 0.0, 3.72, 4.0, 0.0]
+    )
+    Kd: list[float] = field(  # noqa: N815
+        default_factory=lambda: [0.15, 0.2, 0.05, 0.15, 0.2, 0.05]
+    )
 
 
-@registry.envcfg("DR002JoystickFlatWE9")
 @dataclass
-class DR002JoystickFlatWE9Cfg(DR002JoystickFlatWE6Cfg):
-    """Reviewed U9 morphology with its independently materialized PACE model."""
+class WE5TorqueDelayControlConfig(WE5CommandDelayControlConfig):
+    """WE5 controller matched to the post-PD torque-delay sweep bundle."""
+
+    action_delay_semantics: str = "post_controller_motor_torque_fifo"
+    action_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [0, 0, 0, 0, 0, 0]
+    )
+    torque_delay_steps_by_joint: list[int] | None = field(
+        default_factory=lambda: [10, 6, 6, 10, 6, 6]
+    )
+    Kp: list[float] = field(  # noqa: N815
+        default_factory=lambda: [4.27, 3.99, 0.0, 4.27, 3.99, 0.0]
+    )
+    Kd: list[float] = field(  # noqa: N815
+        default_factory=lambda: [0.231, 0.2, 0.05, 0.231, 0.2, 0.05]
+    )
+
+
+@registry.envcfg("DR002JoystickFlatWE11")
+@dataclass
+class DR002JoystickFlatWE11Cfg(DR002JoystickCfg):
+    """Self-contained WE11 morphology, PACE dynamics, observations, and control."""
 
     scene: SceneCfg = field(
         default_factory=lambda: SceneCfg(
-            model_file=str(_DR002_ASSET_ROOT / "u9" / "scene_flat_u9_pace.xml")
+            model_file=str(_DR002_ASSET_ROOT / "we11" / "scene_flat_we11.xml")
         )
     )
     control_config: ControlConfig = field(  # type: ignore[assignment]
-        default_factory=WE9ControlConfig
+        default_factory=WE11ControlConfig
     )
-    sensor: JoystickSensor = field(default_factory=U9JoystickSensor)  # type: ignore[assignment]
+    noise_config: NoiseConfig = field(default_factory=WE11NoiseConfig)  # type: ignore[assignment]
+    sensor: JoystickSensor = field(default_factory=WE11JoystickSensor)  # type: ignore[assignment]
+    sim_dt: float = 0.0025
+    ctrl_dt: float = 0.02
+    critic_obs_mode: str = "isaaclab"
 
 
 def _sample_dr002_commands(
@@ -400,7 +432,9 @@ def _sample_dr002_commands(
     ang_vel_z = tuple(cfg.ang_vel_z) if ang_vel_z_range is None else ang_vel_z_range
     low = np.asarray([lin_vel_x[0], ang_vel_z[0], cfg.height[0]], dtype=get_global_dtype())
     high = np.asarray([lin_vel_x[1], ang_vel_z[1], cfg.height[1]], dtype=get_global_dtype())
-    commands = np.random.uniform(low=low, high=high, size=(num_samples, 3)).astype(get_global_dtype())
+    commands = np.random.uniform(low=low, high=high, size=(num_samples, 3)).astype(
+        get_global_dtype()
+    )
     if standing_mask is not None:
         standing = np.asarray(standing_mask, dtype=np.bool_).reshape(-1)
         if standing.shape != (num_samples,):
@@ -883,13 +917,9 @@ def _validate_wing_angle_observation_mapping(
         raise ValueError("wing_angle_obs.zero_offsets_deg must contain two finite values")
     standing_range = np.asarray(cfg.standing_normalized_range, dtype=np.float64)
     if standing_range.shape != (2,) or not np.all(np.isfinite(standing_range)):
-        raise ValueError(
-            "wing_angle_obs.standing_normalized_range must contain two finite values"
-        )
+        raise ValueError("wing_angle_obs.standing_normalized_range must contain two finite values")
     if standing_range[0] > standing_range[1]:
-        raise ValueError(
-            "wing_angle_obs.standing_normalized_range must be ordered [low, high]"
-        )
+        raise ValueError("wing_angle_obs.standing_normalized_range must be ordered [low, high]")
 
     hz_values = _csv_force_curriculum_hz_values(domain_rand)
     if not hz_values:
@@ -1068,14 +1098,11 @@ def _sample_dr002_body_mass_multipliers(
     template = np.asarray(body_mass_template, dtype=np.float64)
     if template.ndim != 1:
         raise ValueError(
-            "body mass randomization requires body mass shape (nbody,), "
-            f"got {template.shape}"
+            f"body mass randomization requires body mass shape (nbody,), got {template.shape}"
         )
     bounds = np.asarray(domain_rand.body_mass_multiplier_range, dtype=np.float64)
     if bounds.shape != (2,) or np.any(~np.isfinite(bounds)) or bounds[1] < bounds[0]:
-        raise ValueError(
-            "body_mass_multiplier_range must contain finite [low, high] bounds"
-        )
+        raise ValueError("body_mass_multiplier_range must contain finite [low, high] bounds")
     multipliers = np.random.uniform(
         float(bounds[0]),
         float(bounds[1]),
@@ -1440,10 +1467,9 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             transition_seconds = float(env.cfg.domain_rand.csv_force_transition_seconds)
             if transition_seconds < 0.0:
                 raise ValueError("domain_rand.csv_force_transition_seconds must be >= 0")
-            if (
-                float(env.cfg.domain_rand.csv_force_period) > 0.0
-                and transition_seconds * 2.0 > float(env.cfg.domain_rand.csv_force_period)
-            ):
+            if float(
+                env.cfg.domain_rand.csv_force_period
+            ) > 0.0 and transition_seconds * 2.0 > float(env.cfg.domain_rand.csv_force_period):
                 raise ValueError(
                     "domain_rand.csv_force_transition_seconds must not exceed half the replay period"
                 )
@@ -1729,7 +1755,9 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             ).reshape(row_count, num_substeps, 3)
         wrench_world = np.concatenate([force_world, torque_world], axis=2)
         if hasattr(env, "_external_disturbance_current_wrench"):
-            env._external_disturbance_current_wrench[: wrench_world.shape[0]] = wrench_world[:, -1, :]
+            env._external_disturbance_current_wrench[: wrench_world.shape[0]] = wrench_world[
+                :, -1, :
+            ]
         return wrench_world[:, :, None, :]
 
     def build_reset_plan(self, env: Any, env_ids: np.ndarray) -> ResetPlan:
@@ -1754,7 +1782,9 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
 
         motor_kp, motor_kd = env.sample_reset_motor_gains(num_reset)
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
-        torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(num_reset)
+        torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(
+            num_reset
+        )
         env.set_motor_runtime_randomization(env_ids, torque_scale, default_joint_pos_offset)
         standing_mask = env.sample_reset_standing_mask(env_ids)
         env.set_episode_standing_mask(env_ids, standing_mask)
@@ -1871,14 +1901,13 @@ class DR002JoystickEnv(DR002BaseEnv):
         critic_obs_mode = str(cfg.critic_obs_mode)
         if critic_obs_mode not in {"legacy", "isaaclab"}:
             raise ValueError(
-                "critic_obs_mode must be either 'legacy' or 'isaaclab', "
-                f"got {critic_obs_mode!r}"
+                f"critic_obs_mode must be either 'legacy' or 'isaaclab', got {critic_obs_mode!r}"
             )
         self._use_isaaclab_critic = critic_obs_mode == "isaaclab"
         self._critic_includes_measured_moment = self._use_isaaclab_critic and bool(
             cfg.domain_rand.csv_force_observation_include_measured_moment
         )
-        # Force-only IsaacLab critics retain 144D. WE9 can opt into the rotated
+        # Force-only IsaacLab critics retain 144D. WE11 opts into the rotated
         # measured Mx/My/Mz for 147D, while legacy DR002 stays checkpoint-safe.
         if not self._use_isaaclab_critic:
             self._critic_dim = _LEGACY_CRITIC_DIM
@@ -1898,7 +1927,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._motor_kp = np.broadcast_to(self._base_motor_kp, (num_envs, NUM_DR002_ACTIONS)).copy()
         self._motor_kd = np.broadcast_to(self._base_motor_kd, (num_envs, NUM_DR002_ACTIONS)).copy()
         self._motor_torque_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
-        self._default_joint_pos_offset = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        self._default_joint_pos_offset = np.zeros(
+            (num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype
+        )
         self._privileged_body_ids = np.asarray(
             [self._backend.get_body_id(name) for name in _PRIVILEGED_BODY_NAMES],
             dtype=np.int32,
@@ -1910,15 +1941,23 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._privileged_base_inertia_scale = np.ones((num_envs, 1), dtype=np.float64)
         self._privileged_ground_friction_scale = np.ones((num_envs, 1), dtype=np.float64)
         self._privileged_robot_friction_scale = np.ones((num_envs, 1), dtype=np.float64)
-        self._privileged_dof_armature_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
+        self._privileged_dof_armature_scale = np.ones(
+            (num_envs, NUM_DR002_ACTIONS), dtype=np.float64
+        )
         self._last_motor_ctrl = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
-        self._last_dof_vel_for_acc = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
+        self._last_dof_vel_for_acc = np.zeros(
+            (num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype()
+        )
         delay_semantics = str(cfg.control_config.action_delay_semantics)
-        torque_delay_steps = int(cfg.control_config.torque_delay_steps)
-        if delay_semantics != "pre_controller_command_fifo" or torque_delay_steps != 0:
+        supported_delay_semantics = {
+            "pre_controller_command_fifo",
+            "post_controller_motor_torque_fifo",
+            "per_joint_command_and_torque_fifo",
+        }
+        if delay_semantics not in supported_delay_semantics:
             raise ValueError(
-                "DR002 supports only pre-controller command delay with torque_delay_steps=0, "
-                f"got semantics={delay_semantics!r}, torque_delay_steps={torque_delay_steps}"
+                "unsupported DR002 action-delay semantics "
+                f"{delay_semantics!r}; expected one of {sorted(supported_delay_semantics)}"
             )
         motor_control_hz = cfg.control_config.motor_control_hz
         if motor_control_hz is None:
@@ -1944,7 +1983,16 @@ class DR002JoystickEnv(DR002BaseEnv):
                 "policy interval must contain an integer number of motor-control updates, "
                 f"got sim_substeps={cfg.sim_substeps}, decimation={self._motor_control_decimation}"
             )
-        if self._motor_control_decimation > 1 and cfg.control_config.use_native_batched_pd:
+        use_native_batched_pd = bool(cfg.control_config.use_native_batched_pd)
+        use_native_command_delay_pd = bool(
+            getattr(cfg.control_config, "use_native_command_delay_pd", False)
+        )
+        if use_native_batched_pd and use_native_command_delay_pd:
+            raise ValueError(
+                "configure only one native PD path: use_native_batched_pd or "
+                "use_native_command_delay_pd"
+            )
+        if self._motor_control_decimation > 1 and use_native_batched_pd:
             raise ValueError(
                 "native batched PD recomputes torque every physics substep and cannot be used "
                 "with a lower-rate zero-order-held motor controller"
@@ -1960,19 +2008,26 @@ class DR002JoystickEnv(DR002BaseEnv):
                     "action_delay_steps_by_joint must follow the six-joint DR002 order, "
                     f"got shape {raw_delay_steps.shape}"
                 )
-            if np.any(~np.isfinite(raw_delay_steps)) or np.any(raw_delay_steps < 0.0) or np.any(
-                raw_delay_steps != np.rint(raw_delay_steps)
+            if (
+                np.any(~np.isfinite(raw_delay_steps))
+                or np.any(raw_delay_steps < 0.0)
+                or np.any(raw_delay_steps != np.rint(raw_delay_steps))
             ):
                 raise ValueError("action_delay_steps_by_joint must contain non-negative integers")
             if not self._action_delay_enabled:
-                raise ValueError("action_delay_steps_by_joint requires simulate_action_latency=True")
+                raise ValueError(
+                    "action_delay_steps_by_joint requires simulate_action_latency=True"
+                )
             self._fixed_action_delay_steps = raw_delay_steps.astype(np.int32)
             self._action_delay_min_steps = int(np.min(self._fixed_action_delay_steps))
             self._action_delay_max_steps = int(np.max(self._fixed_action_delay_steps))
         else:
             self._action_delay_min_steps = int(cfg.control_config.action_delay_min_steps)
             self._action_delay_max_steps = int(cfg.control_config.action_delay_max_steps)
-        if self._action_delay_min_steps < 0 or self._action_delay_max_steps < self._action_delay_min_steps:
+        if (
+            self._action_delay_min_steps < 0
+            or self._action_delay_max_steps < self._action_delay_min_steps
+        ):
             raise ValueError(
                 "DR002 action delay requires 0 <= action_delay_min_steps <= action_delay_max_steps, "
                 f"got [{self._action_delay_min_steps}, {self._action_delay_max_steps}]"
@@ -1997,10 +2052,58 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._action_delay_indices = np.broadcast_to(
                 self._fixed_action_delay_steps, (num_envs, NUM_DR002_ACTIONS)
             ).copy()
+        fixed_torque_delay_steps = cfg.control_config.torque_delay_steps_by_joint
+        uniform_torque_delay_steps = cfg.control_config.torque_delay_steps
+        if fixed_torque_delay_steps is not None and uniform_torque_delay_steps is not None:
+            raise ValueError(
+                "configure either torque_delay_steps or torque_delay_steps_by_joint, not both"
+            )
+        if fixed_torque_delay_steps is None:
+            uniform_delay = 0 if uniform_torque_delay_steps is None else uniform_torque_delay_steps
+            raw_torque_delay_steps = np.full((NUM_DR002_ACTIONS,), uniform_delay, dtype=np.float64)
+        else:
+            raw_torque_delay_steps = np.asarray(fixed_torque_delay_steps, dtype=np.float64)
+        if raw_torque_delay_steps.shape != (NUM_DR002_ACTIONS,):
+            raise ValueError(
+                "torque_delay_steps_by_joint must follow the six-joint DR002 order, "
+                f"got shape {raw_torque_delay_steps.shape}"
+            )
+        if (
+            np.any(~np.isfinite(raw_torque_delay_steps))
+            or np.any(raw_torque_delay_steps < 0.0)
+            or np.any(raw_torque_delay_steps != np.rint(raw_torque_delay_steps))
+        ):
+            raise ValueError("torque delay steps must contain non-negative integers")
+        self._torque_delay_steps_by_joint = raw_torque_delay_steps.astype(np.int32)
+        self._torque_delay_max_steps = int(np.max(self._torque_delay_steps_by_joint))
+        has_command_delay = self._action_delay_max_steps > 0
+        has_torque_delay = self._torque_delay_max_steps > 0
+        if has_torque_delay and not self._action_delay_enabled:
+            raise ValueError("torque delay requires simulate_action_latency=True")
+        if delay_semantics == "pre_controller_command_fifo" and has_torque_delay:
+            raise ValueError("pre_controller_command_fifo cannot configure torque delay")
+        if delay_semantics == "post_controller_motor_torque_fifo" and has_command_delay:
+            raise ValueError("post_controller_motor_torque_fifo cannot configure command delay")
+        if use_native_command_delay_pd:
+            if delay_semantics != "pre_controller_command_fifo":
+                raise ValueError(
+                    "use_native_command_delay_pd requires pre_controller_command_fifo semantics"
+                )
+            if has_torque_delay:
+                raise ValueError(
+                    "use_native_command_delay_pd does not support a post-controller torque FIFO"
+                )
+        self._computed_motor_ctrl = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        self._torque_delay_buffer = np.zeros(
+            (num_envs, self._torque_delay_max_steps + 1, NUM_DR002_ACTIONS),
+            dtype=self._np_dtype,
+        )
         self._reset_action_delay(np.arange(num_envs, dtype=np.int32), resample=True)
         self._joint_range = self._backend.get_joint_range()
         self._lingzu_prev_action = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
-        self._lingzu_prev_prev_action = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype())
+        self._lingzu_prev_prev_action = np.zeros(
+            (num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype()
+        )
         self._lingzu_action_history_count = np.zeros((num_envs,), dtype=np.int32)
         self._lingzu_fail_steps = np.zeros((num_envs,), dtype=np.int32)
         self._lingzu_contact_fail_accum_steps = np.zeros((num_envs,), dtype=np.int32)
@@ -2012,9 +2115,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._base_command_lin_vel_x = np.asarray(cfg.commands.lin_vel_x, dtype=np.float64)
         self._base_command_ang_vel_z = np.asarray(cfg.commands.ang_vel_z, dtype=np.float64)
         self._standing_probability = float(cfg.commands.rel_standing_envs)
-        self._standing_envs_episode_persistent = bool(
-            cfg.commands.standing_envs_episode_persistent
-        )
+        self._standing_envs_episode_persistent = bool(cfg.commands.standing_envs_episode_persistent)
         if not 0.0 <= self._standing_probability <= 1.0:
             raise ValueError(
                 "commands.rel_standing_envs must be between 0 and 1, "
@@ -2083,18 +2184,12 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._last_noise_window_fail_rate = np.nan
         self._last_noise_window_mean_episode_length_fraction = np.nan
         self._last_noise_window_mature_fraction = np.nan
-        self._gravity_installation_bias_rp = np.zeros(
-            (num_envs, 2), dtype=self._np_dtype
-        )
-        self._gravity_dynamic_noise_rp = np.zeros(
-            (num_envs, 2), dtype=self._np_dtype
-        )
+        self._gravity_installation_bias_rp = np.zeros((num_envs, 2), dtype=self._np_dtype)
+        self._gravity_dynamic_noise_rp = np.zeros((num_envs, 2), dtype=self._np_dtype)
         self._external_disturbance_current_wrench = np.zeros(
             (num_envs, 6), dtype=get_global_dtype()
         )
-        self._measured_csv_force_base = np.zeros(
-            (num_envs, 3), dtype=get_global_dtype()
-        )
+        self._measured_csv_force_base = np.zeros((num_envs, 3), dtype=get_global_dtype())
         self._measured_csv_moment_base = np.zeros((num_envs, 3), dtype=get_global_dtype())
         self._validate_csv_force_curriculum_cfg()
         _validate_wing_angle_observation_mapping(cfg.domain_rand, cfg.wing_angle_obs)
@@ -2115,8 +2210,12 @@ class DR002JoystickEnv(DR002BaseEnv):
             for dim in self._history_term_dims
         ]
         self._backend.set_pre_step_control(self._pre_step_motor_control)
-        if cfg.control_config.use_native_batched_pd:
+        if use_native_batched_pd:
             self._backend.set_batched_mixed_pd_control(self._batched_motor_control)
+        if use_native_command_delay_pd:
+            self._backend.set_batched_command_delay_pd_control(
+                self._batched_command_delay_motor_control
+            )
         self._init_reward_functions()
         couple_base_inertia = cfg.domain_rand.couple_base_inertia_to_added_mass
         self._dr_base_body_mass = (
@@ -2136,7 +2235,10 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._dr_base_geom_friction = None
         self._dr_ground_geom_id = None
         self._dr_robot_geom_ids = None
-        if cfg.domain_rand.randomize_ground_friction or cfg.domain_rand.randomize_robot_geom_friction:
+        if (
+            cfg.domain_rand.randomize_ground_friction
+            or cfg.domain_rand.randomize_robot_geom_friction
+        ):
             self._dr_base_geom_friction = self._backend.get_geom_friction()
         if cfg.domain_rand.randomize_ground_friction:
             self._dr_ground_geom_id = self._backend.get_geom_id(cfg.asset.ground)
@@ -2147,9 +2249,13 @@ class DR002JoystickEnv(DR002BaseEnv):
             robot_geom_mask = np.isin(geom_body_ids, robot_body_ids)
             contype, conaffinity = self._backend.get_geom_contact_masks()
             contact_mask = (contype != 0) | (conaffinity != 0)
-            self._dr_robot_geom_ids = np.flatnonzero(robot_geom_mask & contact_mask).astype(np.int32)
+            self._dr_robot_geom_ids = np.flatnonzero(robot_geom_mask & contact_mask).astype(
+                np.int32
+            )
             if self._dr_robot_geom_ids.size == 0:
-                raise ValueError("DR002 robot geom friction randomization found no contact-enabled robot geoms")
+                raise ValueError(
+                    "DR002 robot geom friction randomization found no contact-enabled robot geoms"
+                )
         self._dr_base_dof_armature = (
             self._backend.get_dof_armature() if cfg.domain_rand.randomize_dof_armature else None
         )
@@ -2494,6 +2600,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._lingzu_fail_steps[env_ids] = 0
         self._lingzu_contact_fail_accum_steps[env_ids] = 0
         self._last_motor_ctrl[env_ids] = 0.0
+        self._computed_motor_ctrl[env_ids] = 0.0
+        self._reset_motor_torque_delay(env_ids)
         self._reset_action_delay(env_ids, resample=self._cfg.control_config.resample_action_delay)
         self._episode_track_lin_vel_x_sum[env_ids] = 0.0
         self._episode_track_ang_vel_z_sum[env_ids] = 0.0
@@ -2542,6 +2650,23 @@ class DR002JoystickEnv(DR002BaseEnv):
         return self._action_delay_buffer[
             env_ids[:, None], self._action_delay_indices[env_ids], joint_ids[None, :]
         ]
+
+    def _delayed_motor_ctrl(self, motor_ctrl: np.ndarray) -> np.ndarray:
+        """Apply the fitted post-PD, post-clip torque FIFO at motor ticks."""
+        if self._torque_delay_max_steps <= 0:
+            return motor_ctrl
+        self._torque_delay_buffer[:, 1:] = self._torque_delay_buffer[:, :-1].copy()
+        self._torque_delay_buffer[:, 0] = motor_ctrl
+        env_ids = np.arange(motor_ctrl.shape[0], dtype=np.int32)
+        joint_ids = np.arange(NUM_DR002_ACTIONS, dtype=np.int32)
+        return self._torque_delay_buffer[
+            env_ids[:, None], self._torque_delay_steps_by_joint[None, :], joint_ids[None, :]
+        ]
+
+    def _reset_motor_torque_delay(self, env_ids: np.ndarray) -> None:
+        """Clear only the reset environments' post-controller torque history."""
+        if env_ids.size > 0:
+            self._torque_delay_buffer[np.asarray(env_ids, dtype=np.intp)] = 0.0
 
     def _validate_motor_control_contract(self, ctrl_range: np.ndarray, num_envs: int) -> None:
         if self._backend.num_actuators != NUM_DR002_ACTIONS:
@@ -2595,7 +2720,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         kp[:, WHEEL_ACTION_INDICES] = 0.0
         return kp, kd
 
-    def sample_reset_motor_runtime_randomization(self, num_reset: int) -> tuple[np.ndarray, np.ndarray]:
+    def sample_reset_motor_runtime_randomization(
+        self, num_reset: int
+    ) -> tuple[np.ndarray, np.ndarray]:
         torque_scale = np.ones((num_reset, NUM_DR002_ACTIONS), dtype=np.float64)
         default_joint_pos_offset = np.zeros((num_reset, NUM_DR002_ACTIONS), dtype=self._np_dtype)
         domain_rand = self._cfg.domain_rand
@@ -3474,9 +3601,10 @@ class DR002JoystickEnv(DR002BaseEnv):
                 self._motor_kd,
                 self._ctrl_lower,
                 self._ctrl_upper,
-                self._last_motor_ctrl,
+                self._computed_motor_ctrl,
                 self._motor_torque_scale,
             )
+            self._last_motor_ctrl[:] = self._delayed_motor_ctrl(self._computed_motor_ctrl)
         self._motor_control_substep_index = (
             self._motor_control_substep_index + 1
         ) % self._motor_control_decimation
@@ -3508,8 +3636,62 @@ class DR002JoystickEnv(DR002BaseEnv):
             velocity_sensor_names=_JOINT_VEL_SENSOR_NAMES,
             ctrl_lower=self._ctrl_lower,
             ctrl_upper=self._ctrl_upper,
+            torque_delay_steps_by_joint=self._torque_delay_steps_by_joint,
+            initial_torque_delay_buffer=self._torque_delay_buffer,
+            final_torque_delay_buffer=self._torque_delay_buffer,
             final_ctrl_out=self._last_motor_ctrl,
         )
+
+    def _batched_command_delay_motor_control(
+        self, backend: Any, policy_ctrl: np.ndarray, nsteps: int
+    ) -> BatchedCommandDelayPdControl:
+        """Build one native 50 Hz interval without advancing the FIFO in Python."""
+        if nsteps < 1:
+            raise ValueError(
+                "DR002 batched command-delay motor control requires at least one physics substep"
+            )
+        joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
+        joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
+        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_ACTIONS)
+        target_trajectory = getattr(self, "_batched_command_policy_ctrl_trajectory", None)
+        if target_trajectory is None or target_trajectory.shape != trajectory_shape:
+            target_trajectory = np.empty(trajectory_shape, dtype=self._np_dtype)
+            self._batched_command_policy_ctrl_trajectory = target_trajectory
+        target_trajectory[:] = policy_ctrl[:, None, :]
+
+        if self._action_delay_indices.ndim == 1:
+            command_delay_steps = np.broadcast_to(
+                self._action_delay_indices[:, None],
+                (policy_ctrl.shape[0], NUM_DR002_ACTIONS),
+            )
+        else:
+            command_delay_steps = self._action_delay_indices
+
+        return BatchedCommandDelayPdControl(
+            target_trajectory=target_trajectory,
+            kp=self._motor_kp,
+            kd=self._motor_kd,
+            torque_scale=self._motor_torque_scale,
+            initial_joint_pos=joint_pos,
+            initial_joint_vel=joint_vel,
+            position_control_mask=_POSITION_CONTROL_MASK,
+            position_sensor_names=_JOINT_POS_SENSOR_NAMES,
+            velocity_sensor_names=_JOINT_VEL_SENSOR_NAMES,
+            ctrl_lower=self._ctrl_lower,
+            ctrl_upper=self._ctrl_upper,
+            motor_control_decimation=self._motor_control_decimation,
+            initial_motor_substep_index=self._motor_control_substep_index,
+            command_delay_steps=command_delay_steps,
+            initial_command_delay_buffer=self._action_delay_buffer,
+            final_command_delay_buffer=self._action_delay_buffer,
+            initial_ctrl=self._last_motor_ctrl,
+            final_ctrl_out=self._last_motor_ctrl,
+            final_computed_ctrl_out=self._computed_motor_ctrl,
+            set_final_motor_substep_index=self._set_motor_control_substep_index,
+        )
+
+    def _set_motor_control_substep_index(self, index: int) -> None:
+        self._motor_control_substep_index = int(index)
 
     def get_projected_gravity(self) -> np.ndarray:
         """Return standard body-frame gravity: R^T * [0, 0, -1]."""
@@ -3548,7 +3730,7 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _compute_terminated(self, gravity: np.ndarray) -> np.ndarray:
         gravity_failed_now = gravity[:, 2] <= self._reward_cfg.termination_gravity_z_threshold
-        contact_failed_now = self._has_undesired_contact(
+        contact_failed_now = self._has_termination_contact(
             gravity.shape[0], threshold=self._reward_cfg.termination_contact_threshold
         )
         self._lingzu_fail_steps = np.where(gravity_failed_now, self._lingzu_fail_steps + 1, 0)
@@ -3576,17 +3758,30 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._last_termination_gravity_done_fraction = float(np.mean(gravity_done))
         return gravity_done | contact_done
 
-    def _undesired_contact_values(self, num_envs: int) -> np.ndarray:
+    def _contact_values(
+        self,
+        num_envs: int,
+        contact_names: tuple[str, ...],
+    ) -> np.ndarray:
         contacts = []
-        for name in self._cfg.sensor.undesired_contacts:
+        for name in contact_names:
             sensor = np.asarray(self._backend.get_sensor_data(name)).reshape(num_envs, -1)[:, 0]
             contacts.append(sensor)
         if not contacts:
             return np.zeros((num_envs, 0), dtype=get_global_dtype())
         return np.asarray(np.stack(contacts, axis=1), dtype=get_global_dtype())
 
-    def _has_undesired_contact(self, num_envs: int, *, threshold: float) -> np.ndarray:
-        contacts = self._undesired_contact_values(num_envs)
+    def _undesired_contact_values(self, num_envs: int) -> np.ndarray:
+        return self._contact_values(num_envs, self._cfg.sensor.undesired_contacts)
+
+    def _termination_contact_values(self, num_envs: int) -> np.ndarray:
+        contact_names = self._cfg.sensor.termination_contacts
+        if contact_names is None:
+            contact_names = self._cfg.sensor.undesired_contacts
+        return self._contact_values(num_envs, contact_names)
+
+    def _has_termination_contact(self, num_envs: int, *, threshold: float) -> np.ndarray:
+        contacts = self._termination_contact_values(num_envs)
         if contacts.shape[1] == 0:
             return np.zeros((num_envs,), dtype=np.bool_)
         return np.any(contacts > float(threshold), axis=1)
@@ -4081,6 +4276,13 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _csv_force_curriculum_is_above_initial(self) -> bool:
         return int(self._csv_force_curriculum_level) > 0
 
+    def _csv_force_curriculum_is_full(self) -> bool:
+        domain_rand = self._cfg.domain_rand
+        if not domain_rand.csv_force_enabled or not domain_rand.csv_force_curriculum:
+            return True
+        max_level = max(_csv_force_curriculum_num_levels(domain_rand) - 1, 0)
+        return int(self._csv_force_curriculum_level) >= max_level
+
     def _update_command_velocity_curriculum(self, *, promote: bool) -> None:
         step = float(self._cfg.commands.curriculum_step)
         if promote:
@@ -4417,6 +4619,8 @@ class DR002JoystickEnv(DR002BaseEnv):
                 / float(self._cfg.wing_angle_obs.normalization_deg),
                 noise_level,
             )
+            if self._cfg.wing_angle_obs.force_zero_output:
+                wing_angle_obs.fill(0.0)
             frame_terms.append(wing_angle_obs)
         frame_terms.append(commands)
         actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
@@ -4784,5 +4988,4 @@ class DR002JoystickEnv(DR002BaseEnv):
 
 
 registry.register_env("DR002JoystickFlat", DR002JoystickEnv, sim_backend="motrix")
-registry.register_env("DR002JoystickFlatWE6", DR002JoystickEnv, sim_backend="mujoco")
-registry.register_env("DR002JoystickFlatWE9", DR002JoystickEnv, sim_backend="mujoco")
+registry.register_env("DR002JoystickFlatWE11", DR002JoystickEnv, sim_backend="mujoco")

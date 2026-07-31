@@ -19,6 +19,7 @@ ARCHIVE_PATH="${CACHE_DIR}/${SDIST_NAME}"
 SOURCE_DIR="${CACHE_DIR}/source-${VERSION}"
 FETCH_DIR="${CACHE_DIR}/fetchcontent"
 PATCH_PATH="${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/batch_env.patch"
+COMMAND_DELAY_PATCH_PATH="${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/command_delay_pd.patch"
 DEST_DIR="${ROOT_DIR}/src/unilab/base/backend/mujoco/_native"
 CMAKE_ARGS="-DMUJOCO_PYTHON_USE_SYSTEM_EIGEN=ON -DMUJOCO_PYTHON_BUILD_SIMULATE=OFF"
 if [[ -n "${UNILAB_ABSEIL_SOURCE:-}" ]]; then
@@ -47,6 +48,7 @@ rm -rf "${SOURCE_DIR}"
 mkdir -p "${SOURCE_DIR}"
 tar -xzf "${ARCHIVE_PATH}" --strip-components=1 -C "${SOURCE_DIR}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${PATCH_PATH}"
+patch --directory="${SOURCE_DIR}" --strip=1 < "${COMMAND_DELAY_PATCH_PATH}"
 
 pushd "${SOURCE_DIR}" >/dev/null
 MUJOCO_PATH="${MUJOCO_DIR}" \
@@ -62,9 +64,12 @@ DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
 install -m 0755 "${SOURCE_SO}" "${DEST_SO}"
 
 PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}" "${PYTHON_BIN}" - <<'PY'
-from unilab.base.backend.mujoco.native_batch import native_mixed_pd_available
+from unilab.base.backend.mujoco.native_batch import (
+    native_command_delay_pd_available,
+    native_mixed_pd_available,
+)
 
-if not native_mixed_pd_available():
-    raise SystemExit("native mixed-PD extension import check failed")
-print("UniLab native mixed-PD extension: ready")
+if not native_mixed_pd_available() or not native_command_delay_pd_available():
+    raise SystemExit("native torque-FIFO/command-delay PD extension import check failed")
+print("UniLab native torque-FIFO and command-delay PD extension: ready")
 PY

@@ -14,7 +14,9 @@ land on the correct surface height.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -56,6 +58,16 @@ class TerrainCurriculumCfg:
     ``[num_rows * cycle_top_frac, num_rows - 1]``."""
     spawn_height_margin: float = 0.05
     """Extra z added on top of the sampled terrain surface height."""
+    use_path_length: bool = False
+    """Use accumulated XY path length instead of net spawn displacement."""
+    demote_requires_commanded_distance: bool = False
+    """Only demote episodes with enough requested translational travel."""
+    demote_commanded_distance_frac: float = 0.25
+    """Required commanded travel as a fraction of cell size before demotion."""
+    unlock_after_force_curriculum: bool = False
+    """Let the environment owner gate terrain progression behind force curriculum."""
+    initial_level: int | None = None
+    """Optional fixed initial row, primarily for deterministic terrain playback."""
     seed: int | None = None
 
 
@@ -82,6 +94,7 @@ class TerrainSpawnManager(BaseSpawnManager):
             )
 
         self._terrain_origins = terrain_origins.astype(np.float64, copy=False)
+        self._num_envs = int(num_envs)
         self._num_rows = num_rows
         self._num_cols = num_cols
         self._cell_size = float(cell_size)
@@ -117,12 +130,21 @@ class TerrainSpawnManager(BaseSpawnManager):
             self.type_cols = self._rng.choice(
                 num_cols, size=num_envs, p=self._type_col_probabilities
             ).astype(np.int32)
-        if cfg.enabled:
+        if cfg.initial_level is not None:
+            initial_level = int(cfg.initial_level)
+            if initial_level < 0 or initial_level >= num_rows:
+                raise ValueError(
+                    f"initial terrain level must be in [0, {num_rows - 1}], got {initial_level}"
+                )
+            self.levels = np.full(num_envs, initial_level, dtype=np.int32)
+        elif cfg.enabled:
             self.levels = np.zeros(num_envs, dtype=np.int32)
         else:
             self.levels = self._rng.integers(0, num_rows, size=num_envs).astype(np.int32)
 
         self._episode_start_xyz = np.zeros((num_envs, 3), dtype=np.float64)
+        self._last_xyz = np.zeros((num_envs, 3), dtype=np.float64)
+        self._episode_path_length = np.zeros(num_envs, dtype=np.float64)
         self._has_started = np.zeros(num_envs, dtype=bool)
 
     @property
@@ -203,9 +225,47 @@ class TerrainSpawnManager(BaseSpawnManager):
 
     def record_episode_start(self, env_ids: np.ndarray, qpos_xyz: np.ndarray) -> None:
         self._episode_start_xyz[env_ids] = qpos_xyz
+        self._last_xyz[env_ids] = qpos_xyz
+        self._episode_path_length[env_ids] = 0.0
         self._has_started[env_ids] = True
 
-    def update_on_done(self, done_indices: np.ndarray, current_xyz: np.ndarray) -> dict[str, float]:
+    def record_step(self, env_ids: np.ndarray, current_xyz: np.ndarray) -> None:
+        """Accumulate planar travel for active episodes."""
+        rows = np.asarray(env_ids, dtype=np.int32).reshape(-1)
+        xyz = np.asarray(current_xyz, dtype=np.float64)
+        if xyz.shape != (rows.size, 3):
+            raise ValueError(f"current_xyz must have shape ({rows.size}, 3), got {xyz.shape}")
+        active_mask = self._has_started[rows]
+        if np.any(active_mask):
+            active = rows[active_mask]
+            delta = xyz[active_mask, :2] - self._last_xyz[active, :2]
+            self._episode_path_length[active] += np.linalg.norm(delta, axis=1)
+        self._last_xyz[rows] = xyz
+
+    def update_on_done(
+        self,
+        done_indices: np.ndarray,
+        current_xyz: np.ndarray,
+        *,
+        demote_eligible: np.ndarray | None = None,
+        allow_progression: bool = True,
+    ) -> dict[str, float]:
+        done_indices = np.asarray(done_indices, dtype=np.int32).reshape(-1)
+        current_xyz = np.asarray(current_xyz, dtype=np.float64)
+        if current_xyz.shape != (done_indices.size, 3):
+            raise ValueError(
+                f"current_xyz must have shape ({done_indices.size}, 3), got {current_xyz.shape}"
+            )
+        if demote_eligible is None:
+            eligible = np.ones(done_indices.size, dtype=bool)
+        else:
+            eligible = np.asarray(demote_eligible, dtype=bool).reshape(-1)
+            if eligible.shape != (done_indices.size,):
+                raise ValueError(
+                    f"demote_eligible must have shape ({done_indices.size},), got {eligible.shape}"
+                )
+
+        self.record_step(done_indices, current_xyz)
         active_mask = self._has_started[done_indices]
         active = done_indices[active_mask]
         num_skipped = int((~active_mask).sum())
@@ -220,17 +280,20 @@ class TerrainSpawnManager(BaseSpawnManager):
                 "num_skipped": num_skipped,
             }
 
-        starts = self._episode_start_xyz[active, :2]
-        ends = current_xyz[active_mask, :2]
-        walked = np.linalg.norm(ends - starts, axis=1)
+        if self._cfg.use_path_length:
+            walked = self._episode_path_length[active].copy()
+        else:
+            starts = self._episode_start_xyz[active, :2]
+            ends = current_xyz[active_mask, :2]
+            walked = np.linalg.norm(ends - starts, axis=1)
 
         num_promoted = 0
         num_demoted = 0
-        if self._cfg.enabled:
+        if self._cfg.enabled and allow_progression:
             promote_threshold = self._cfg.promote_frac * self._cell_size
             demote_threshold = self._cfg.demote_frac * self._cell_size
             promote_mask = walked > promote_threshold
-            demote_mask = walked < demote_threshold
+            demote_mask = (walked < demote_threshold) & eligible[active_mask]
 
             promote_ids = active[promote_mask]
             demote_ids = active[demote_mask]
@@ -251,6 +314,7 @@ class TerrainSpawnManager(BaseSpawnManager):
 
             np.clip(self.levels, 0, self._num_rows - 1, out=self.levels)
 
+        self._has_started[active] = False
         return {
             "mean_level": float(self.levels.mean()),
             "max_level": float(self.levels.max()),
@@ -259,3 +323,68 @@ class TerrainSpawnManager(BaseSpawnManager):
             "num_demoted": num_demoted,
             "num_skipped": num_skipped,
         }
+
+    def state_dict(self) -> dict[str, Any]:
+        """Serialize per-environment terrain progression for checkpoint resume."""
+        return {
+            "kind": "unilab.terrain_spawn_curriculum",
+            "version": 1,
+            "num_envs": self._num_envs,
+            "num_rows": self._num_rows,
+            "num_cols": self._num_cols,
+            "cell_size": self._cell_size,
+            "levels": self.levels.tolist(),
+            "type_cols": self.type_cols.tolist(),
+            "rng_state": copy.deepcopy(self._rng.bit_generator.state),
+        }
+
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        """Restore terrain progression; the environment owner must reset live poses."""
+        if not isinstance(state, dict):
+            raise TypeError("terrain curriculum state must be a dictionary")
+        if state.get("kind") != "unilab.terrain_spawn_curriculum":
+            raise ValueError(f"unsupported terrain curriculum state kind: {state.get('kind')!r}")
+        if state.get("version") != 1:
+            raise ValueError(
+                f"unsupported terrain curriculum state version: {state.get('version')!r}"
+            )
+        expected = {
+            "num_envs": self._num_envs,
+            "num_rows": self._num_rows,
+            "num_cols": self._num_cols,
+        }
+        for key, value in expected.items():
+            if int(state.get(key, -1)) != value:
+                raise ValueError(
+                    f"terrain curriculum {key} mismatch: checkpoint={state.get(key)!r}, "
+                    f"current={value}"
+                )
+        if not np.isclose(float(state.get("cell_size", np.nan)), self._cell_size):
+            raise ValueError(
+                "terrain curriculum cell_size mismatch: "
+                f"checkpoint={state.get('cell_size')!r}, current={self._cell_size}"
+            )
+
+        levels = np.asarray(state.get("levels"), dtype=np.int64)
+        type_cols = np.asarray(state.get("type_cols"), dtype=np.int64)
+        expected_shape = (self._num_envs,)
+        if levels.shape != expected_shape or type_cols.shape != expected_shape:
+            raise ValueError(
+                "terrain curriculum levels/type_cols must both have shape "
+                f"{expected_shape}; got {levels.shape}/{type_cols.shape}"
+            )
+        if np.any((levels < 0) | (levels >= self._num_rows)):
+            raise ValueError("terrain curriculum levels are outside the current row range")
+        if np.any((type_cols < 0) | (type_cols >= self._num_cols)):
+            raise ValueError("terrain curriculum type_cols are outside the current column range")
+
+        self.levels[:] = levels.astype(np.int32)
+        self.type_cols[:] = type_cols.astype(np.int32)
+        rng_state = state.get("rng_state")
+        if not isinstance(rng_state, dict):
+            raise ValueError("terrain curriculum rng_state must be a dictionary")
+        self._rng.bit_generator.state = copy.deepcopy(rng_state)
+        self._episode_start_xyz.fill(0.0)
+        self._last_xyz.fill(0.0)
+        self._episode_path_length.fill(0.0)
+        self._has_started.fill(False)

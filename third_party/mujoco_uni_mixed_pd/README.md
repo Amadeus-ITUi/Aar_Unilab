@@ -1,7 +1,12 @@
 # UniLab MuJoCo mixed-PD extension
 
 This patch adds one private `mujoco-uni 3.8.0` batch step that evaluates the
-DR002 leg position PD and wheel velocity PD inside each MuJoCo physics substep.
+DR002 leg position PD and wheel velocity PD inside each MuJoCo physics substep,
+then advances a persistent per-joint post-clip motor-torque FIFO.
+It also adds a separate command-delay entry point for 400 Hz physics with a
+decimated 200 Hz motor controller. That path advances the pre-controller FIFO
+and recomputes PD only on motor ticks, while holding torque on the intervening
+physics step.
 It does not replace the Conda environment's official `mujoco._batch_env` module.
 
 Build it in the active UniLab environment:

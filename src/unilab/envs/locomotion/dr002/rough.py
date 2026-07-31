@@ -26,6 +26,9 @@ from unilab.envs.locomotion.dr002.joystick import (
     DR002JoystickCfg,
     DR002JoystickDomainRandomizationProvider,
     DR002JoystickEnv,
+    DR002JoystickFlatWE11Cfg,
+    WE11JoystickSensor,
+    _csv_force_zero_hz_mask,
     build_dr002_backend_reset_randomization,
 )
 from unilab.terrains import (
@@ -83,26 +86,51 @@ class DR002RoughTerrainCfg(TerrainGeneratorCfg):
 
     sub_terrains: dict[str, SubTerrainCfg] = field(
         default_factory=lambda: {
-            "flat": flat(proportion=0.6),
-            "random_rough": DR002CurriculumRandomUniformTerrainCfg(
-                proportion=0.2,
-                noise_range=(0.01, 0.05),
-                noise_step=0.02,
-                border_width=0.2,
-            ),
+            "flat": flat(proportion=0.3),
             "hf_pyramid_slope": hf_pyramid_slope(
-                proportion=0.1,
-                slope_range=(0.0, 0.25),
+                proportion=0.2,
+                slope_range=(0.0, 0.4),
                 platform_width=2.0,
                 border_width=0.2,
             ),
             "hf_pyramid_slope_inv": hf_pyramid_slope_inv(
-                proportion=0.1,
-                slope_range=(0.0, 0.25),
+                proportion=0.2,
+                slope_range=(0.0, 0.4),
                 platform_width=2.0,
                 border_width=0.2,
             ),
+            "random_rough": DR002CurriculumRandomUniformTerrainCfg(
+                proportion=0.3,
+                noise_range=(0.01, 0.05),
+                noise_step=0.02,
+                border_width=0.2,
+            ),
         }
+    )
+
+
+def _we11_rough_terrain_generator() -> DR002RoughTerrainCfg:
+    """Build WE11's millimeter-resolution runway roughness curriculum."""
+    cfg = DR002RoughTerrainCfg(seed=42, vertical_scale=0.001)
+    random_rough = cfg.sub_terrains["random_rough"]
+    if not isinstance(random_rough, DR002CurriculumRandomUniformTerrainCfg):
+        raise TypeError("WE11 random_rough must use the curriculum uniform terrain config")
+    random_rough.noise_range = (0.0, 0.006)
+    random_rough.noise_step = 0.001
+    return cfg
+
+
+@dataclass
+class WE11RoughJoystickSensor(WE11JoystickSensor):
+    """Penalize calf-shaft contact without using it as a terminal condition."""
+
+    termination_contacts: tuple[str, ...] | None = (
+        "base_link_touch",
+        "left_thigh_touch",
+        "right_thigh_touch",
+        "ancient_upper_left_touch",
+        "ancient_upper_right_touch",
+        "ancient_front_center_touch",
     )
 
 
@@ -124,6 +152,38 @@ class DR002JoystickRoughCfg(DR002JoystickCfg):
     terrain_scan: HeightScanConfig = field(default_factory=HeightScanConfig)
     termination_config: RoughTerminationConfig = field(default_factory=RoughTerminationConfig)
     terrain_curriculum: TerrainCurriculumCfg = field(default_factory=TerrainCurriculumCfg)
+
+
+@registry.envcfg("DR002JoystickRoughWE11")
+@dataclass
+class DR002JoystickRoughWE11Cfg(DR002JoystickFlatWE11Cfg):
+    """WE11's current policy contract on procedural curriculum terrain."""
+
+    scene: SceneCfg = field(
+        default_factory=lambda: SceneCfg(
+            model_file=str(ASSETS_ROOT_PATH / "robots" / "dr002" / "we11" / "we11.xml"),
+            fragment_files=[
+                str(ASSETS_ROOT_PATH / "robots" / "dr002" / "we11" / "rough_locomotion_task.xml")
+            ],
+            terrain=TerrainSceneCfg(
+                generator=_we11_rough_terrain_generator(),
+                hfield_name="terrain_hfield",
+                geom_name="floor",
+            ),
+        )
+    )
+    sensor: WE11JoystickSensor = field(default_factory=WE11RoughJoystickSensor)
+    terrain_scan: HeightScanConfig = field(default_factory=HeightScanConfig)
+    termination_config: RoughTerminationConfig = field(default_factory=RoughTerminationConfig)
+    terrain_curriculum: TerrainCurriculumCfg = field(
+        default_factory=lambda: TerrainCurriculumCfg(
+            enabled=True,
+            use_path_length=True,
+            demote_requires_commanded_distance=True,
+            unlock_after_force_curriculum=True,
+            seed=42,
+        )
+    )
 
 
 class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomizationProvider):
@@ -150,13 +210,50 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
 
         motor_kp, motor_kd = env.sample_reset_motor_gains(num_reset)
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
-        torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(num_reset)
+        torque_scale, default_joint_pos_offset = env.sample_reset_motor_runtime_randomization(
+            num_reset
+        )
         env.set_motor_runtime_randomization(env_ids, torque_scale, default_joint_pos_offset)
+        standing_mask = env.sample_reset_standing_mask(env_ids)
+        env.set_episode_standing_mask(env_ids, standing_mask)
+        csv_force_levels = env.sample_reset_csv_force_levels(num_reset)
+        csv_force_start_delay_steps = env.sample_reset_csv_force_start_delay_steps(num_reset)
+        csv_force_amplitude_scales = env.sample_reset_csv_force_amplitude_scales(num_reset)
+        wing_angle_obs_amplitude_scales = env.sample_reset_wing_angle_obs_amplitude_scales(
+            num_reset
+        )
+        if (
+            env._standing_envs_episode_persistent
+            and not env.cfg.domain_rand.csv_force_apply_to_standing
+        ):
+            csv_force_levels[standing_mask] = 0
+            csv_force_start_delay_steps[standing_mask] = 0
+        zero_hz_wing_angle_obs = env.sample_reset_zero_hz_wing_angle_obs(
+            _csv_force_zero_hz_mask(env.cfg.domain_rand, csv_force_levels)
+        )
+        env.set_zero_hz_wing_angle_obs(env_ids, zero_hz_wing_angle_obs)
+        env.set_csv_force_active_levels(env_ids, csv_force_levels)
+        env.set_csv_force_start_delay_steps(env_ids, csv_force_start_delay_steps)
+        env.set_csv_force_amplitude_scales(env_ids, csv_force_amplitude_scales)
+        env.set_wing_angle_obs_amplitude_scales(env_ids, wing_angle_obs_amplitude_scales)
+        body_mass_multipliers = self._body_mass_multipliers_for_reset(env, env_ids)
+        reset_randomization = build_dr002_backend_reset_randomization(
+            env,
+            num_reset,
+            base_body_mass=self._base_body_mass,
+            base_body_inertia=self._base_body_inertia,
+            base_geom_friction=self._base_geom_friction,
+            ground_geom_id=self._ground_geom_id,
+            robot_geom_ids=self._robot_geom_ids,
+            base_dof_armature=self._base_dof_armature,
+            body_mass_multipliers=body_mass_multipliers,
+        )
+        env.set_privileged_reset_randomization(env_ids, reset_randomization)
         info_updates: dict[str, Any] = {
             "commands": (
                 env.startup_commands(num_reset)
                 if env._startup_stand_steps > 0
-                else env.sample_commands(num_reset)
+                else env.sample_commands(num_reset, env_ids=env_ids)
             ),
             "current_actions": zero_actions(num_reset, env._num_action),
             "last_actions": zero_actions(num_reset, env._num_action),
@@ -170,25 +267,21 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
             qpos=qpos,
             qvel=qvel,
             info_updates=info_updates,
-            randomization=build_dr002_backend_reset_randomization(
-                env,
-                num_reset,
-                base_body_mass=self._base_body_mass,
-                base_body_inertia=self._base_body_inertia,
-                base_geom_friction=self._base_geom_friction,
-                ground_geom_id=self._ground_geom_id,
-                robot_geom_ids=self._robot_geom_ids,
-                base_dof_armature=self._base_dof_armature,
-            ),
+            randomization=reset_randomization,
         )
 
 
 @registry.env("DR002JoystickRough", sim_backend="mujoco")
 class DR002JoystickRoughEnv(DR002JoystickEnv):
-    _cfg: DR002JoystickRoughCfg
+    _cfg: DR002JoystickRoughCfg | DR002JoystickRoughWE11Cfg
     _height_scan_dim: int = 0
 
-    def __init__(self, cfg: DR002JoystickRoughCfg, num_envs=1, backend_type="mujoco"):
+    def __init__(
+        self,
+        cfg: DR002JoystickRoughCfg | DR002JoystickRoughWE11Cfg,
+        num_envs=1,
+        backend_type="mujoco",
+    ):
         super().__init__(cfg, num_envs=num_envs, backend_type=backend_type)
         terrain_origins = getattr(self._backend, "terrain_origins", None)
         terrain_generator = cfg.scene.terrain.generator if cfg.scene.terrain is not None else None
@@ -207,6 +300,8 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
                 terrain_surface_sampler=getattr(self._backend, "terrain_surface_sampler", None),
                 type_col_weights=type_col_weights,
             )
+        self._terrain_commanded_distance = np.zeros(num_envs, dtype=np.float64)
+        self._terrain_all_env_ids = np.arange(num_envs, dtype=np.int32)
         self._dr_manager = DomainRandomizationManager(
             self,
             DR002JoystickRoughDomainRandomizationProvider(
@@ -236,7 +331,20 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
     def _reward_base_height_values(self, num_obs: int) -> np.ndarray:
         return base_height_from_scan(self, num_obs)
 
+    def reset(self, env_indices: np.ndarray) -> tuple[dict[str, np.ndarray], dict]:
+        env_ids = np.asarray(env_indices, dtype=np.int32)
+        obs, info = super().reset(env_ids)
+        self._terrain_commanded_distance[env_ids] = 0.0
+        return obs, info
+
     def _compute_truncated(self, state: NpEnvState) -> np.ndarray:
+        base_pos = np.asarray(self._backend.get_base_pos(), dtype=np.float64)
+        if isinstance(self._spawn, TerrainSpawnManager):
+            self._spawn.record_step(self._terrain_all_env_ids, base_pos)
+        commands = np.asarray(state.info.get("commands"), dtype=np.float64)
+        if commands.shape == (self._num_envs, 3):
+            self._terrain_commanded_distance += np.abs(commands[:, 0]) * float(self._cfg.ctrl_dt)
+
         truncated = super()._compute_truncated(state)
         if self._cfg.termination_config.terrain_out_of_bounds:
             terrain_cfg = self._cfg.scene.terrain.generator if self._cfg.scene.terrain else None
@@ -247,11 +355,70 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
         done = state.terminated | truncated
         if np.any(done):
             done_indices = np.where(done)[0]
+            demote_eligible = None
+            terrain_curriculum = self._cfg.terrain_curriculum
+            if terrain_curriculum.demote_requires_commanded_distance:
+                threshold = terrain_curriculum.demote_commanded_distance_frac * float(
+                    self._cfg.scene.terrain.generator.size[0]
+                )
+                demote_eligible = self._terrain_commanded_distance[done_indices] >= threshold
             stats = self._spawn.update_on_done(
-                done_indices, self._backend.get_base_pos()[done_indices]
+                done_indices,
+                base_pos[done_indices],
+                demote_eligible=demote_eligible,
+                allow_progression=self._terrain_curriculum_is_unlocked(),
             )
             if stats:
                 log = state.info.setdefault("log", {})
                 for key, value in stats.items():
                     log[f"terrain_curriculum/{key}"] = float(value)
+                unlocked = self._terrain_curriculum_is_unlocked()
+                log["terrain_curriculum/unlocked"] = float(unlocked)
+                log["terrain_curriculum/locked_by_force"] = float(not unlocked)
         return truncated
+
+    def _terrain_curriculum_is_unlocked(self) -> bool:
+        cfg = self._cfg.terrain_curriculum
+        if not cfg.unlock_after_force_curriculum:
+            return True
+        return self._command_curriculum_is_full() and self._csv_force_curriculum_is_full()
+
+    def training_state_dict(self) -> dict[str, Any]:
+        state = super().training_state_dict()
+        if isinstance(self._spawn, TerrainSpawnManager):
+            state["terrain_curriculum"] = self._spawn.state_dict()
+        return state
+
+    def load_training_state_dict(self, state: dict[str, Any]) -> None:
+        super().load_training_state_dict(state)
+        terrain_state = state.get("terrain_curriculum")
+        if terrain_state is None or not isinstance(self._spawn, TerrainSpawnManager):
+            return
+        self._spawn.load_state_dict(terrain_state)
+        self._reset_all_after_terrain_restore()
+
+    def _reset_all_after_terrain_restore(self) -> None:
+        """Move live robots to restored cells before resumed rollout begins."""
+        if self._state is None:
+            return
+        env_ids = self._terrain_all_env_ids
+        self._state.terminated.fill(False)
+        self._state.truncated.fill(False)
+        self._state.info["steps"][env_ids] = 0
+        obs, info_updates = self.reset(env_ids)
+        for key, value in obs.items():
+            self._state.obs[key][env_ids] = value
+        for key, value in info_updates.items():
+            if isinstance(value, np.ndarray):
+                if key not in self._state.info:
+                    full_shape = (self._num_envs,) + value.shape[1:]
+                    self._state.info[key] = np.zeros(full_shape, dtype=value.dtype)
+                self._state.info[key][env_ids] = value
+            else:
+                self._state.info[key] = value
+        self._state.reward.fill(0.0)
+        self._state.final_observation = None
+        self._clear_step_final_observation()
+
+
+registry.register_env("DR002JoystickRoughWE11", DR002JoystickRoughEnv, sim_backend="mujoco")

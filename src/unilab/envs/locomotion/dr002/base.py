@@ -59,7 +59,9 @@ class ControlConfig(PdControlConfig):
     wheel_clip_actions: float = 2.5
     simulate_action_latency: bool = True
     action_delay_semantics: str = "pre_controller_command_fifo"
-    torque_delay_steps: int = 0
+    # Optional legacy uniform torque-output delay.  Prefer the explicit
+    # per-joint field below when actuator types have different fitted delays.
+    torque_delay_steps: int | None = None
     action_delay_min_steps: int = 4
     action_delay_max_steps: int = 8
     resample_action_delay: bool = True
@@ -71,7 +73,14 @@ class ControlConfig(PdControlConfig):
     # ticks and ordered like JOINT_SENSOR_PREFIXES.  This is a command delay
     # before PD, never a torque-output delay.
     action_delay_steps_by_joint: list[int] | None = None
+    # Optional fixed post-PD, post-clip motor-torque FIFO delay per joint,
+    # expressed in motor-control ticks and ordered like JOINT_SENSOR_PREFIXES.
+    torque_delay_steps_by_joint: list[int] | None = None
     use_native_batched_pd: bool = False
+    # Native path for a lower-rate, zero-order-held motor controller with a
+    # pre-controller command FIFO. This is intentionally distinct from
+    # use_native_batched_pd, whose PD and torque FIFO advance every physics step.
+    use_native_command_delay_pd: bool = False
     Kp: list[float] = field(default_factory=lambda: [2.0, 8.0, 0.0, 2.0, 8.0, 0.0])  # noqa: N815
     Kd: list[float] = field(default_factory=lambda: [0.1, 0.8, 0.05, 0.1, 0.8, 0.05])  # noqa: N815
 
@@ -111,7 +120,9 @@ def compute_dr002_motor_ctrl(
     out.fill(0.0)
     leg = LEG_ACTION_INDICES
     wheel = WHEEL_ACTION_INDICES
-    out[:, leg] = kp[:, leg] * (policy_ctrl[:, leg] - joint_pos[:, leg]) - kd[:, leg] * joint_vel[:, leg]
+    out[:, leg] = (
+        kp[:, leg] * (policy_ctrl[:, leg] - joint_pos[:, leg]) - kd[:, leg] * joint_vel[:, leg]
+    )
     out[:, wheel] = kd[:, wheel] * (policy_ctrl[:, wheel] - joint_vel[:, wheel])
     if torque_scale is not None:
         out *= torque_scale

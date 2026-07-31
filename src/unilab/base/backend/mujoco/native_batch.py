@@ -17,8 +17,18 @@ else:
 
 def native_mixed_pd_available() -> bool:
     return _unilab_batch_env is not None and hasattr(
-        _unilab_batch_env.BatchEnvPool, "step_mixed_pd"
+        _unilab_batch_env.BatchEnvPool, "step_mixed_pd_torque_fifo"
     )
+
+
+def native_command_delay_pd_available() -> bool:
+    return _unilab_batch_env is not None and hasattr(
+        _unilab_batch_env.BatchEnvPool, "step_command_delay_pd"
+    )
+
+
+def native_pd_available() -> bool:
+    return native_mixed_pd_available() or native_command_delay_pd_available()
 
 
 def native_mixed_pd_import_error() -> ImportError | None:
@@ -35,8 +45,8 @@ class NativeMixedPdBatchEnvPool(BatchEnvPool):
         nbatch: int,
         nthread: int | None = None,
     ) -> None:
-        if not native_mixed_pd_available():
-            raise RuntimeError("UniLab native mixed-PD extension is unavailable")
+        if not native_pd_available():
+            raise RuntimeError("UniLab native PD extension is unavailable")
         if nbatch <= 0:
             raise ValueError("nbatch must be positive")
         model_arg: Any = model if isinstance(model, mujoco.MjModel) else list(model)

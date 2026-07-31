@@ -38,12 +38,14 @@ from ..base import (
     BackendHeightScanner,
     BackendPlayCapabilities,
     BackendPlayRenderPlan,
+    BatchedCommandDelayPdControl,
     BatchedMixedPdControl,
     SimBackend,
     normalize_play_render_mode,
 )
 from .native_batch import (
     NativeMixedPdBatchEnvPool,
+    native_command_delay_pd_available,
     native_mixed_pd_available,
     native_mixed_pd_import_error,
 )
@@ -306,6 +308,7 @@ class MuJoCoBackend(SimBackend):
         )
         self._pre_step_control_fn = None
         self._batched_mixed_pd_control_fn = None
+        self._batched_command_delay_pd_control_fn = None
         self._native_mixed_pd_fallback_warned = False
         self._model = self._load_base_model()
         self._base_body_id = (
@@ -581,12 +584,17 @@ class MuJoCoBackend(SimBackend):
         return [self._model_variants[int(idx)] for idx in self._model_assignments]
 
     def _build_pool(self) -> BatchEnvPool:
-        pool_cls = (
-            NativeMixedPdBatchEnvPool
-            if self._batched_mixed_pd_control_fn is not None and native_mixed_pd_available()
-            else BatchEnvPool
+        native_control_available = (
+            self._batched_mixed_pd_control_fn is not None and native_mixed_pd_available()
+        ) or (
+            self._batched_command_delay_pd_control_fn is not None
+            and native_command_delay_pd_available()
         )
-        if self._batched_mixed_pd_control_fn is not None and pool_cls is BatchEnvPool:
+        pool_cls = NativeMixedPdBatchEnvPool if native_control_available else BatchEnvPool
+        if (
+            self._batched_mixed_pd_control_fn is not None
+            or self._batched_command_delay_pd_control_fn is not None
+        ) and pool_cls is BatchEnvPool:
             self._warn_native_mixed_pd_fallback()
         pool = pool_cls(
             self._current_model_sequence(),
@@ -800,6 +808,8 @@ class MuJoCoBackend(SimBackend):
     # ------------------------------------------------------------------ #
 
     def step(self, ctrl: np.ndarray, nsteps: int = 1) -> dict | None:
+        if self._native_command_delay_pd_ready():
+            return self._step_with_batched_command_delay_pd_control(ctrl, nsteps)
         if self._native_mixed_pd_ready():
             return self._step_with_batched_mixed_pd_control(ctrl, nsteps)
         if self._pre_step_control_fn is not None:
@@ -843,7 +853,13 @@ class MuJoCoBackend(SimBackend):
         if self._batched_mixed_pd_control_fn is None or self._post_step_forward_sensor:
             return False
         native_pool = getattr(self._pool, "_pool", None)
-        return callable(getattr(native_pool, "step_mixed_pd", None))
+        return callable(getattr(native_pool, "step_mixed_pd_torque_fifo", None))
+
+    def _native_command_delay_pd_ready(self) -> bool:
+        if self._batched_command_delay_pd_control_fn is None or self._post_step_forward_sensor:
+            return False
+        native_pool = getattr(self._pool, "_pool", None)
+        return callable(getattr(native_pool, "step_command_delay_pd", None))
 
     def _warn_native_mixed_pd_fallback(self) -> None:
         if self._native_mixed_pd_fallback_warned:
@@ -879,7 +895,79 @@ class MuJoCoBackend(SimBackend):
         if native_pool is None:  # pragma: no cover - guarded by _native_mixed_pd_ready
             raise RuntimeError("MuJoCo native pool is not materialized")
         t0 = time.perf_counter()
-        state_np, sensor_np, motor_ctrl_np = native_pool.step_mixed_pd(
+        state_np, sensor_np, motor_ctrl_np, torque_delay_buffer_np = (
+            native_pool.step_mixed_pd_torque_fifo(
+                nstep=int(nsteps),
+                control_spec=control_spec,
+                state0=np.ascontiguousarray(self._physics_state, dtype=np.float64),
+                control=control_traj,
+                kp=np.ascontiguousarray(control.kp, dtype=np.float64),
+                kd=np.ascontiguousarray(control.kd, dtype=np.float64),
+                torque_scale=np.ascontiguousarray(control.torque_scale, dtype=np.float64),
+                initial_joint_pos=np.ascontiguousarray(control.initial_joint_pos, dtype=np.float64),
+                initial_joint_vel=np.ascontiguousarray(control.initial_joint_vel, dtype=np.float64),
+                position_mask=np.ascontiguousarray(control.position_control_mask, dtype=np.int32),
+                pos_sensor_adr=pos_sensor_adr,
+                vel_sensor_adr=vel_sensor_adr,
+                ctrl_lower=np.ascontiguousarray(control.ctrl_lower, dtype=np.float64),
+                ctrl_upper=np.ascontiguousarray(control.ctrl_upper, dtype=np.float64),
+                torque_delay_steps=np.ascontiguousarray(
+                    control.torque_delay_steps_by_joint, dtype=np.int32
+                ),
+                initial_torque_delay_buffer=np.ascontiguousarray(
+                    control.initial_torque_delay_buffer, dtype=np.float64
+                ),
+                quantize_float32=np.dtype(self._np_dtype) == np.dtype(np.float32),
+                chunk_size=None,
+            )
+        )
+        self._clear_pending_xfrc()
+        self._physics_state[:] = state_np.astype(self._np_dtype)
+        physics_ms = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
+        self._sensor_data[:] = sensor_np.astype(self._np_dtype)
+        control.final_ctrl_out[:] = motor_ctrl_np.astype(control.final_ctrl_out.dtype)
+        control.final_torque_delay_buffer[:] = torque_delay_buffer_np.astype(
+            control.final_torque_delay_buffer.dtype
+        )
+        refresh_cache_ms = (time.perf_counter() - t0) * 1000.0
+        return {
+            "timing": {
+                "set_ctrl_ms": set_ctrl_ms,
+                "physics_ms": physics_ms,
+                "refresh_cache_ms": refresh_cache_ms,
+            }
+        }
+
+    def _step_with_batched_command_delay_pd_control(
+        self, ctrl: np.ndarray, nsteps: int
+    ) -> dict[str, dict[str, float]]:
+        t0 = time.perf_counter()
+        control = self._build_batched_command_delay_pd_control(ctrl, nsteps)
+        self._validate_batched_command_delay_pd_control(control, nsteps)
+        control_spec = int(mujoco.mjtState.mjSTATE_CTRL)
+        control_traj = np.asarray(control.target_trajectory, dtype=np.float64)
+        xfrc_trajectory = self._pending_xfrc_trajectory(nsteps)
+        if xfrc_trajectory is not None:
+            control_spec |= int(mujoco.mjtState.mjSTATE_XFRC_APPLIED)
+            control_traj = np.concatenate((control_traj, xfrc_trajectory), axis=-1)
+        control_traj = np.ascontiguousarray(control_traj, dtype=np.float64)
+        pos_sensor_adr = self._scalar_sensor_addresses(control.position_sensor_names)
+        vel_sensor_adr = self._scalar_sensor_addresses(control.velocity_sensor_names)
+        set_ctrl_ms = (time.perf_counter() - t0) * 1000.0
+
+        native_pool = getattr(self._pool, "_pool", None)
+        if native_pool is None:  # pragma: no cover - guarded by readiness
+            raise RuntimeError("MuJoCo native pool is not materialized")
+        t0 = time.perf_counter()
+        (
+            state_np,
+            sensor_np,
+            motor_ctrl_np,
+            computed_motor_ctrl_np,
+            command_delay_buffer_np,
+        ) = native_pool.step_command_delay_pd(
             nstep=int(nsteps),
             control_spec=control_spec,
             state0=np.ascontiguousarray(self._physics_state, dtype=np.float64),
@@ -887,19 +975,20 @@ class MuJoCoBackend(SimBackend):
             kp=np.ascontiguousarray(control.kp, dtype=np.float64),
             kd=np.ascontiguousarray(control.kd, dtype=np.float64),
             torque_scale=np.ascontiguousarray(control.torque_scale, dtype=np.float64),
-            initial_joint_pos=np.ascontiguousarray(
-                control.initial_joint_pos, dtype=np.float64
-            ),
-            initial_joint_vel=np.ascontiguousarray(
-                control.initial_joint_vel, dtype=np.float64
-            ),
-            position_mask=np.ascontiguousarray(
-                control.position_control_mask, dtype=np.int32
-            ),
+            initial_joint_pos=np.ascontiguousarray(control.initial_joint_pos, dtype=np.float64),
+            initial_joint_vel=np.ascontiguousarray(control.initial_joint_vel, dtype=np.float64),
+            position_mask=np.ascontiguousarray(control.position_control_mask, dtype=np.int32),
             pos_sensor_adr=pos_sensor_adr,
             vel_sensor_adr=vel_sensor_adr,
             ctrl_lower=np.ascontiguousarray(control.ctrl_lower, dtype=np.float64),
             ctrl_upper=np.ascontiguousarray(control.ctrl_upper, dtype=np.float64),
+            motor_control_decimation=int(control.motor_control_decimation),
+            initial_motor_substep_index=int(control.initial_motor_substep_index),
+            command_delay_steps=np.ascontiguousarray(control.command_delay_steps, dtype=np.int32),
+            initial_command_delay_buffer=np.ascontiguousarray(
+                control.initial_command_delay_buffer, dtype=np.float64
+            ),
+            initial_motor_ctrl=np.ascontiguousarray(control.initial_ctrl, dtype=np.float64),
             quantize_float32=np.dtype(self._np_dtype) == np.dtype(np.float32),
             chunk_size=None,
         )
@@ -910,6 +999,16 @@ class MuJoCoBackend(SimBackend):
         t0 = time.perf_counter()
         self._sensor_data[:] = sensor_np.astype(self._np_dtype)
         control.final_ctrl_out[:] = motor_ctrl_np.astype(control.final_ctrl_out.dtype)
+        control.final_computed_ctrl_out[:] = computed_motor_ctrl_np.astype(
+            control.final_computed_ctrl_out.dtype
+        )
+        control.final_command_delay_buffer[:] = command_delay_buffer_np.astype(
+            control.final_command_delay_buffer.dtype
+        )
+        final_substep_index = (int(control.initial_motor_substep_index) + int(nsteps)) % int(
+            control.motor_control_decimation
+        )
+        control.set_final_motor_substep_index(final_substep_index)
         refresh_cache_ms = (time.perf_counter() - t0) * 1000.0
         return {
             "timing": {
@@ -918,6 +1017,64 @@ class MuJoCoBackend(SimBackend):
                 "refresh_cache_ms": refresh_cache_ms,
             }
         }
+
+    def _validate_batched_command_delay_pd_control(
+        self, control: BatchedCommandDelayPdControl, nsteps: int
+    ) -> None:
+        actuator_shape = (self._num_envs, self._model.nu)
+        expected_shapes = {
+            "target_trajectory": (self._num_envs, int(nsteps), self._model.nu),
+            "kp": actuator_shape,
+            "kd": actuator_shape,
+            "torque_scale": actuator_shape,
+            "initial_joint_pos": actuator_shape,
+            "initial_joint_vel": actuator_shape,
+            "initial_ctrl": actuator_shape,
+            "final_ctrl_out": actuator_shape,
+            "final_computed_ctrl_out": actuator_shape,
+            "position_control_mask": (self._model.nu,),
+            "ctrl_lower": (self._model.nu,),
+            "ctrl_upper": (self._model.nu,),
+            "command_delay_steps": actuator_shape,
+        }
+        for name, expected in expected_shapes.items():
+            actual = np.shape(getattr(control, name))
+            if actual != expected:
+                raise ValueError(
+                    f"command-delay PD {name} must have shape {expected}, got {actual}"
+                )
+        decimation = int(control.motor_control_decimation)
+        phase = int(control.initial_motor_substep_index)
+        if decimation < 1:
+            raise ValueError("command-delay PD motor_control_decimation must be positive")
+        if phase < 0 or phase >= decimation:
+            raise ValueError(
+                "command-delay PD initial_motor_substep_index must be inside the decimation"
+            )
+        delay_steps = np.asarray(control.command_delay_steps)
+        if np.any(delay_steps < 0) or np.any(delay_steps != np.rint(delay_steps)):
+            raise ValueError("command-delay PD delay steps must be non-negative integers")
+        initial_buffer_shape = np.shape(control.initial_command_delay_buffer)
+        final_buffer_shape = np.shape(control.final_command_delay_buffer)
+        if initial_buffer_shape != final_buffer_shape:
+            raise ValueError(
+                "command-delay PD initial/final FIFO buffers must have matching shapes"
+            )
+        if (
+            len(initial_buffer_shape) != 3
+            or initial_buffer_shape[0] != self._num_envs
+            or initial_buffer_shape[2] != self._model.nu
+            or initial_buffer_shape[1] <= int(np.max(delay_steps))
+        ):
+            raise ValueError(
+                "command-delay PD FIFO buffer must have shape "
+                f"({self._num_envs}, depth>{int(np.max(delay_steps))}, {self._model.nu}), "
+                f"got {initial_buffer_shape}"
+            )
+        if len(control.position_sensor_names) != self._model.nu:
+            raise ValueError("command-delay PD position sensor count must equal actuator count")
+        if len(control.velocity_sensor_names) != self._model.nu:
+            raise ValueError("command-delay PD velocity sensor count must equal actuator count")
 
     def _validate_batched_mixed_pd_control(
         self, control: BatchedMixedPdControl, nsteps: int
@@ -934,11 +1091,26 @@ class MuJoCoBackend(SimBackend):
             "position_control_mask": (self._model.nu,),
             "ctrl_lower": (self._model.nu,),
             "ctrl_upper": (self._model.nu,),
+            "torque_delay_steps_by_joint": (self._model.nu,),
         }
         for name, expected in expected_shapes.items():
             actual = np.shape(getattr(control, name))
             if actual != expected:
                 raise ValueError(f"mixed-PD {name} must have shape {expected}, got {actual}")
+        delay_steps = np.asarray(control.torque_delay_steps_by_joint)
+        if np.any(delay_steps < 0) or np.any(delay_steps != np.rint(delay_steps)):
+            raise ValueError("mixed-PD torque-delay steps must be non-negative integers")
+        delay_buffer_shape = (
+            self._num_envs,
+            int(np.max(delay_steps)) + 1,
+            self._model.nu,
+        )
+        for name in ("initial_torque_delay_buffer", "final_torque_delay_buffer"):
+            actual = np.shape(getattr(control, name))
+            if actual != delay_buffer_shape:
+                raise ValueError(
+                    f"mixed-PD {name} must have shape {delay_buffer_shape}, got {actual}"
+                )
         if len(control.position_sensor_names) != self._model.nu:
             raise ValueError("mixed-PD position sensor count must equal actuator count")
         if len(control.velocity_sensor_names) != self._model.nu:

@@ -74,7 +74,7 @@ class TerrainOutput:
 
 @dataclass
 class GeneratedTerrain:
-    """Merged terrain heightfield ready to be exported as a single PNG asset."""
+    """Merged terrain heightfield ready for backend-specific materialization."""
 
     heights_yx: np.ndarray
     """World-space surface heights in image convention: rows=y, cols=x."""
@@ -109,12 +109,27 @@ class GeneratedTerrain:
         normalized = (self.heights_yx - self.z_min) / span
         return np.rint(np.clip(normalized, 0.0, 1.0) * np.iinfo(np.uint16).max).astype(np.uint16)
 
+    def to_mujoco_hfield_data(self) -> np.ndarray:
+        """Return MuJoCo-row-order normalized float32 elevation data.
+
+        ``heights_yx`` follows image convention: row zero is the positive-y
+        edge of the generated world. MuJoCo's custom binary hfield format loads
+        rows directly and maps row zero to negative local y, unlike its PNG
+        loader which vertically flips the image. Flip explicitly so PNG and
+        float-binary materializations describe the same physical terrain.
+        """
+        span = self.z_max - self.z_min
+        if span <= 0.0:
+            normalized = np.zeros_like(self.heights_yx, dtype=np.float64)
+        else:
+            normalized = np.clip((self.heights_yx - self.z_min) / span, 0.0, 1.0)
+        return np.ascontiguousarray(np.flipud(normalized), dtype="<f4")
+
     def surface_sampler(self) -> "HeightfieldSurfaceSampler":
         return HeightfieldSurfaceSampler(
-            heights_uint16=self.to_uint16(),
-            horizontal_scale=float(self.horizontal_scale),
-            z_min=float(self.z_min),
-            height_extent=float(self.height_extent),
+            heights_mujoco_yx=np.ascontiguousarray(np.flipud(self.heights_yx), dtype=np.float64),
+            hfield_size_xy=tuple(float(value) for value in self.hfield_size[:2]),
+            geom_pos_xy=tuple(float(value) for value in self.geom_pos[:2]),
         )
 
     def write_png(self, path: Path) -> None:
@@ -125,6 +140,16 @@ class GeneratedTerrain:
         path.parent.mkdir(parents=True, exist_ok=True)
         iio.imwrite(path, self.to_uint16())
 
+    def write_mujoco_hfield(self, path: Path) -> None:
+        """Write MuJoCo's lossless custom float32 heightfield format."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = self.to_mujoco_hfield_data()
+        rows, cols = data.shape
+        with path.open("wb") as stream:
+            stream.write(np.asarray([rows, cols], dtype="<i4").tobytes())
+            stream.write(data.tobytes(order="C"))
+
     def hfield_size_xml(self) -> str:
         return " ".join(f"{value:.9g}" for value in self.hfield_size)
 
@@ -134,17 +159,17 @@ class GeneratedTerrain:
 
 @dataclass
 class HeightfieldSurfaceSampler:
-    """Compact world-space sampler for a generated hfield surface."""
+    """World-space sampler matching MuJoCo's hfield collision triangles."""
 
-    heights_uint16: np.ndarray
-    horizontal_scale: float
-    z_min: float
-    height_extent: float
+    heights_mujoco_yx: np.ndarray
+    """Physical heights in MuJoCo row order: row zero is negative local y."""
+    hfield_size_xy: tuple[float, float]
+    """MuJoCo hfield x/y radii."""
+    geom_pos_xy: tuple[float, float] = (0.0, 0.0)
 
     @property
     def size(self) -> tuple[float, float]:
-        rows_y, cols_x = self.heights_uint16.shape
-        return (cols_x * self.horizontal_scale, rows_y * self.horizontal_scale)
+        return (2.0 * self.hfield_size_xy[0], 2.0 * self.hfield_size_xy[1])
 
     def sample_height(self, xy: np.ndarray) -> np.ndarray:
         points = np.asarray(xy, dtype=np.float64)
@@ -152,16 +177,38 @@ class HeightfieldSurfaceSampler:
             raise ValueError(f"xy must have shape (..., 2), got {points.shape}")
 
         flat = points.reshape(-1, 2)
-        size_x, size_y = self.size
-        rows_y, cols_x = self.heights_uint16.shape
-        cols = np.rint((flat[:, 0] + size_x * 0.5) / self.horizontal_scale).astype(np.intp)
-        rows = np.rint((-flat[:, 1] + size_y * 0.5) / self.horizontal_scale).astype(np.intp)
-        cols = np.clip(cols, 0, cols_x - 1)
-        rows = np.clip(rows, 0, rows_y - 1)
+        heights = np.asarray(self.heights_mujoco_yx, dtype=np.float64)
+        if heights.ndim != 2 or min(heights.shape) < 2:
+            raise ValueError(
+                "heights_mujoco_yx must be a 2D array with at least two rows and columns"
+            )
+        radius_x, radius_y = self.hfield_size_xy
+        if radius_x <= 0.0 or radius_y <= 0.0:
+            raise ValueError(
+                f"hfield_size_xy must contain positive radii, got {self.hfield_size_xy}"
+            )
 
-        raw = self.heights_uint16[rows, cols].astype(np.float64)
-        normalized = raw / float(np.iinfo(np.uint16).max)
-        heights = self.z_min + normalized * self.height_extent
+        rows_y, cols_x = heights.shape
+        geom_x, geom_y = self.geom_pos_xy
+        grid_x = (flat[:, 0] - geom_x + radius_x) * (cols_x - 1) / (2.0 * radius_x)
+        grid_y = (flat[:, 1] - geom_y + radius_y) * (rows_y - 1) / (2.0 * radius_y)
+        grid_x = np.clip(grid_x, 0.0, cols_x - 1)
+        grid_y = np.clip(grid_y, 0.0, rows_y - 1)
+
+        col0 = np.minimum(np.floor(grid_x).astype(np.intp), cols_x - 2)
+        row0 = np.minimum(np.floor(grid_y).astype(np.intp), rows_y - 2)
+        frac_x = grid_x - col0
+        frac_y = grid_y - row0
+
+        z00 = heights[row0, col0]
+        z10 = heights[row0, col0 + 1]
+        z01 = heights[row0 + 1, col0]
+        z11 = heights[row0 + 1, col0 + 1]
+
+        lower = z00 + (z10 - z00) * frac_x + (z11 - z10) * frac_y
+        upper = z00 + (z11 - z01) * frac_x + (z01 - z00) * frac_y
+        sampled = np.where(frac_x >= frac_y, lower, upper)
+        heights = sampled
         return heights.reshape(points.shape[:-1])
 
 
@@ -381,6 +428,11 @@ class TerrainGenerator:
     def write_png(self, path: Path) -> GeneratedTerrain:
         terrain = self.generate()
         terrain.write_png(path)
+        return terrain
+
+    def write_mujoco_hfield(self, path: Path) -> GeneratedTerrain:
+        terrain = self.generate()
+        terrain.write_mujoco_hfield(path)
         return terrain
 
     def _get_sub_terrain_position(self, row: int, col: int) -> np.ndarray:

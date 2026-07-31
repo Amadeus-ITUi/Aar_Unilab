@@ -79,16 +79,12 @@ def _bare_obs_env(num_envs: int = 2) -> DR002JoystickEnv:
     env._compute_wing_angle_obs = lambda *args, **kwargs: np.full(
         (args[0], 2), 0.125, dtype=np.float32
     )
-    env._backend = _FakeBackend(
-        np.asarray([[0.0, 0.0, 0.7], [0.0, 0.0, 1.8]], dtype=np.float32)
-    )
+    env._backend = _FakeBackend(np.asarray([[0.0, 0.0, 0.7], [0.0, 0.0, 1.8]], dtype=np.float32))
     env._privileged_base_mass_delta = np.asarray([[0.1], [0.2]], dtype=np.float32)
     env._privileged_base_com_offset = np.asarray(
         [[0.01, 0.02, 0.03], [0.04, 0.05, 0.06]], dtype=np.float32
     )
-    env._default_joint_pos_offset = np.arange(num_envs * 6, dtype=np.float32).reshape(
-        num_envs, 6
-    )
+    env._default_joint_pos_offset = np.arange(num_envs * 6, dtype=np.float32).reshape(num_envs, 6)
     env._privileged_ground_friction_scale = np.asarray([[0.8], [0.9]], dtype=np.float32)
     env._privileged_robot_friction_scale = np.asarray([[1.1], [1.2]], dtype=np.float32)
     env._measured_csv_force_base = np.asarray(
@@ -107,9 +103,7 @@ def _obs_inputs(num_envs: int = 2) -> dict[str, np.ndarray | dict[str, np.ndarra
     previous = current + 20.0
     qacc = current + 40.0
     torques = current + 60.0
-    commands = np.asarray([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32)[
-        :num_envs
-    ]
+    commands = np.asarray([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32)[:num_envs]
     return {
         "info": {
             "current_actions": current,
@@ -118,16 +112,12 @@ def _obs_inputs(num_envs: int = 2) -> dict[str, np.ndarray | dict[str, np.ndarra
             "torques": torques,
             "commands": commands,
         },
-        "linvel": np.asarray(
-            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32
-        )[:num_envs],
-        "gyro": np.asarray(
-            [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]], dtype=np.float32
-        )[:num_envs],
+        "linvel": np.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)[:num_envs],
+        "gyro": np.asarray([[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]], dtype=np.float32)[:num_envs],
         "gravity": np.zeros((num_envs, 3), dtype=np.float32),
-        "projected_gravity": np.asarray(
-            [[-1.0, -2.0, -3.0], [-4.0, -5.0, -6.0]], dtype=np.float32
-        )[:num_envs],
+        "projected_gravity": np.asarray([[-1.0, -2.0, -3.0], [-4.0, -5.0, -6.0]], dtype=np.float32)[
+            :num_envs
+        ],
         "dof_pos": np.asarray(
             [[1.8, -0.6, 0.3, 2.8, -0.6, 0.4], [0.8, -1.6, 0.5, 0.8, -1.6, 0.6]],
             dtype=np.float32,
@@ -366,11 +356,8 @@ def test_gravity_dynamic_noise_is_bounded_slow_and_installation_bias_is_fixed() 
     np.testing.assert_array_equal(env._gravity_dynamic_noise_rp[[0, 2]], 0.0)
 
 
-def test_we6_config_uses_episode_bias_and_slow_gravity_tilt_noise() -> None:
-    config_path = (
-        Path(__file__).parents[4]
-        / "conf/ppo/task/dr002_joystick_flat_we6/mujoco.yaml"
-    )
+def test_we11_config_uses_episode_bias_and_slow_gravity_tilt_noise() -> None:
+    config_path = Path(__file__).parents[4] / "conf/ppo/task/dr002_joystick_flat_we11/base.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     noise = config["env"]["noise_config"]
 
@@ -393,34 +380,29 @@ def test_noise_curriculum_rejects_level_count_mismatch() -> None:
         env._validate_noise_curriculum_cfg()
 
 
-def test_we6_base_config_uses_only_latest_1_to_4_hz_assets() -> None:
-    config_path = (
-        Path(__file__).parents[4]
-        / "conf/ppo/task/dr002_joystick_flat_we6/base.yaml"
-    )
+def test_we11_base_config_owns_latest_network_observation_and_force_contract() -> None:
+    config_path = Path(__file__).parents[4] / "conf/ppo/task/dr002_joystick_flat_we11/base.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     env_cfg = config["env"]
     domain_rand = env_cfg["domain_rand"]
 
-    assert domain_rand["csv_force_curriculum_hz"] == [0, 1, 2, 3, 4]
+    assert domain_rand["csv_force_curriculum_hz"] == [0, 1, 2, 3]
     assert env_cfg["noise_config"]["level"] == 1.0
     assert env_cfg["noise_config"]["curriculum"] is False
-    assert env_cfg["noise_config"]["curriculum_levels"] == [1.0] * 5
-    assert env_cfg["control_config"]["action_delay_min_steps"] == 4
-    assert env_cfg["control_config"]["action_delay_max_steps"] == 16
-    assert env_cfg["control_config"]["resample_action_delay"] is False
-    assert domain_rand["max_force"] == [10.0, 10.0, 0.0]
+    assert env_cfg["noise_config"]["curriculum_levels"] == [1.0] * 4
+    assert env_cfg["control_config"]["action_delay_min_steps"] == 2
+    assert env_cfg["control_config"]["action_delay_max_steps"] == 8
+    assert env_cfg["control_config"]["resample_action_delay"] is True
+    assert domain_rand["push_force_limit"] == [10.0, 10.0, 0.0]
     assert domain_rand["csv_force_zero_fy"] is True
-    assert config["reward"]["scales"]["joint_acc_wheel_l2"] == pytest.approx(-2.5e-6)
-    assert len(domain_rand["csv_force_curriculum_paths"]) == 4
-    assert len(env_cfg["wing_angle_obs"]["curriculum_paths"]) == 4
+    assert config["reward"]["scales"]["joint_acc_wheel_l2"] == pytest.approx(-2.5e-7)
+    assert len(domain_rand["csv_force_curriculum_paths"]) == 3
+    assert len(env_cfg["wing_angle_obs"]["curriculum_paths"]) == 3
     assert all(
-        "sweep_20260713_230639" in path
-        for path in domain_rand["csv_force_curriculum_paths"]
+        "sweep_20260728_u9_skin" in path for path in domain_rand["csv_force_curriculum_paths"]
     )
     assert all(
-        "sweep_20260713_230639" in path
-        for path in env_cfg["wing_angle_obs"]["curriculum_paths"]
+        "sweep_20260713_230639" in path for path in env_cfg["wing_angle_obs"]["curriculum_paths"]
     )
     assert config["algo"]["actor"]["history_term_dims"] == [3, 3, 4, 6, 6, 2, 3]
 
