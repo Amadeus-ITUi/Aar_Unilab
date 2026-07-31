@@ -18,7 +18,7 @@ def _bare_termination_env(num_envs: int = 1) -> DR002JoystickEnv:
     env._lingzu_fail_steps = np.zeros(num_envs, dtype=np.int32)
     env._lingzu_contact_fail_accum_steps = np.zeros(num_envs, dtype=np.int32)
     env._contact_failed_now = np.zeros(num_envs, dtype=np.bool_)
-    env._has_undesired_contact = lambda *_args, **_kwargs: env._contact_failed_now.copy()
+    env._has_termination_contact = lambda *_args, **_kwargs: env._contact_failed_now.copy()
     return env
 
 

@@ -79,26 +79,6 @@ def build_ppo_play_env_cfg_override(cfg: DictConfig) -> dict[str, Any]:
     return cast(dict[str, Any], _backend_adapter(cfg).build_play_env_cfg_override())
 
 
-def run_motrix_rsl_play_loop(
-    wrapped_env,
-    policy,
-    *,
-    render_spacing: float,
-    render_offset_mode: str,
-    num_steps: int | None = None,
-) -> None:
-    env = wrapped_env.env
-
-    with torch.inference_mode():
-        env.run_playback(
-            render_spacing=render_spacing,
-            render_offset_mode=render_offset_mode,
-            num_steps=num_steps,
-            initialize=lambda: wrapped_env.reset()[0],
-            step=lambda obs: wrapped_env.step(policy(obs))[0],
-        )
-
-
 def _get_log_root(cfg: DictConfig) -> str:
     return str(get_log_root(ROOT_DIR, cfg))
 
@@ -284,11 +264,8 @@ def play_rsl_rl(cfg: DictConfig, device: str) -> str | None:
                     else None
                 ),
             )
-    except Exception as e:
-        if cfg.training.sim_backend == "motrix" and "RenderClosedError" in str(type(e).__name__):
-            print("Render window closed.")
-        else:
-            raise
+    except Exception:
+        raise
     if playback_mode != "none" and num_steps is not None:
         print("Done.")
     return play_video_path

@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: go1_joystick_flat/mujoco
+  - task: dr002_joystick_flat_we11/mujoco
 
 algo:
   algo: ppo
@@ -55,7 +55,7 @@ algo:
     disable_finite_checks: true
 
 training:
-  task_name: Go1JoystickFlat
+  task_name: DR002JoystickFlatWE11
   device: null
   logger: tensorboard
   wandb_project: unilab
@@ -118,12 +118,6 @@ interactive:
   keyboard: false
   keyboard_step_lin: 0.1
   keyboard_step_ang: 0.2
-
-viser:
-  port: 8080
-  env_idx: 0
-  display_mode: all
-  max_envs: 16
 
 env:
   post_step_forward_sensor: false

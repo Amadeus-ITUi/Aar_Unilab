@@ -38,11 +38,11 @@ class RewardContext:
     base_height_target: float = 0.0
     base_height: np.ndarray = field(default_factory=lambda: np.empty(0))  # pre-fetched
 
-    # ── G1-only (None for quadrupeds) ───────────────────────────────
+    # ── optional dynamic state ──────────────────────────────────────
     gravity: np.ndarray | None = None
     dof_vel: np.ndarray | None = None
 
-    # ── optional weights (G1 pose rewards) ──────────────────────────
+    # ── optional pose weights ───────────────────────────────────────
     pose_weights: np.ndarray | None = None
 
     # ── optional state populated for rough / biped tasks ────────────
@@ -264,7 +264,7 @@ def joint_pos_penalty(
 
 
 def upward(ctx: RewardContext) -> np.ndarray:
-    """Reward favouring an upright body (no Go2 upright gate)."""
+    """Reward favouring an upright body."""
     assert ctx.gravity is not None
     return np.asarray(np.square(1.0 + ctx.gravity[:, 2]), dtype=get_global_dtype())
 

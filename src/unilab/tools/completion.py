@@ -23,11 +23,6 @@ RUN_PATH_IGNORED_PARTS = ("__pycache__", "outputs")
 SCRIPT_ASSIGNMENT_PATTERN = re.compile(r'^([A-Za-z0-9_.-]+)\s*=\s*"([^"]+)"\s*(?:#.*)?$')
 DEFAULT_ALGO_LOG_NAMES = {
     "ppo": "rsl_rl_ppo",
-    "mlx_ppo": "mlx_rl_train",
-    "appo": "appo",
-    "sac": "fast_sac",
-    "td3": "fast_td3",
-    "flashsac": "flash_sac",
 }
 COMPLETION_BLOCK_START = "# >>> unilab completion >>>"
 COMPLETION_BLOCK_END = "# <<< unilab completion <<<"
@@ -146,37 +141,8 @@ def _task_entries_for_group(
     return entries
 
 
-def _task_entries_for_offpolicy(root: Path) -> list[TaskCompletionEntry]:
-    entries: list[TaskCompletionEntry] = []
-    task_root = root / "conf" / "offpolicy" / "task"
-    if not task_root.is_dir():
-        return entries
-    for algo in cli.SUPPORTED_ALGOS:
-        algo_root = task_root / algo
-        if not algo_root.is_dir():
-            continue
-        for task_dir in sorted(path for path in algo_root.iterdir() if path.is_dir()):
-            for owner_yaml in sorted(task_dir.glob("*.yaml")):
-                sim = _sim_from_owner(owner_yaml.stem)
-                if sim is None:
-                    continue
-                entries.append(
-                    TaskCompletionEntry(
-                        algo=algo,
-                        task=task_dir.name,
-                        sim=sim,
-                        owner=owner_yaml.stem,
-                    )
-                )
-    return entries
-
-
 def _task_entries(root: Path) -> tuple[TaskCompletionEntry, ...]:
-    entries = [
-        *_task_entries_for_group(root, "ppo", ("ppo", "mlx_ppo")),
-        *_task_entries_for_group(root, "appo", ("appo",)),
-        *_task_entries_for_offpolicy(root),
-    ]
+    entries = _task_entries_for_group(root, "ppo", ("ppo",))
     return tuple(
         sorted(entries, key=lambda entry: (entry.task, entry.algo, entry.sim, entry.owner))
     )
@@ -380,7 +346,7 @@ def _owner_yaml_paths(
     selected_profile: str | None,
 ) -> tuple[Path, ...]:
     try:
-        route = cli.build_route(selected_algo, selected_task, selected_sim, selected_profile)
+        route = cli.build_route(selected_algo, selected_task, selected_sim)
     except SystemExit:
         return ()
 
@@ -388,17 +354,7 @@ def _owner_yaml_paths(
     if not route_path.is_file():
         return ()
 
-    paths = [route_path]
-    if selected_profile is not None:
-        try:
-            base_route = cli.build_route(selected_algo, selected_task, selected_sim, None)
-        except SystemExit:
-            base_route = None
-        if base_route is not None:
-            base_path = root / "conf" / base_route.config_group / "task" / base_route.owner_task
-            if base_path not in paths:
-                paths.append(base_path)
-    return tuple(paths)
+    return (route_path,)
 
 
 def _first_yaml_section_scalar(paths: Sequence[Path], section: str, key: str) -> str | None:
@@ -457,40 +413,6 @@ def _load_run_choices(
     return _dedupe(_matching(candidates, prefix))
 
 
-_DEMO_FLAGS: tuple[str, ...] = ("--device", "--refresh")
-_DEMO_VALUE_FLAGS: frozenset[str] = frozenset({"--device"})
-
-
-def _demo_name_consumed(words: Sequence[str], cword: int) -> bool:
-    index = 3
-    limit = min(cword, len(words))
-    while index < limit:
-        token = words[index]
-        if token.startswith("--"):
-            index += 2 if token in _DEMO_VALUE_FLAGS else 1
-            continue
-        return True
-    return False
-
-
-def _demo_completions(
-    *,
-    words: Sequence[str],
-    cword: int,
-    current: str,
-    previous: str,
-    used_options: set[str],
-) -> list[str]:
-    from unilab.demo import DEMO_REGISTRY
-
-    if not _demo_name_consumed(words, cword):
-        return _matching(tuple(sorted(DEMO_REGISTRY)), current)
-    if previous in _DEMO_VALUE_FLAGS:
-        return []
-    available_flags = tuple(flag for flag in _DEMO_FLAGS if flag not in used_options)
-    return _matching(available_flags, current)
-
-
 def complete_words(
     words: Sequence[str],
     cword: int,
@@ -534,22 +456,6 @@ def complete_words(
             selected_task=option_values.get("--task"),
             selected_sim=option_values.get("--sim"),
             selected_profile=option_values.get("--profile"),
-        )
-    if command in {"train", "eval"} and previous == "--profile":
-        return _profile_choices(
-            selected_metadata,
-            prefix=current,
-            selected_algo=option_values.get("--algo"),
-            selected_sim=option_values.get("--sim"),
-            selected_task=option_values.get("--task"),
-        )
-    if command == "demo":
-        return _demo_completions(
-            words=words,
-            cword=cword,
-            current=current,
-            previous=previous,
-            used_options=used_options,
         )
     if current == "" or current.startswith("-") or previous == command:
         return _matching(_available_flags(selected_metadata, command, used_options), current)

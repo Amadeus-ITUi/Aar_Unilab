@@ -1,8 +1,7 @@
 """MuJoCo-only batched rendering helpers.
 
 This module renders many MuJoCo states into image frames by constructing
-MuJoCo model/data/renderer objects inside worker processes. It is not available
-for Motrix-only workflows.
+MuJoCo model/data/renderer objects inside worker processes.
 """
 
 import math

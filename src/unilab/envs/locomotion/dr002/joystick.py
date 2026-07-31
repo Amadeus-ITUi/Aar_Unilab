@@ -189,14 +189,6 @@ class DR002DomainRandConfig(DomainRandConfig):
 
 
 @dataclass
-class WE5DomainRandConfig(DR002DomainRandConfig):
-    """WE5 randomization defaults aligned with the IsaacLab main task."""
-
-    randomize_torque_scale: bool = True
-    torque_scale_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
-
-
-@dataclass
 class WingAngleObservationConfig:
     enabled: bool = False
     # Preserve the two-channel observation/history contract while replacing
@@ -283,12 +275,11 @@ class WE11JoystickSensor(JoystickSensor):
     )
 
 
-@registry.envcfg("DR002JoystickFlat")
 @dataclass
 class DR002JoystickCfg(DR002BaseCfg):
     scene: SceneCfg = field(
         default_factory=lambda: SceneCfg(
-            model_file=str(_DR002_ASSET_ROOT / "scene_flat_latest.xml")
+            model_file=str(_DR002_ASSET_ROOT / "we11" / "scene_flat_we11.xml")
         )
     )
     max_episode_seconds: float = 23.0
@@ -304,7 +295,7 @@ class DR002JoystickCfg(DR002BaseCfg):
 class WE11ControlConfig(ControlConfig):
     """WE11 PACE controller with a shared randomized command FIFO."""
 
-    # Preserve the WE6 wheel action-to-torque gain with Kd reduced 4x to 0.05.
+    # Preserve the effective wheel action-to-torque gain with wheel Kd=0.05.
     wheel_action_scale: float = 10.0
     wheel_clip_actions: float = 2.5
     motor_control_hz: float | None = 200.0
@@ -340,65 +331,6 @@ class WE11NoiseConfig(NoiseConfig):
     gravity_installation_bias_max_deg: float = 5.0
     gravity_dynamic_noise_max_deg: float = 1.0
     gravity_dynamic_noise_time_constant_s: float = 3.0
-
-
-@dataclass
-class WE5NoiseConfig(NoiseConfig):
-    """WE5 observation noise kept independent from shared defaults."""
-
-    scale_gyro: float = 0.2
-    scale_joint_angle: float = 0.08
-    scale_joint_vel: float = 1.5
-    scale_wheel_vel: float = 2.25
-    scale_gravity: float = 0.2
-    gravity_noise_mode: str = "additive"
-    gravity_installation_bias_max_deg: float = 0.0
-    gravity_dynamic_noise_max_deg: float = 0.0
-    gravity_dynamic_noise_time_constant_s: float = 3.0
-
-
-@dataclass
-class WE5CommandDelayControlConfig(ControlConfig):
-    """WE5 controller matched to the command-delay sweep bundle."""
-
-    motor_control_hz: float | None = 400.0
-    action_delay_semantics: str = "pre_controller_command_fifo"
-    torque_delay_steps: int | None = None
-    action_delay_min_steps: int = 0
-    action_delay_max_steps: int = 0
-    action_delay_steps_by_joint: list[int] | None = field(
-        default_factory=lambda: [4, 4, 4, 4, 4, 4]
-    )
-    torque_delay_steps_by_joint: list[int] | None = field(
-        default_factory=lambda: [0, 0, 0, 0, 0, 0]
-    )
-    resample_action_delay: bool = False
-    use_native_batched_pd: bool = True
-    Kp: list[float] = field(  # noqa: N815
-        default_factory=lambda: [3.72, 4.0, 0.0, 3.72, 4.0, 0.0]
-    )
-    Kd: list[float] = field(  # noqa: N815
-        default_factory=lambda: [0.15, 0.2, 0.05, 0.15, 0.2, 0.05]
-    )
-
-
-@dataclass
-class WE5TorqueDelayControlConfig(WE5CommandDelayControlConfig):
-    """WE5 controller matched to the post-PD torque-delay sweep bundle."""
-
-    action_delay_semantics: str = "post_controller_motor_torque_fifo"
-    action_delay_steps_by_joint: list[int] | None = field(
-        default_factory=lambda: [0, 0, 0, 0, 0, 0]
-    )
-    torque_delay_steps_by_joint: list[int] | None = field(
-        default_factory=lambda: [10, 6, 6, 10, 6, 6]
-    )
-    Kp: list[float] = field(  # noqa: N815
-        default_factory=lambda: [4.27, 3.99, 0.0, 4.27, 3.99, 0.0]
-    )
-    Kd: list[float] = field(  # noqa: N815
-        default_factory=lambda: [0.231, 0.2, 0.05, 0.231, 0.2, 0.05]
-    )
 
 
 @registry.envcfg("DR002JoystickFlatWE11")
@@ -1869,7 +1801,7 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         )
 
 
-@registry.env("DR002JoystickFlat", sim_backend="mujoco")
+@registry.env("DR002JoystickFlatWE11", sim_backend="mujoco")
 class DR002JoystickEnv(DR002BaseEnv):
     _cfg: DR002JoystickCfg
     _TRAINING_STATE_KIND = "unilab.dr002_joystick.curriculum"
@@ -1885,7 +1817,6 @@ class DR002JoystickEnv(DR002BaseEnv):
             cfg.sim_dt,
             base_name=cfg.asset.base_name,
             push_body_name=cfg.domain_rand.push_body_name,
-            motrix_max_iterations=cfg.motrix_max_iterations,
             post_step_forward_sensor=cfg.post_step_forward_sensor,
         )
         super().__init__(cfg, backend, num_envs)
@@ -3171,6 +3102,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         return commands
 
     def episode_steps(self) -> np.ndarray:
+        assert self._state is not None
         steps = np.asarray(self._state.info.get("steps"), dtype=np.int64)
         if steps.shape != (self._num_envs,):
             return np.zeros((self._num_envs,), dtype=np.int64)
@@ -4985,7 +4917,3 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _reward_alive(self, ctx: RewardContext) -> np.ndarray:
         return np.asarray(self._alive_values(ctx.num_envs), dtype=get_global_dtype())
-
-
-registry.register_env("DR002JoystickFlat", DR002JoystickEnv, sim_backend="motrix")
-registry.register_env("DR002JoystickFlatWE11", DR002JoystickEnv, sim_backend="mujoco")

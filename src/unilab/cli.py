@@ -3,22 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import platform
 import re
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Sequence
 
-from unilab.demo import run_demo
-
-SUPPORTED_ALGOS = ("ppo", "mlx_ppo", "appo", "sac", "td3", "flashsac")
-SUPPORTED_SIMS = ("mujoco", "motrix")
+SUPPORTED_ALGOS = ("ppo",)
+SUPPORTED_SIMS = ("mujoco",)
 SUPPORTED_RENDER_MODES = ("auto", "interactive", "record", "none")
-OFFPOLICY_ALGOS = {"sac", "td3", "flashsac"}
 RESERVED_OVERRIDE_KEYS = {
     "algo",
     "task",
@@ -77,17 +71,7 @@ def _override_key(override: str) -> str:
 def _check_task_name(task: str) -> None:
     if TASK_NAME_PATTERN.fullmatch(task) is None:
         raise SystemExit(
-            "--task must be a registry task name such as `go1_joystick`; "
-            "do not include slashes, dots, or path separators."
-        )
-
-
-def _check_profile(profile: str | None) -> None:
-    if profile is None:
-        return
-    if TASK_NAME_PATTERN.fullmatch(profile) is None:
-        raise SystemExit(
-            "--profile must be a task owner variant such as `hora`; "
+            "--task must be a registry task name such as `dr002_joystick_flat_we11`; "
             "do not include slashes, dots, or path separators."
         )
 
@@ -97,15 +81,6 @@ def _check_load_run(load_run: str) -> None:
         return
     if RUN_ID_PATTERN.fullmatch(load_run) is None or load_run in {".", ".."}:
         raise SystemExit("--load-run must be `-1` or a run directory name, not a path.")
-
-
-def _check_runtime_requirements(algo: str, sim: str) -> None:
-    if algo == "mlx_ppo" and platform.system() != "Darwin":
-        raise SystemExit("mlx_ppo is only supported on macOS; use --algo ppo for torch PPO.")
-    if sim == "motrix" and find_spec("motrixsim") is None:
-        raise SystemExit(
-            "sim=motrix requires the Motrix extra. Install it with `uv sync --extra motrix`."
-        )
 
 
 def _override_bool(overrides: Sequence[str], key: str) -> bool | None:
@@ -130,76 +105,13 @@ def _override_value(overrides: Sequence[str], key: str) -> str | None:
     return selected
 
 
-def _needs_motrix_renderer(mode: str, sim: str, overrides: Sequence[str]) -> bool:
-    if sim != "motrix":
-        return False
-    play_render_mode = _override_value(overrides, "training.play_render_mode")
-    if play_render_mode is not None and play_render_mode.strip().lower() in {"none", "record"}:
-        return False
-    if mode == "eval":
-        return True
-    if mode == "train":
-        return _override_bool(overrides, "training.no_play") is not True
-    return False
-
-
-def _python_executable_for_route(mode: str, sim: str, overrides: Sequence[str]) -> str:
-    if platform.system() != "Darwin" or not _needs_motrix_renderer(mode, sim, overrides):
-        return sys.executable
-
-    return _mxpython_executable()
-
-
-def _mxpython_executable() -> str:
-    if Path(sys.executable).name == "mxpython":
-        return sys.executable
-
-    mxpython = shutil.which("mxpython")
-    if mxpython is not None:
-        return mxpython
-
-    venv_mxpython = Path(sys.executable).with_name("mxpython")
-    if venv_mxpython.is_file():
-        return str(venv_mxpython)
-
-    raise SystemExit(
-        "macOS Motrix playback uses the native renderer and must be launched with "
-        "`mxpython`. Install the Motrix extra so `mxpython` is on PATH, or use "
-        "`training.no_play=true` for non-rendering training."
-    )
-
-
-def build_route(algo: str, task: str, sim: str, profile: str | None = None) -> Route:
-    task_choice: str
-    owner = f"{sim}_{profile}" if profile is not None else sim
-    if algo in OFFPOLICY_ALGOS:
-        task_choice = f"{algo}/{task}/{owner}"
-        return Route(
-            script_name="train_offpolicy.py",
-            config_group="offpolicy",
-            owner_task=f"{algo}/{task}/{owner}.yaml",
-            generated_overrides=(f"algo={algo}", f"task={task_choice}"),
-        )
-    task_choice = f"{task}/{owner}"
+def build_route(algo: str, task: str, sim: str) -> Route:
+    task_choice = f"{task}/{sim}"
     if algo == "ppo":
         return Route(
             script_name="train_rsl_rl.py",
             config_group="ppo",
-            owner_task=f"{task}/{owner}.yaml",
-            generated_overrides=(f"task={task_choice}",),
-        )
-    if algo == "mlx_ppo":
-        return Route(
-            script_name="train_mlx_ppo.py",
-            config_group="ppo",
-            owner_task=f"{task}/{owner}.yaml",
-            generated_overrides=(f"task={task_choice}",),
-        )
-    if algo == "appo":
-        return Route(
-            script_name="train_appo.py",
-            config_group="appo",
-            owner_task=f"{task}/{owner}.yaml",
+            owner_task=f"{task}/{sim}.yaml",
             generated_overrides=(f"task={task_choice}",),
         )
     raise SystemExit(f"Unsupported algo={algo!r}; choose one of: {', '.join(SUPPORTED_ALGOS)}")
@@ -212,7 +124,6 @@ def build_command(
     task: str,
     sim: str,
     overrides: Sequence[str],
-    profile: str | None = None,
     load_run: str | None = None,
     render_mode: str | None = None,
     root: Path | None = None,
@@ -220,11 +131,9 @@ def build_command(
     selected_root = root or repo_root()
     _check_private_checkout(selected_root)
     _check_task_name(task)
-    _check_profile(profile)
     _check_reserved_overrides(overrides)
-    _check_runtime_requirements(algo, sim)
 
-    route = build_route(algo, task, sim, profile)
+    route = build_route(algo, task, sim)
     script = _script_path(route, selected_root)
     if not script.is_file():
         raise SystemExit(f"Entrypoint script not found: {script}")
@@ -246,8 +155,7 @@ def build_command(
                 raise SystemExit("Use either --load-run or algo.load_run=..., not both.")
             generated.append(f"algo.load_run={load_run}")
 
-    executable = _python_executable_for_route(mode, sim, (*generated, *overrides))
-    return [executable, str(script), *generated, *overrides]
+    return [sys.executable, str(script), *generated, *overrides]
 
 
 def _train_eval_parser(*, mode: str) -> argparse.ArgumentParser:
@@ -255,18 +163,9 @@ def _train_eval_parser(*, mode: str) -> argparse.ArgumentParser:
     parser.add_argument("--algo", required=True, choices=SUPPORTED_ALGOS)
     parser.add_argument("--task", required=True)
     parser.add_argument("--sim", required=True, choices=SUPPORTED_SIMS)
-    parser.add_argument("--profile", default=None)
     parser.add_argument("--render-mode", choices=SUPPORTED_RENDER_MODES, default=None)
     if mode == "eval":
         parser.add_argument("--load-run", default=None)
-    return parser
-
-
-def _demo_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="demo")
-    parser.add_argument("demo_name")
-    parser.add_argument("--refresh", action="store_true")
-    parser.add_argument("--device", default=None)
     return parser
 
 
@@ -279,7 +178,6 @@ def _run_train_eval(mode: str, argv: Sequence[str] | None = None) -> int:
         algo=args.algo,
         task=args.task,
         sim=args.sim,
-        profile=args.profile,
         overrides=overrides,
         load_run=getattr(args, "load_run", None),
         render_mode=args.render_mode,
@@ -293,20 +191,6 @@ def train_main(argv: Sequence[str] | None = None) -> int:
 
 def eval_main(argv: Sequence[str] | None = None) -> int:
     return _run_train_eval("eval", argv)
-
-
-def demo_main(argv: Sequence[str] | None = None) -> int:
-    parser = _demo_parser()
-    args, overrides = parser.parse_known_args(argv)
-    if overrides:
-        raise SystemExit(
-            f"demo does not accept passthrough Hydra overrides: {', '.join(overrides)}"
-        )
-    return run_demo(
-        demo_name=args.demo_name,
-        refresh=args.refresh,
-        device=args.device,
-    )
 
 
 if __name__ == "__main__":

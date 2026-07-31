@@ -34,7 +34,6 @@ class EnvCfg:
     ctrl_dt: float = 0.01
     render_spacing: float = 1.0
     render_offset_mode: str = "grid"
-    motrix_max_iterations: Optional[int] = None
     post_step_forward_sensor: bool = False
 
     @property

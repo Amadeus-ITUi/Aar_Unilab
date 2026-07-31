@@ -5,15 +5,14 @@
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
-from tensordict import TensorDict
-
-from rsl_rl.modules import EmpiricalNormalization, MLP, HiddenState
+from rsl_rl.modules import MLP, EmpiricalNormalization, HiddenState
 from rsl_rl.modules.distribution import Distribution
 from rsl_rl.utils import resolve_callable, unpad_trajectories
+from tensordict import TensorDict
 
 
 class MlpAdaptModel(nn.Module):
@@ -67,9 +66,13 @@ class MlpAdaptModel(nn.Module):
 
         self.obs_per_step = int(self.obs_dim // self.max_length)
         if self.cmd_dim <= 0 or self.cmd_dim > self.obs_per_step:
-            raise ValueError(f"cmd_dim must be in [1, obs_per_step], got {self.cmd_dim} vs {self.obs_per_step}")
+            raise ValueError(
+                f"cmd_dim must be in [1, obs_per_step], got {self.cmd_dim} vs {self.obs_per_step}"
+            )
         self.proprioception_dim = int(self.obs_per_step - self.cmd_dim)
-        self.history_term_dims, self.num_command_terms = self._resolve_history_term_dims(history_term_dims)
+        self.history_term_dims, self.num_command_terms = self._resolve_history_term_dims(
+            history_term_dims
+        )
 
         # Observation normalization (applied to flattened history vector).
         self.obs_normalization = obs_normalization
@@ -89,7 +92,13 @@ class MlpAdaptModel(nn.Module):
 
         # Memory encoder (history -> latent).
         self.mem_encoder = nn.Sequential(
-            *MLP(self.proprioception_dim * self.max_length, latent_dim, mlp_hidden_dims, activation, "tanh")
+            *MLP(
+                self.proprioception_dim * self.max_length,
+                latent_dim,
+                mlp_hidden_dims,
+                activation,
+                "tanh",
+            )
         )
 
         # Privileged target estimator (latent -> privileged target prediction).
@@ -99,7 +108,12 @@ class MlpAdaptModel(nn.Module):
 
         # Low-level action network (latent + cmd + privileged_pred -> actions).
         self.low_level_net = nn.Sequential(
-            *MLP(latent_dim + self.cmd_dim + self.privileged_target_dim, action_head_out_dim, actor_hidden_dims, activation)
+            *MLP(
+                latent_dim + self.cmd_dim + self.privileged_target_dim,
+                action_head_out_dim,
+                actor_hidden_dims,
+                activation,
+            )
         )
 
         # Cached reconstruction loss for PPO to query.
@@ -148,7 +162,9 @@ class MlpAdaptModel(nn.Module):
             return self.distribution.deterministic_output(action_head_out)
         return action_head_out
 
-    def get_latent(self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None) -> torch.Tensor:
+    def get_latent(
+        self, obs: TensorDict, masks: torch.Tensor | None = None, hidden_state: HiddenState = None
+    ) -> torch.Tensor:
         # Select and concatenate observations from the configured groups.
         obs_list = [obs[obs_group] for obs_group in self.obs_groups]
         return torch.cat(obs_list, dim=-1)
@@ -176,12 +192,14 @@ class MlpAdaptModel(nn.Module):
 
     @property
     def output_distribution_params(self) -> tuple[torch.Tensor, ...]:
-        return self.distribution.params  # type: ignore[union-attr]
+        return cast(tuple[torch.Tensor, ...], self.distribution.params)  # type: ignore[union-attr]
 
     def get_output_log_prob(self, outputs: torch.Tensor) -> torch.Tensor:
         return self.distribution.log_prob(outputs)  # type: ignore[union-attr]
 
-    def get_kl_divergence(self, old_params: tuple[torch.Tensor, ...], new_params: tuple[torch.Tensor, ...]) -> torch.Tensor:
+    def get_kl_divergence(
+        self, old_params: tuple[torch.Tensor, ...], new_params: tuple[torch.Tensor, ...]
+    ) -> torch.Tensor:
         return self.distribution.kl_divergence(old_params, new_params)  # type: ignore[union-attr]
 
     def update_normalization(self, obs: TensorDict) -> None:
@@ -200,7 +218,9 @@ class MlpAdaptModel(nn.Module):
     def as_onnx(self, verbose: bool) -> nn.Module:
         return _OnnxMlpAdaptModel(self, verbose)
 
-    def _compute_recon_loss(self, privileged_obs: TensorDict | None, privileged_pred: torch.Tensor) -> torch.Tensor:
+    def _compute_recon_loss(
+        self, privileged_obs: TensorDict | None, privileged_pred: torch.Tensor
+    ) -> torch.Tensor:
         if privileged_obs is None:
             return privileged_pred.new_zeros(())
         if self.privileged_target_key not in privileged_obs.keys():
@@ -232,7 +252,9 @@ class MlpAdaptModel(nn.Module):
         cmd_terms = []
         for term_dim in self.history_term_dims[command_start:]:
             term_span = term_dim * self.max_length
-            cmd_hist = hist_flat[:, offset : offset + term_span].view(hist_flat.shape[0], self.max_length, term_dim)
+            cmd_hist = hist_flat[:, offset : offset + term_span].view(
+                hist_flat.shape[0], self.max_length, term_dim
+            )
             cmd_terms.append(cmd_hist[:, -1, :])
             offset += term_span
         return torch.cat(pro_terms, dim=-1), torch.cat(cmd_terms, dim=-1)
@@ -257,12 +279,16 @@ class MlpAdaptModel(nn.Module):
             if command_dim >= self.cmd_dim:
                 break
         if command_dim != self.cmd_dim:
-            raise ValueError(f"Trailing history command terms must sum to cmd_dim ({self.cmd_dim}), got {command_dim}")
+            raise ValueError(
+                f"Trailing history command terms must sum to cmd_dim ({self.cmd_dim}), got {command_dim}"
+            )
         if num_command_terms == len(dims):
             raise ValueError("history_term_dims must contain at least one non-command term")
         return dims, num_command_terms
 
-    def _get_obs_dim(self, obs: TensorDict, obs_groups: dict[str, list[str]], obs_set: str) -> tuple[list[str], int]:
+    def _get_obs_dim(
+        self, obs: TensorDict, obs_groups: dict[str, list[str]], obs_set: str
+    ) -> tuple[list[str], int]:
         active_obs_groups = obs_groups[obs_set]
         obs_dim = 0
         for obs_group in active_obs_groups:
@@ -276,6 +302,8 @@ class MlpAdaptModel(nn.Module):
 
 class _TorchMlpAdaptModel(nn.Module):
     """Exportable deterministic actor (JIT)."""
+
+    _cmd_indices: torch.Tensor
 
     def __init__(self, model: MlpAdaptModel) -> None:
         super().__init__()
@@ -295,9 +323,16 @@ class _TorchMlpAdaptModel(nn.Module):
             self.pro_history_dim = sum(model.history_term_dims[:command_start]) * model.max_length
             offset = self.pro_history_dim
             for term_dim in model.history_term_dims[command_start:]:
-                cmd_indices.extend(range(offset + (model.max_length - 1) * term_dim, offset + model.max_length * term_dim))
+                cmd_indices.extend(
+                    range(
+                        offset + (model.max_length - 1) * term_dim,
+                        offset + model.max_length * term_dim,
+                    )
+                )
                 offset += term_dim * model.max_length
-        self.register_buffer("_cmd_indices", torch.tensor(cmd_indices, dtype=torch.long), persistent=False)
+        self.register_buffer(
+            "_cmd_indices", torch.tensor(cmd_indices, dtype=torch.long), persistent=False
+        )
         if model.distribution is not None:
             self.deterministic_output = model.distribution.as_deterministic_output_module()
         else:
@@ -331,6 +366,7 @@ class _OnnxMlpAdaptModel(nn.Module):
     """Exportable deterministic actor (ONNX)."""
 
     is_recurrent: bool = False
+    _cmd_indices: torch.Tensor
 
     def __init__(self, model: MlpAdaptModel, verbose: bool) -> None:
         super().__init__()
@@ -351,9 +387,16 @@ class _OnnxMlpAdaptModel(nn.Module):
             self.pro_history_dim = sum(model.history_term_dims[:command_start]) * model.max_length
             offset = self.pro_history_dim
             for term_dim in model.history_term_dims[command_start:]:
-                cmd_indices.extend(range(offset + (model.max_length - 1) * term_dim, offset + model.max_length * term_dim))
+                cmd_indices.extend(
+                    range(
+                        offset + (model.max_length - 1) * term_dim,
+                        offset + model.max_length * term_dim,
+                    )
+                )
                 offset += term_dim * model.max_length
-        self.register_buffer("_cmd_indices", torch.tensor(cmd_indices, dtype=torch.long), persistent=False)
+        self.register_buffer(
+            "_cmd_indices", torch.tensor(cmd_indices, dtype=torch.long), persistent=False
+        )
         if model.distribution is not None:
             self.deterministic_output = model.distribution.as_deterministic_output_module()
         else:

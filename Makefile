@@ -7,31 +7,19 @@ setup:
 	uv sync
 	uv run --no-sync unilab-complete install
 
-.PHONY: setup-motrix
-setup-motrix:
-	uv sync --extra motrix
-	uv run --no-sync unilab-complete install
-
 .PHONY: install-completion
 install-completion:
 	uv run --no-sync unilab-complete install
-
-.PHONY: sync-rocm
-sync-rocm:
-	@cp pyproject.rocm.toml pyproject.toml
-	@if [ -f uv.rocm.lock ]; then cp uv.rocm.lock uv.lock; fi
-	uv sync --extra motrix
-	cp uv.lock uv.rocm.lock
-
-.PHONY: sync-xpu
-sync-xpu:
-	uv sync --extra motrix --no-install-package torch
-	uv pip install torch==2.7.0 --torch-backend xpu
 
 .PHONY: format
 format:
 	uv run ruff format
 	uv run ruff check --fix
+
+.PHONY: lint
+lint:
+	uv run ruff format --check .
+	uv run ruff check .
 
 .PHONY: type
 type:
@@ -39,7 +27,7 @@ type:
 	uv run pyright
 
 .PHONY: check
-check: format type
+check: lint type
 
 .PHONY: test
 test:
@@ -58,17 +46,7 @@ test-all: check test-cov
 
 .PHONY: clean
 clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
-	find . -type d -name "*.egg-info" -exec rm -rf {} +
-	find . -type d -name ".pytest_cache" -exec rm -rf {} +
-	find . -type d -name ".mypy_cache" -exec rm -rf {} +
-	find . -type d -name ".ruff_cache" -exec rm -rf {} +
-	find . -type d -name "htmlcov" -exec rm -rf {} +
-	find . -type f -name ".coverage" -delete
-	rm -f train_appo.log train_offpolicy.log train_rsl_rl.log
-	find src/unilab/assets/.cache -type f ! -name '.gitkeep' -delete 2>/dev/null || true
-	find src/unilab/assets/caches -type f ! -name '.gitkeep' -delete 2>/dev/null || true
-	find src/unilab/assets/checkpoints -type f ! -name '.gitkeep' -delete 2>/dev/null || true
-	find src/unilab/assets/scenes -type f ! -name '.gitkeep' -delete 2>/dev/null || true
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov
+	rm -f .coverage train_rsl_rl.log
+	find src tests scripts -type d -name "__pycache__" -prune -exec rm -rf {} +
+	find src tests scripts -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete

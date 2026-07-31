@@ -20,13 +20,9 @@ from typing import (
 from .base import ABEnv, EnvCfg
 
 TEnvCfg = TypeVar("TEnvCfg", bound=EnvCfg)
-_DEFAULT_SIM_BACKEND_ORDER: tuple[str, ...] = ("mujoco", "motrix")
+_DEFAULT_SIM_BACKEND_ORDER: tuple[str, ...] = ("mujoco",)
 _REGISTRY_MODULES_ATTR = "__unilab_registry_modules__"
-_DEFAULT_REGISTRY_PACKAGES = (
-    "unilab.envs.locomotion",
-    "unilab.envs.manipulation",
-    "unilab.envs.motion_tracking",
-)
+_DEFAULT_REGISTRY_PACKAGES = ("unilab.envs.locomotion",)
 # Environment variable used to extend ensure_registries() with extra packages.
 # Mainly intended for test setups that need to ship a fixture-only registry into
 # spawn subprocesses (which do not inherit pytest conftest state).
@@ -87,9 +83,9 @@ def envcfg(name: str) -> Callable[[Type[TEnvCfg]], Type[TEnvCfg]]:
 
 def register_env(name: str, env_cls: Type[ABEnv], sim_backend: str):
     """Register an environment class with a name and simulation backend."""
-    if sim_backend not in ["mujoco", "motrix"]:
+    if sim_backend != "mujoco":
         raise ValueError(
-            f"Unsupported simulation backend: {sim_backend}. Only 'mujoco' and 'motrix' are supported."
+            f"Unsupported simulation backend: {sim_backend}. Only 'mujoco' is supported."
         )
 
     if name not in _envs:
@@ -208,8 +204,8 @@ def make(
 
     Args:
         name: Environment name
-        sim_backend: Simulation backend ("mujoco" or "motrix"). If None, uses the
-            explicit default backend order: "mujoco", then "motrix".
+        sim_backend: Simulation backend. Only "mujoco" is supported. If None,
+            the MuJoCo backend is selected.
         num_envs: Number of environments to create
 
     Returns:

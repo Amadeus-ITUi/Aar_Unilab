@@ -338,8 +338,8 @@ def _ensure_generated_hfield_scene_visuals(root: ET.Element, geom_name: str) -> 
     terrain_geom = root.find(f".//geom[@name='{geom_name}']")
     if terrain_geom is not None and terrain_geom.get("material") is None:
         terrain_geom.set("material", "groundplane")
-    # Robot models sometimes ship with a spot- or target-mode light (e.g. G1's
-    # ``spotlight`` tracking the trunk). Such lights have an implicit
+    # Robot models sometimes ship with a spot- or target-mode light tracking
+    # the trunk. Such lights have an implicit
     # ``type`` and cannot coexist with ``directional="true"``. Drop them; the
     # overhead light added by the materializer plus the headlight under
     # ``visual`` is sufficient for terrain visualization.
@@ -384,8 +384,8 @@ def _copy_robot_asset_dir(model_file: Path, output_dir: Path) -> None:
     Honors the ``meshdir`` (and ``texturedir``) declared in the model's
     ``<compiler>`` tag — falling back to ``<model_file_dir>/assets`` when
     the compiler tag is missing or points at a non-existent path. This
-    keeps materialization working for models like ``go2w.xml`` whose
-    meshdir is relative to a sibling robot directory.
+    keeps materialization working when a model's mesh directory is relative
+    to a sibling asset directory.
     """
     candidates: list[Path] = []
     try:

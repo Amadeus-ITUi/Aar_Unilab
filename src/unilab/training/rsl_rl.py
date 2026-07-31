@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -227,7 +227,7 @@ class RslRlVecEnvWrapper:
 
     def training_state_dict(self) -> dict[str, Any] | None:
         """Forward optional cold-path checkpoint state from the concrete environment."""
-        return self.env.training_state_dict()
+        return cast(dict[str, Any] | None, self.env.training_state_dict())
 
     def load_training_state_dict(self, state: dict[str, Any]) -> None:
         """Forward cold-path checkpoint state to the concrete environment."""

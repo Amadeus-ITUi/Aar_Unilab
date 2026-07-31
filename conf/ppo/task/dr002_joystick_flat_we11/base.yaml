@@ -84,9 +84,9 @@ env:
     force_zero_output: false
     # Force-phase-aligned measured motor angles; 4 Hz is intentionally excluded.
     curriculum_paths:
-      - robots/dr002/wing_angle_obs/sweep_20260713_230639/1hz.csv
-      - robots/dr002/wing_angle_obs/sweep_20260713_230639/2hz.csv
-      - robots/dr002/wing_angle_obs/sweep_20260713_230639/3hz.csv
+      - robots/dr002/we11/training_data/wing_angle_20260713/1hz.csv
+      - robots/dr002/we11/training_data/wing_angle_20260713/2hz.csv
+      - robots/dr002/we11/training_data/wing_angle_20260713/3hz.csv
     normalization_deg: 180.0
     zero_offsets_deg: [0.0, 0.0]
     csv_amplitude_scale_range: [0.8, 1.2]
@@ -152,11 +152,11 @@ env:
     push_linear_velocity_delta_limit: null
     push_force_limit: [10.0, 10.0, 0.0]
     csv_force_enabled: true
-    csv_force_path: robots/dr002/measured_wrench/sweep_20260728_u9_skin/1hz.csv
+    csv_force_path: robots/dr002/we11/training_data/measured_wrench_20260728_skin/1hz.csv
     csv_force_curriculum_paths:
-      - robots/dr002/measured_wrench/sweep_20260728_u9_skin/1hz.csv
-      - robots/dr002/measured_wrench/sweep_20260728_u9_skin/2hz.csv
-      - robots/dr002/measured_wrench/sweep_20260728_u9_skin/3hz.csv
+      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/1hz.csv
+      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/2hz.csv
+      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/3hz.csv
     # 0 Hz is no measured replay. Positive levels use only 1-3 Hz measurements.
     csv_force_curriculum_hz: [0, 1, 2, 3]
     csv_force_period: 10.0

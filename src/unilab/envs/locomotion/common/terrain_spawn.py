@@ -40,8 +40,15 @@ class BaseSpawnManager:
     def record_episode_start(self, env_ids: np.ndarray, qpos_xyz: np.ndarray) -> None:
         del env_ids, qpos_xyz
 
-    def update_on_done(self, done_indices: np.ndarray, current_xyz: np.ndarray) -> dict[str, float]:
-        del done_indices, current_xyz
+    def update_on_done(
+        self,
+        done_indices: np.ndarray,
+        current_xyz: np.ndarray,
+        *,
+        demote_eligible: np.ndarray | None = None,
+        allow_progression: bool = True,
+    ) -> dict[str, float]:
+        del done_indices, current_xyz, demote_eligible, allow_progression
         return {}
 
 

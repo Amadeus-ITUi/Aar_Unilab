@@ -1,75 +1,50 @@
-# Contributing to UniLab
+# Contributing
 
-Languages: English | [简体中文](docs/sphinx/source/zh_CN/4-developer_guide/4-contributing.md)
+This branch is intentionally limited to the WE11 robot, RSL-RL PPO, and the
+MuJoCo backend. Do not add another robot, algorithm, or simulator without first
+changing the archive scope.
 
-## Development Environment Setup
-
-1. Fork and clone the repository.
-2. Install dependencies for your platform:
-   - macOS (MPS, installs PyPI torch wheels): `uv sync`
-   - Linux default (installs PyTorch cu128 wheels; requires an NVIDIA GPU/driver supported by current PyTorch cu128 wheels): `uv sync`
-   - Linux AMD / ROCm workstation: `make sync-rocm`, then run commands with `uv run --no-sync ...`
-   - When you need Motrix, append `--extra motrix`
-3. Create a branch such as `git checkout -b docs/improve-readme` or `git checkout -b fix/backend-bug`.
-
-## Development Rules
-
-- Always use `uv run`; do not invoke `python` outside `uv run`
-- Run `make check` before code-related commits
-- Keep backup files, temporary exports, and legacy compatibility copies out of the source tree; do not commit artifacts such as `*.bak`, `*.tmp`, `*.old`, `*.orig`, or editor backup files ending in `~`
-- For user-facing workflow changes, keep `README.md`, `CONTRIBUTING.md`, and the matching localized docs under `docs/` in sync
-- Do not add new owner logic under `src/unilab/utils/`; the current `src/unilab/utils/*.py` files are transition shims only and are scheduled for removal in `0.2.0`
-- Name new owner modules and packages after their responsibility: prefer singular nouns, use plural only for collection-valued contracts, and reserve suffixes such as `_factory` for factory modules
-- Use English for code comments, public API docstrings, internal implementation notes, TODO/FIXME entries, and config comments. Keep Chinese prose in Chinese documentation under `docs/sphinx/source/zh_CN/`; do not duplicate localized explanations inside source comments.
-
-## Read Before You Start
-
-- Before changing training entrypoints, runners, env contracts, or backend paths, read [RL Infrastructure Development Standard](docs/sphinx/source/zh_CN/4-developer_guide/0-index.md)
-- Before changing collaboration flow or issue / milestone rules, read [Collaboration Workflow](docs/sphinx/source/zh_CN/4-developer_guide/5-contributing_workflow.md)
-
-## Common Commands
+## Setup
 
 ```bash
-make format         # ruff format + ruff check --fix
-make sync-rocm      # Linux AMD / ROCm >= 7.1: sync deps and install torch==2.11.0+rocm7.2
-make type           # mypy src/unilab + pyright
-make check          # format + type (required before code-related commits)
-make test           # non-slow tests
-make test-cov       # non-slow tests + coverage report
-make test-slow      # slow integration and training smoke tests
-make test-all       # make check && make test-cov
+uv sync
 ```
 
-## Commit Conventions
+Always run Python entrypoints through `uv run` so the locked environment is
+used.
 
-Use Conventional Commits:
+## Ownership rules
 
-- `feat:` new feature
-- `fix:` bug fix
-- `docs:` documentation update
-- `style:` formatting only, no logic change
-- `refactor:` code refactor
-- `test:` test-related change
-- `chore:` build or tooling
+- Robot assets and measured training data live under
+  `src/unilab/assets/robots/dr002/we11/`.
+- WE11 flat and rough task configuration lives under
+  `conf/ppo/task/dr002_joystick_{flat,rough}_we11/`.
+- Environment behavior belongs in `src/unilab/envs/locomotion/dr002/`; scripts
+  should only assemble the workflow.
+- PPO integration belongs in `src/unilab/algos/torch/` and
+  `scripts/train_rsl_rl.py`.
+- MuJoCo-specific behavior must stay inside the MuJoCo backend or its owner
+  configuration.
+- Keep XML/model lookup out of `step()`, `reset()`, and other hot paths.
+- Task keyframes belong in task/scene XML, not the reusable robot XML.
 
-## Pull Request Workflow
+## Validation
 
-1. For code or config changes, run `make check` locally so lint, mypy, and pyright pass.
-2. For code changes, run `make test` locally so non-slow tests pass.
-3. If you touched IPC, Runner, or Config, add or update the matching tests.
-4. For docs-only changes, run `uv run pytest tests/scripts/test_check_docs.py -q` at minimum.
-5. If you touched repository hygiene rules, run `uv run pytest tests/scripts/test_repo_hygiene.py -q`.
-6. Link the relevant GitHub issue and fill in validation plus impact scope in the PR template.
-7. Open the PR against `main` and wait for green CI.
-8. Wait for code review.
+Run the narrowest relevant test while editing, then run the complete archive
+checks before handoff:
 
-## Issue Reports
+```bash
+make lint
+make type
+make test
+git diff --check
+```
 
-Use GitHub Issues to report bugs or propose features.
+Changes to WE11 assets, control timing, observations, rewards, randomization,
+or PPO network dimensions must also initialize and step both WE11 task configs.
 
-## Deep References
+## Commits
 
-- **Architecture & contracts**: [RL Infrastructure Development Standard](docs/sphinx/source/zh_CN/4-developer_guide/0-index.md)
-- **Collaboration & ADR governance**: [Collaboration Workflow](docs/sphinx/source/zh_CN/4-developer_guide/5-contributing_workflow.md)
-- **Test layout & markers**: [Development Standard §Testing](docs/sphinx/source/zh_CN/4-developer_guide/0-index.md)
-- **Configuration system**: [Development Standard §Configuration](docs/sphinx/source/zh_CN/4-developer_guide/0-index.md)
+Use concise Conventional Commit prefixes such as `feat:`, `fix:`, `test:`,
+`docs:`, `refactor:`, and `chore:`. Never commit checkpoints, run logs, local
+virtual environments, caches, or temporary exports.

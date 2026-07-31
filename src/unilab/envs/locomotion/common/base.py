@@ -27,10 +27,10 @@ class ControlConfigBase:
 
 @dataclass
 class PdControlConfig(ControlConfigBase):
-    """``ControlConfigBase`` plus shared PD-actuator gains (Go1/Go2/Go2W defaults)."""
+    """``ControlConfigBase`` plus scalar PD-actuator gains."""
 
-    Kp: float = 35.0
-    Kd: float = 0.5
+    Kp: float | list[float] = 35.0
+    Kd: float | list[float] = 0.5
 
 
 @dataclass
@@ -53,7 +53,7 @@ class LocomotionBaseCfg(EnvCfg):
 
 
 class LocomotionBaseEnv(NpEnv):
-    """Common base environment for locomotion tasks (G1, Go1, Go2, etc.)."""
+    """Common base environment for WE11 locomotion tasks."""
 
     _cfg: LocomotionBaseCfg
 

@@ -22,8 +22,6 @@ from unilab.envs.locomotion.common.height_scan import (
 )
 from unilab.envs.locomotion.common.terrain_spawn import TerrainCurriculumCfg, TerrainSpawnManager
 from unilab.envs.locomotion.dr002.joystick import (
-    DR002Commands,
-    DR002JoystickCfg,
     DR002JoystickDomainRandomizationProvider,
     DR002JoystickEnv,
     DR002JoystickFlatWE11Cfg,
@@ -39,17 +37,6 @@ from unilab.terrains import (
     hf_pyramid_slope,
     hf_pyramid_slope_inv,
 )
-
-
-@dataclass
-class DR002RoughCommands(DR002Commands):
-    lin_vel_x: list[float] = field(default_factory=lambda: [-0.5, 0.5])
-    ang_vel_z: list[float] = field(default_factory=lambda: [-1.0, 1.0])
-    height: list[float] = field(default_factory=lambda: [0.28, 0.28])
-    resampling_time: float = 5.0
-    startup_stand_seconds: float = 3.0
-    range_multiplier: list[float] = field(default_factory=lambda: [1.0, 2.0])
-    ang_vel_z_range_multiplier: list[float] = field(default_factory=lambda: [0.3, 1.0])
 
 
 @dataclass
@@ -132,26 +119,6 @@ class WE11RoughJoystickSensor(WE11JoystickSensor):
         "ancient_upper_right_touch",
         "ancient_front_center_touch",
     )
-
-
-@registry.envcfg("DR002JoystickRough")
-@dataclass
-class DR002JoystickRoughCfg(DR002JoystickCfg):
-    scene: SceneCfg = field(
-        default_factory=lambda: SceneCfg(
-            model_file=str(ASSETS_ROOT_PATH / "robots" / "dr002" / "dr002_latest.xml"),
-            fragment_files=[],
-            terrain=TerrainSceneCfg(
-                generator=DR002RoughTerrainCfg(),
-                hfield_name="terrain_hfield",
-                geom_name="floor",
-            ),
-        )
-    )
-    commands: DR002RoughCommands = field(default_factory=DR002RoughCommands)
-    terrain_scan: HeightScanConfig = field(default_factory=HeightScanConfig)
-    termination_config: RoughTerminationConfig = field(default_factory=RoughTerminationConfig)
-    terrain_curriculum: TerrainCurriculumCfg = field(default_factory=TerrainCurriculumCfg)
 
 
 @registry.envcfg("DR002JoystickRoughWE11")
@@ -271,14 +238,14 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
         )
 
 
-@registry.env("DR002JoystickRough", sim_backend="mujoco")
+@registry.env("DR002JoystickRoughWE11", sim_backend="mujoco")
 class DR002JoystickRoughEnv(DR002JoystickEnv):
-    _cfg: DR002JoystickRoughCfg | DR002JoystickRoughWE11Cfg
+    _cfg: DR002JoystickRoughWE11Cfg
     _height_scan_dim: int = 0
 
     def __init__(
         self,
-        cfg: DR002JoystickRoughCfg | DR002JoystickRoughWE11Cfg,
+        cfg: DR002JoystickRoughWE11Cfg,
         num_envs=1,
         backend_type="mujoco",
     ):
@@ -358,8 +325,10 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
             demote_eligible = None
             terrain_curriculum = self._cfg.terrain_curriculum
             if terrain_curriculum.demote_requires_commanded_distance:
+                terrain_scene = self._cfg.scene.terrain
+                assert terrain_scene is not None and terrain_scene.generator is not None
                 threshold = terrain_curriculum.demote_commanded_distance_frac * float(
-                    self._cfg.scene.terrain.generator.size[0]
+                    terrain_scene.generator.size[0]
                 )
                 demote_eligible = self._terrain_commanded_distance[done_indices] >= threshold
             stats = self._spawn.update_on_done(
@@ -419,6 +388,3 @@ class DR002JoystickRoughEnv(DR002JoystickEnv):
         self._state.reward.fill(0.0)
         self._state.final_observation = None
         self._clear_step_final_observation()
-
-
-registry.register_env("DR002JoystickRoughWE11", DR002JoystickRoughEnv, sim_backend="mujoco")

@@ -33,7 +33,7 @@ WORKDIR /workspace/UniLab
 
 COPY . /workspace/UniLab
 
-RUN uv sync --dev --extra motrix \
+RUN uv sync --dev \
     && uv cache clean \
     && rm -rf /root/.cache/uv
 

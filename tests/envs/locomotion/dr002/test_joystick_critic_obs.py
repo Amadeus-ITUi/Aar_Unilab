@@ -399,17 +399,19 @@ def test_we11_base_config_owns_latest_network_observation_and_force_contract() -
     assert len(domain_rand["csv_force_curriculum_paths"]) == 3
     assert len(env_cfg["wing_angle_obs"]["curriculum_paths"]) == 3
     assert all(
-        "sweep_20260728_u9_skin" in path for path in domain_rand["csv_force_curriculum_paths"]
+        "we11/training_data/measured_wrench_20260728_skin" in path
+        for path in domain_rand["csv_force_curriculum_paths"]
     )
     assert all(
-        "sweep_20260713_230639" in path for path in env_cfg["wing_angle_obs"]["curriculum_paths"]
+        "we11/training_data/wing_angle_20260713" in path
+        for path in env_cfg["wing_angle_obs"]["curriculum_paths"]
     )
     assert config["algo"]["actor"]["history_term_dims"] == [3, 3, 4, 6, 6, 2, 3]
 
 
-@pytest.mark.parametrize("hz", [1, 2, 3, 4])
+@pytest.mark.parametrize("hz", [1, 2, 3])
 def test_latest_measured_wrench_assets_preserve_all_six_axes(hz: int) -> None:
-    path = _DR002_ASSET_ROOT / "measured_wrench/sweep_20260713_230639" / f"{hz}hz.csv"
+    path = _DR002_ASSET_ROOT / "we11/training_data/measured_wrench_20260728_skin" / f"{hz}hz.csv"
     samples = _load_force_csv(str(path))
 
     assert samples.shape[1] == 7

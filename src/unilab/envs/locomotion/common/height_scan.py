@@ -1,12 +1,7 @@
 """Shared height-scan and terrain-bound helpers for rough locomotion envs.
 
-These functions and the ``HeightScanConfig`` dataclass are consumed by Go2,
-Go2W, Go1, and G1 rough environments — anywhere the policy / critic ingests
-a forward-looking height grid sampled from a procedural heightfield.
-
-Each helper mirrors the original implementation that lived inline in
-``go2/rough.py`` so that behavior is bit-for-bit identical; the only change
-is the host: env classes import these instead of redefining them.
+These functions and the ``HeightScanConfig`` dataclass provide the
+forward-looking height grid consumed by the WE11 rough-task critic.
 """
 
 from __future__ import annotations
@@ -133,7 +128,7 @@ def raw_height_scan_obs(env: Any, num_obs: int) -> tuple[np.ndarray | None, np.n
 
 
 def height_scan_obs(env: Any, scan_cfg: HeightScanConfig, num_obs: int) -> np.ndarray:
-    """Clipped, scaled height observation matching the Go2 rough format."""
+    """Return the clipped and scaled WE11 rough-terrain height observation."""
     raw_heights, base_pos = raw_height_scan_obs(env, num_obs)
     if raw_heights is None or base_pos is None:
         return np.zeros((num_obs, env._height_scan_dim), dtype=get_global_dtype())

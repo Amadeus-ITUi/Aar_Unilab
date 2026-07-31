@@ -1,3 +1,0 @@
-<mujoco model="dr002 latest we3 pointer">
-  <include file="we3/we3.xml"/>
-</mujoco>

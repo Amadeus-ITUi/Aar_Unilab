@@ -23,3 +23,5 @@ MJCF、visual 网格和 URDF，不依赖 WE9/WE10 资产目录。
 - `meshes_lod/`: WE11 自包含 visual 网格。
 - `urdf/we11_reviewed.urdf`: 与运行模型物理属性对应的审核版 URDF。
 - `urdf/we11_source.urdf`: 新 CAD 导出的原始 URDF 归档。
+- `training_data/measured_wrench_20260728_skin/`: WE11 训练使用的 1/2/3 Hz 六维力数据。
+- `training_data/wing_angle_20260713/`: 与力相位对齐的 1/2/3 Hz 翼角观测。

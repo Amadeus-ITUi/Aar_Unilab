@@ -25,6 +25,8 @@ does not inherit a WE9 or WE10 task.
 - Measured replay: discrete `0/1/2/3 Hz`; 4 Hz is excluded
 - Wrench amplitude: one reset-owned scale in `[0.5, 1.5]`
 - Wing-position amplitude: independent reset-owned scale in `[0.8, 1.2]`
+- Wrench data: `src/unilab/assets/robots/dr002/we11/training_data/measured_wrench_20260728_skin/`
+- Wing-angle data: `src/unilab/assets/robots/dr002/we11/training_data/wing_angle_20260713/`
 
 ## Build the private MuJoCo extension
 
@@ -35,6 +37,15 @@ cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
 
 The generated shared library is a local build artifact and is intentionally not
 committed.
+
+## Rebuild the measured wrench replay
+
+```bash
+uv run python scripts/data/prepare_u9_skin_wrench.py \
+  --source-dir '/path/to/u9/7.28带蒙皮'
+```
+
+The checked-in manifest preserves raw-file hashes and preprocessing metadata.
 
 ## Train rough WE11
 

@@ -7,7 +7,7 @@ import mujoco
 from mujoco.batch_env import BatchEnvPool
 
 try:
-    from ._native import _unilab_batch_env
+    from ._native import _unilab_batch_env  # type: ignore[attr-defined]
 except ImportError as exc:  # pragma: no cover - depends on local native build
     _unilab_batch_env = None
     _NATIVE_IMPORT_ERROR: ImportError | None = exc

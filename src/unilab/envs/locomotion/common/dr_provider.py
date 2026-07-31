@@ -1,9 +1,4 @@
-"""Shared DomainRandomizationProvider for locomotion environments.
-
-Implements the common reset/interval randomization logic shared by
-G1, Go1, and Go2 joystick environments.  Subclasses override hooks
-to provide robot-specific behaviour.
-"""
+"""Shared domain-randomization provider for WE11 locomotion environments."""
 
 from __future__ import annotations
 
@@ -95,7 +90,7 @@ class LocomotionDRProvider(DomainRandomizationProvider):
         return 0.5
 
     def _build_extra_info_updates(self, env: Any, num_reset: int) -> dict[str, np.ndarray]:
-        """Return additional info_updates entries (e.g. gait_phase for G1)."""
+        """Return additional task-specific ``info_updates`` entries."""
         return {}
 
     def build_reset_plan(self, env: Any, env_ids: np.ndarray) -> ResetPlan:

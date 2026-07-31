@@ -7,16 +7,12 @@ randomization look right before kicking off a real training run.
 
 The script is self-contained: it does NOT read any Hydra training config.
 
-Mujoco backend: stitches all `--num_envs` robot replicas into the same scene
+MuJoCo stitches all `--num_envs` robot replicas into the same scene
 and drives every replica's qpos/qvel each frame from `env.get_physics_state_snapshot()`.
 
-Motrix backend: delegates to `render_play_mode`, whose native renderer lays
-all `num_envs` robots out on a grid using `cfg.render_spacing`.
-
 Usage:
-    uv run scripts/visualize_task_env.py --task Go2JoystickFlat
-    uv run scripts/visualize_task_env.py --task Go2JoystickRough --num_envs 16
-    uv run scripts/visualize_task_env.py --task Go1JoystickFlat --backend motrix --num_envs 4
+    uv run scripts/visualize_task_env.py --task DR002JoystickFlatWE11
+    uv run scripts/visualize_task_env.py --task DR002JoystickRoughWE11 --num_envs 16
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -96,13 +92,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--task",
         type=str,
-        default="Go2JoystickFlat",
-        help="Registered task name (e.g. Go2JoystickFlat, Go2JoystickRough, Go1JoystickFlat).",
+        default="DR002JoystickRoughWE11",
+        choices=["DR002JoystickFlatWE11", "DR002JoystickRoughWE11"],
+        help="WE11 task to visualize.",
     )
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["mujoco", "motrix"],
+        choices=["mujoco"],
         default="mujoco",
         help="Physics backend to construct the env with (default: mujoco).",
     )
@@ -139,67 +136,6 @@ def _stitch_replicas(parent_scene_xml: Path, robot_base_xml: Path, env_origins: 
         )
         spec.attach(child, prefix=f"env{i}/", frame=frame)
     return spec.compile()
-
-
-def _run_motrix(env, num_envs: int) -> None:
-    from unilab.visualization import render_play_mode
-
-    actions = np.zeros((num_envs, env.action_space.shape[0]), dtype=np.float32)
-    camera_kwargs = _motrix_camera_kwargs(env, num_envs)
-
-    def initialize():
-        return env.init_state()
-
-    def step(_obs):
-        return env.step(actions)
-
-    render_play_mode(
-        env,
-        sim_backend="motrix",
-        initialize=initialize,
-        step=step,
-        num_steps=None,
-        render_spacing=getattr(env.cfg, "render_spacing", 1.0),
-        render_offset_mode=getattr(env.cfg, "render_offset_mode", "grid"),
-        camera_kwargs=camera_kwargs,
-    )
-
-
-def _motrix_camera_kwargs(env, num_envs: int) -> dict[str, Any] | None:
-    """Point Motrix's interactive camera at the actual terrain spawn cells."""
-    spawn = getattr(env, "_spawn", None)
-    origins_for = getattr(spawn, "origins_for", None)
-    if not callable(origins_for):
-        return None
-
-    origins = np.asarray(origins_for(np.arange(num_envs, dtype=np.intp)), dtype=np.float64)
-    if origins.shape != (num_envs, 3):
-        return None
-    if not np.any(np.abs(origins[:, :2]) > 1e-6):
-        return None
-
-    xy_min = origins[:, :2].min(axis=0)
-    xy_max = origins[:, :2].max(axis=0)
-    lookat = np.asarray(
-        [
-            0.5 * (xy_min[0] + xy_max[0]),
-            0.5 * (xy_min[1] + xy_max[1]),
-            float(np.mean(origins[:, 2])),
-        ],
-        dtype=np.float64,
-    )
-    xy_span = xy_max - xy_min
-    distance = max(4.0, float(np.linalg.norm(xy_span) * 0.75))
-    if num_envs == 1:
-        lookat = origins[0].copy()
-        distance = 4.0
-    lookat[2] += 0.5
-    return {
-        "cam_lookat": lookat.tolist(),
-        "cam_distance": distance,
-        "cam_elevation": -25.0,
-        "cam_azimuth": 135.0,
-    }
 
 
 def _env_scene(env) -> "SceneCfg | None":
@@ -331,10 +267,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _print_backend_scene(env)
 
     try:
-        if args.backend == "motrix":
-            _run_motrix(env, args.num_envs)
-        else:
-            _run_mujoco(env, args.num_envs)
+        _run_mujoco(env, args.num_envs)
     finally:
         close = getattr(env, "close", None)
         if callable(close):

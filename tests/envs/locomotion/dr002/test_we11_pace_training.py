@@ -55,9 +55,9 @@ def test_we11_hydra_is_self_contained_with_network_obs_force_and_control() -> No
     assert we11.env.control_config.action_delay_max_steps == 8
     assert we11.env.control_config.resample_action_delay is True
     assert list(we11.env.wing_angle_obs.curriculum_paths) == [
-        "robots/dr002/wing_angle_obs/sweep_20260713_230639/1hz.csv",
-        "robots/dr002/wing_angle_obs/sweep_20260713_230639/2hz.csv",
-        "robots/dr002/wing_angle_obs/sweep_20260713_230639/3hz.csv",
+        "robots/dr002/we11/training_data/wing_angle_20260713/1hz.csv",
+        "robots/dr002/we11/training_data/wing_angle_20260713/2hz.csv",
+        "robots/dr002/we11/training_data/wing_angle_20260713/3hz.csv",
     ]
     assert list(we11.env.wing_angle_obs.csv_amplitude_scale_range) == [0.8, 1.2]
     assert we11.env.wing_angle_obs.gaussian_noise_relative_std == 0.05

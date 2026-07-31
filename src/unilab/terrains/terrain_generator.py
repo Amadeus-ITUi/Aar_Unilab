@@ -128,8 +128,8 @@ class GeneratedTerrain:
     def surface_sampler(self) -> "HeightfieldSurfaceSampler":
         return HeightfieldSurfaceSampler(
             heights_mujoco_yx=np.ascontiguousarray(np.flipud(self.heights_yx), dtype=np.float64),
-            hfield_size_xy=tuple(float(value) for value in self.hfield_size[:2]),
-            geom_pos_xy=tuple(float(value) for value in self.geom_pos[:2]),
+            hfield_size_xy=(float(self.hfield_size[0]), float(self.hfield_size[1])),
+            geom_pos_xy=(float(self.geom_pos[0]), float(self.geom_pos[1])),
         )
 
     def write_png(self, path: Path) -> None:
