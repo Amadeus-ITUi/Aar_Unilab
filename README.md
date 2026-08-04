@@ -1,5 +1,16 @@
 # Walking Eagle WE11 UniLab
 
+**算法交付负责人：汪成浩**
+
+**正式分支：`Walking_Eagle-Unilab_final`**
+
+交接范围、接口、安全边界和验证记录见：
+
+- [`docs/handover.md`](docs/handover.md)
+- [`docs/interface.md`](docs/interface.md)
+- [`docs/test_record.md`](docs/test_record.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
+
 Minimal, reproducible training repository for the WE11 robot. The supported
 runtime surface is intentionally limited to:
 
