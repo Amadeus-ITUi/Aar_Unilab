@@ -284,9 +284,7 @@ def resolve_paired_sources(
     if not isinstance(sources, list) or not isinstance(pace_sources, list):
         raise ValueError("truth/PACE source metadata is missing")
     by_group = {
-        str(source.get("joint_group")): source
-        for source in sources
-        if isinstance(source, dict)
+        str(source.get("joint_group")): source for source in sources if isinstance(source, dict)
     }
     pace_by_group = {
         str(source.get("joint_group")): source
@@ -302,7 +300,9 @@ def resolve_paired_sources(
         frozen = pace_by_group[group]
         active = tuple(int(value) for value in source.get("active_joint_ids", []))
         if active != GROUP_ACTIVE_IDS[group]:
-            raise ValueError(f"{group} active_joint_ids={active}, expected {GROUP_ACTIVE_IDS[group]}")
+            raise ValueError(
+                f"{group} active_joint_ids={active}, expected {GROUP_ACTIVE_IDS[group]}"
+            )
         if source.get("target_type") != "position":
             raise ValueError(f"{group} target_type must be position")
         baseline = (float(source.get("kp", math.nan)), float(source.get("kd", math.nan)))
@@ -328,7 +328,9 @@ def reduce_paired_metrics(
     values = np.asarray(response, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] != 2:
         raise ValueError(f"paired response must have shape (N,2), got {values.shape}")
-    side_metrics = [reference.metrics(values[:, index]) for index, reference in enumerate(references)]
+    side_metrics = [
+        reference.metrics(values[:, index]) for index, reference in enumerate(references)
+    ]
     out: dict[str, float] = {}
     for key in METRIC_KEYS:
         out[key] = float(np.mean([metrics[key] for metrics in side_metrics]))
@@ -464,9 +466,7 @@ def final_trace(
         result=result,
         wheel_position_drift_rad=float(np.max(np.abs(q[:, wheels] - q[0, wheels]))),
         wheel_max_abs_velocity_rad_s=float(np.max(np.abs(qd[:, wheels]))),
-        non_source_position_drift_rad=float(
-            np.max(np.abs(q[:, non_source] - q[0, non_source]))
-        ),
+        non_source_position_drift_rad=float(np.max(np.abs(q[:, non_source] - q[0, non_source]))),
         max_abs_torque_nm=float(np.max(np.abs(active_tau))),
         saturation_count=saturation_count,
     )
@@ -514,7 +514,9 @@ def write_replay_csv(path: Path, trace: FinalTrace) -> None:
     atomic_write_csv(path, fieldnames, rows)
 
 
-def write_report(path: Path, contexts: dict[str, PairedContext], traces: dict[str, FinalTrace]) -> None:
+def write_report(
+    path: Path, contexts: dict[str, PairedContext], traces: dict[str, FinalTrace]
+) -> None:
     import matplotlib.pyplot as plt
 
     rows = sum(len(contexts[group].active_joint_ids) for group in contexts)
@@ -526,12 +528,12 @@ def write_report(path: Path, contexts: dict[str, PairedContext], traces: dict[st
         for side_index, joint_id in enumerate(context.active_joint_ids):
             reference = context.references[side_index]
             axis = axes[row]
-            axis[0].plot(reference.time, reference.command, color="0.75", linewidth=0.7, label="Command")
+            axis[0].plot(
+                reference.time, reference.command, color="0.75", linewidth=0.7, label="Command"
+            )
             axis[0].plot(reference.time, reference.truth, linewidth=1.0, label="Real")
             axis[0].plot(reference.time, response[:, side_index], linewidth=1.0, label="MuJoCo")
-            axis[0].set_title(
-                f"{JOINT_NAMES[joint_id]} | Kp={trace.kp:g}, Kd={trace.kd:g}"
-            )
+            axis[0].set_title(f"{JOINT_NAMES[joint_id]} | Kp={trace.kp:g}, Kd={trace.kd:g}")
             axis[0].set_xlabel("Time [s]")
             axis[0].set_ylabel("Position [rad]")
             axis[0].grid(True, alpha=0.25)
@@ -756,7 +758,9 @@ def parse_args() -> argparse.Namespace:
         help="Defaults to the exact WE11 model stored in the PACE artifact.",
     )
     parser.add_argument("--groups", nargs="+", choices=GROUPS, default=list(GROUPS))
-    parser.add_argument("--out-root", type=Path, default=REPO_ROOT / "outputs/we11_paired_kp_kd_fit")
+    parser.add_argument(
+        "--out-root", type=Path, default=REPO_ROOT / "outputs/we11_paired_kp_kd_fit"
+    )
     parser.add_argument("--run-name", default="we11_paired_kp_kd_rk4")
     parser.add_argument("--score-metric", choices=tuple(PRIMARY_METRICS), default="bode-complex")
     parser.add_argument("--freq-min", type=float, default=0.5)
@@ -840,8 +844,7 @@ def main() -> None:
     )
     out_dir = make_out_dir(args.out_root, args.run_name)
     stores = {
-        group: CandidateStore(out_dir / f"{group}_kp_kd_candidates.csv", group)
-        for group in groups
+        group: CandidateStore(out_dir / f"{group}_kp_kd_candidates.csv", group) for group in groups
     }
     print(f"[INFO] out_dir={out_dir}", flush=True)
     print(f"[INFO] model={model_path}, integrator=RK4, sim/control=400/200 Hz", flush=True)

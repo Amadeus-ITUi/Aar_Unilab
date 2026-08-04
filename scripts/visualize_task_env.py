@@ -11,8 +11,8 @@ MuJoCo stitches all `--num_envs` robot replicas into the same scene
 and drives every replica's qpos/qvel each frame from `env.get_physics_state_snapshot()`.
 
 Usage:
-    uv run scripts/visualize_task_env.py --task DR002JoystickFlatWE11
-    uv run scripts/visualize_task_env.py --task DR002JoystickRoughWE11 --num_envs 16
+    python scripts/visualize_task_env.py --task DR002JoystickFlatWE11
+    python scripts/visualize_task_env.py --task DR002JoystickRoughWE11 --num_envs 16
 """
 
 # pyright: reportAttributeAccessIssue=false

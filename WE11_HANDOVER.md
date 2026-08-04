@@ -28,11 +28,30 @@ does not inherit a WE9 or WE10 task.
 - Wrench data: `src/unilab/assets/robots/dr002/we11/training_data/measured_wrench_20260728_skin/`
 - Wing-angle data: `src/unilab/assets/robots/dr002/we11/training_data/wing_angle_20260713/`
 
+## Reproducible Conda installation
+
+```bash
+git clone --branch Walking_Eagle-Unilab_final \
+  git@git.esdyn.cn:walking-eagle/sar_unilab.git
+cd sar_unilab
+bash install_conda_environment.txt unilab_cuda cu128
+conda activate unilab_cuda
+```
+
+The installer uses Conda + pip and also builds and validates native
+command-delay PD. The repository intentionally does not ship `uv.lock`.
+
+## Final checkpoints
+
+| Task | File | SHA-256 |
+|---|---|---|
+| Flat | `models/we11/flat/model_1500.pt` | `53aa1e447568ebf9de22ab04967b43ad9c7d9a38d8bd76627e080c3f75be28b7` |
+| Rough | `models/we11/rough/model_1500.pt` | `f7f80dfae9718584e31fc66d66a4821e95ff4510f6aa37f835e39a983066e232` |
+
 ## Build the private MuJoCo extension
 
 ```bash
-cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
-./third_party/mujoco_uni_mixed_pd/build_extension.sh
+bash third_party/mujoco_uni_mixed_pd/build_extension.sh
 ```
 
 The generated shared library is a local build artifact and is intentionally not
@@ -41,8 +60,8 @@ committed.
 ## Rebuild the measured wrench replay
 
 ```bash
-uv run python scripts/data/prepare_u9_skin_wrench.py \
-  --source-dir '/path/to/u9/7.28带蒙皮'
+python scripts/data/prepare_we11_skin_wrench.py \
+  --source-dir /path/to/measured_skin_wrench_data
 ```
 
 The checked-in manifest preserves raw-file hashes and preprocessing metadata.
@@ -50,18 +69,9 @@ The checked-in manifest preserves raw-file hashes and preprocessing metadata.
 ## Train rough WE11
 
 ```bash
-cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
-
-env -u PYTHONPATH \
 CUDA_VISIBLE_DEVICES=0 \
-PYTHONNOUSERSITE=1 \
-OMP_NUM_THREADS=1 \
-MKL_NUM_THREADS=1 \
-OPENBLAS_NUM_THREADS=1 \
-NUMEXPR_NUM_THREADS=1 \
 UNILAB_MUJOCO_NTHREADS=16 \
-UV_CACHE_DIR=/tmp/unilab_uv_cache \
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
@@ -84,7 +94,7 @@ uv run python -u scripts/train_rsl_rl.py \
 ## Focused validation
 
 ```bash
-UV_CACHE_DIR=/tmp/unilab_uv_cache uv run pytest -q \
+python -m pytest -q \
   tests/envs/locomotion/dr002/test_we11_pace_training.py \
   tests/envs/locomotion/dr002/test_we11_rough_training.py \
   tests/envs/locomotion/common/test_terrain_spawn.py \

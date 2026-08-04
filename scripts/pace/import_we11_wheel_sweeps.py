@@ -27,9 +27,7 @@ from import_real_sweep_csv_for_pd_fit import (
 )
 from mujoco_dr002_common import JOINT_NAMES, resolve_repo_path, save_chirp_data
 
-WHEEL_FILE_RE = re.compile(
-    r"motor36_(?P<stamp>\d{8}_\d{6})_kp0_kd(?P<kd>0p05|0p1|0p2)\.csv$"
-)
+WHEEL_FILE_RE = re.compile(r"motor36_(?P<stamp>\d{8}_\d{6})_kp0_kd(?P<kd>0p05|0p1|0p2)\.csv$")
 EXPECTED_KD = (0.05, 0.1, 0.2)
 WHEEL_MOTORS = (3, 6)
 MOTOR_TO_JOINT = {3: 2, 6: 5}
@@ -138,8 +136,7 @@ def import_one_kd(
         command_min = float(np.min(command))
         command_max = float(np.max(command))
         if (
-            abs(command_min + EXPECTED_COMMAND_AMPLITUDE_RAD_S)
-            > COMMAND_AMPLITUDE_TOLERANCE_RAD_S
+            abs(command_min + EXPECTED_COMMAND_AMPLITUDE_RAD_S) > COMMAND_AMPLITUDE_TOLERANCE_RAD_S
             or abs(command_max - EXPECTED_COMMAND_AMPLITUDE_RAD_S)
             > COMMAND_AMPLITUDE_TOLERANCE_RAD_S
         ):

@@ -10,12 +10,12 @@ The immutable raw recordings are:
 - `020_2hz_20cyc.csv`
 - `030_3hz_20cyc.csv`
 
-They were read from `/home/esd_wch/下载/u9/7.28带蒙皮`. Their complete SHA-256
+They were read from the archived 2026-07-28 WE11 skin-wrench capture. Their complete SHA-256
 lineage is recorded in `manifest.json`; the raw files are not copied or edited.
 
 ## Preprocessing
 
-`scripts/data/prepare_u9_skin_wrench.py`:
+`scripts/data/prepare_we11_skin_wrench.py`:
 
 1. validates and deduplicates force frames by `force_frame_count`;
 2. uses `force_t_abs_s` as the wrench clock;
@@ -72,8 +72,6 @@ After the phase alignment above, new-minus-old H1 phase is
 ## Rebuild
 
 ```bash
-cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
-UV_CACHE_DIR=/tmp/uv-cache-we11-wrench \
-  uv run python scripts/data/prepare_u9_skin_wrench.py \
-  --source-dir '/home/esd_wch/下载/u9/7.28带蒙皮'
+python scripts/data/prepare_we11_skin_wrench.py \
+  --source-dir /path/to/measured_skin_wrench_data
 ```

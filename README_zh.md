@@ -17,7 +17,9 @@
 - `src/unilab/envs/locomotion/dr002/`：WE11 平地与 rough 环境。
 - `src/unilab/algos/torch/`：保留的 PPO 和 WE11 adaptation 网络代码。
 - `third_party/mujoco_uni_mixed_pd/`：command-delay 批量 PD 补丁与可复现构建脚本。
-- `scripts/data/prepare_u9_skin_wrench.py`：将保留的实测数据可复现转换为 WE11 六维力回放数据。
+- `models/we11/`：最终 Flat/Rough `model_1500.pt` 和 SHA-256。
+- `install_conda_environment.txt`：Conda/pip 一键安装、测试和 Flat/Rough 冒烟验证。
+- `scripts/data/prepare_we11_skin_wrench.py`：将保留的实测数据可复现转换为 WE11 六维力回放数据。
 - `tests/`：WE11、地形、续训和环境契约测试。
 
 完整参数和训练契约见 [`WE11_HANDOVER.md`](WE11_HANDOVER.md)。
@@ -25,19 +27,34 @@
 ## 安装
 
 ```bash
-cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
-uv sync
-./third_party/mujoco_uni_mixed_pd/build_extension.sh
+git clone --branch Walking_Eagle-Unilab_final \
+  git@git.esdyn.cn:walking-eagle/sar_unilab.git
+cd sar_unilab
+bash install_conda_environment.txt unilab_cuda cu128
+conda activate unilab_cuda
 ```
 
-仓库内命令统一使用 `uv run`。
+安装脚本会创建 Python 3.13 Conda 环境、使用 pip 安装项目和测试依赖、构建
+native command-delay PD、运行回归测试，并分别执行一次 Flat/Rough PPO 冒烟。
+完整说明见 `WE11_CONDA_INSTALL_GUIDE.txt`。
+
+## 最终 Checkpoint
+
+- Flat：`models/we11/flat/model_1500.pt`
+- Rough：`models/we11/rough/model_1500.pt`
+
+校验：
+
+```bash
+(cd models/we11 && sha256sum -c SHA256SUMS)
+```
 
 ## 开始训练
 
 默认 Hydra 任务已经是 WE11 平地：
 
 ```bash
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   training.device=cuda:0 \
   training.no_play=true \
   training.play_render_mode=none
@@ -46,16 +63,9 @@ uv run python -u scripts/train_rsl_rl.py \
 WE11 rough 完整训练命令：
 
 ```bash
-env -u PYTHONPATH \
 CUDA_VISIBLE_DEVICES=0 \
-PYTHONNOUSERSITE=1 \
-OMP_NUM_THREADS=1 \
-MKL_NUM_THREADS=1 \
-OPENBLAS_NUM_THREADS=1 \
-NUMEXPR_NUM_THREADS=1 \
 UNILAB_MUJOCO_NTHREADS=16 \
-UV_CACHE_DIR=/tmp/unilab_uv_cache \
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
@@ -72,7 +82,7 @@ uv run python -u scripts/train_rsl_rl.py \
 
 ```bash
 # <RUN> 填训练目录名
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   algo.resume=true \
   algo.load_run=<RUN> \
@@ -80,7 +90,7 @@ uv run python -u scripts/train_rsl_rl.py \
   training.no_play=true
 
 # MuJoCo checkpoint 回放
-uv run eval --algo ppo \
+eval --algo ppo \
   --task dr002_joystick_rough_we11 \
   --sim mujoco \
   --load-run <RUN> \
@@ -91,16 +101,17 @@ uv run eval --algo ppo \
 
 ```bash
 # rough 环境零动作可视化
-uv run python scripts/visualize_task_env.py \
+python scripts/visualize_task_env.py \
   --task DR002JoystickRoughWE11 \
   --num_envs 16
 
 # TensorBoard，5 秒自动刷新
-uv run tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
+tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
 
 # 测试与静态检查
-uv run pytest -q
-uv run ruff check .
+python -m pytest -q
+python -m ruff check .
 ```
 
-本地编译的 `.so`、checkpoint、日志、视频和部署导出模型属于生成物，不提交到 Git。
+两个选定的最终 checkpoint 已提交到 `models/we11/`。本地 `.so`、其他 checkpoint、
+日志、视频和生成的部署模型仍属于机器相关产物，不提交 Git。

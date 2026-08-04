@@ -216,9 +216,7 @@ class July30PairedSweepImportTests(unittest.TestCase):
                         + JULY30_RAW_TO_POLICY_SIGN[joint_id] * policy_delta
                     )
                     row[f"motor_{motor_id}_target_raw"] = raw_command
-                    row[f"motor_{motor_id}_pos_raw"] = (
-                        raw_command + raw_position_bias[motor_id]
-                    )
+                    row[f"motor_{motor_id}_pos_raw"] = raw_command + raw_position_bias[motor_id]
                     row[f"motor_{motor_id}_vel_raw"] = float(sample_index * 2)
                 writer.writerow(row)
         return raw_position_bias
@@ -243,9 +241,7 @@ class July30PairedSweepImportTests(unittest.TestCase):
         return biases
 
     def test_name_parser_recognizes_pair_and_pd(self) -> None:
-        meta = parse_paired_csv_name(
-            Path("motor25_20260730_163219_kp8_kd0p8.csv")
-        )
+        meta = parse_paired_csv_name(Path("motor25_20260730_163219_kp8_kd0p8.csv"))
 
         self.assertEqual(meta["pair"], "25")
         self.assertEqual(meta["active_joint_ids"], [1, 4])
@@ -350,9 +346,7 @@ class July30PairedSweepImportTests(unittest.TestCase):
                     np.testing.assert_array_equal(payload["time"], [0.0, 0.005, 0.01])
                     active_joint_ids = source["active_joint_ids"]
                     # ZOH keeps the +amplitude command from t=0.004 at t=0.005.
-                    expected_amplitude = source["amplitude_validation"][
-                        "expected_amplitude_rad"
-                    ]
+                    expected_amplitude = source["amplitude_validation"]["expected_amplitude_rad"]
                     np.testing.assert_allclose(
                         payload["des_dof_pos"][1, active_joint_ids],
                         self.MUJOCO_CENTER[active_joint_ids] + expected_amplitude,

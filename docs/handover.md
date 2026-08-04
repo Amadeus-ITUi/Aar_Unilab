@@ -72,11 +72,13 @@ WE11 URDF/MJCF + 实机扫频数据
 git clone -b Walking_Eagle-Unilab_final \
   git@git.esdyn.cn:walking-eagle/sar_unilab.git sar_unilab
 cd sar_unilab
-uv sync
-./third_party/mujoco_uni_mixed_pd/build_extension.sh
+bash install_conda_environment.txt unilab_cuda cu128
+conda activate unilab_cuda
 ```
 
-native PD `.so` 与 Python ABI、CPU 架构绑定，必须在目标机器本地构建，不提交 Git。
+安装脚本使用 Conda + pip，并自动构建、加载验证 native PD，运行非 slow 测试和
+Flat/Rough 最小 PPO。native `.so` 与 Python ABI、CPU 架构绑定，必须在目标机器
+本地构建，不提交 Git。完整说明见 `WE11_CONDA_INSTALL_GUIDE.txt`。
 
 ## 5. 关键文件
 
@@ -90,6 +92,9 @@ native PD `.so` 与 Python ABI、CPU 架构绑定，必须在目标机器本地�
 | `scripts/train_rsl_rl.py` | 训练、续训和 checkpoint 回放入口 | 是 |
 | `scripts/pace/` | 离线 PACE/Kp/Kd 拟合 | 是 |
 | `third_party/mujoco_uni_mixed_pd/` | native command-delay PD 构建源 | 是 |
+| `install_conda_environment.txt` | Conda/pip 一键安装与实跑验证 | 是 |
+| `WE11_CONDA_INSTALL_GUIDE.txt` | 安装、使用、迁移和排障说明 | 是 |
+| `models/we11/` | Flat/Rough 最终 checkpoint 和 SHA-256 | 是 |
 | `tests/` | 最小验证与合同测试 | 是 |
 
 ## 6. 从零运行
@@ -97,7 +102,7 @@ native PD `.so` 与 Python ABI、CPU 架构绑定，必须在目标机器本地�
 Flat 训练：
 
 ```bash
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_flat_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
@@ -107,7 +112,7 @@ uv run python -u scripts/train_rsl_rl.py \
 Rough 训练：
 
 ```bash
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
@@ -117,13 +122,13 @@ uv run python -u scripts/train_rsl_rl.py \
 TensorBoard：
 
 ```bash
-uv run tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
+tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
 ```
 
 最小验证：
 
 ```bash
-uv run pytest -q \
+python -m pytest -q \
   tests/envs/locomotion/dr002/test_we11_pace_training.py \
   tests/envs/locomotion/dr002/test_we11_rough_training.py \
   tests/envs/locomotion/common/test_terrain_spawn.py \
@@ -146,12 +151,12 @@ uv run pytest -q \
 
 ## 8. 模型和实验结果
 
-Git 不跟踪大型 checkpoint。当前交接只指定两个代表模型：
+Git 已跟踪两个选定的最终 checkpoint：
 
 | 模型 | 位置/用途 | 状态 |
 |---|---|---|
-| Flat | `logs/rsl_rl_ppo/DR002JoystickFlatWE11/2026-07-30_21-41-17_mujoco/model_1500.pt` | 当前 Flat 最优历史 checkpoint；需在原训练机归档 |
-| Rough | `Walking_Eagle-Play_final` 分支中的 `policy/dr002/we11/policy_model_1500.onnx` | level-9 rough 回放模型；由 Play 仓库保存与校验 |
+| Flat | `models/we11/flat/model_1500.pt` | 来源 `2026-07-30_21-41-17_mujoco`；SHA-256 见模型 manifest |
+| Rough | `models/we11/rough/model_1500.pt` | 来源 `2026-07-31_13-01-10_mujoco`；对应 Play rough ONNX |
 
 关键 PACE/Kp/Kd 参数已固化在 WE11 配置和资产中；原始训练日志、TensorBoard 曲线和视频应在交付介质中另行冻结，并记录 SHA-256。
 
@@ -167,7 +172,7 @@ Git 不跟踪大型 checkpoint。当前交接只指定两个代表模型：
 
 | 项目 | 当前状态 | 后续动作 |
 |---|---|---|
-| checkpoint/日志/视频 | 不纳入 Git | 生成独立交付介质、索引和 SHA-256 |
+| 其他 checkpoint/日志/视频 | 不纳入 Git | 生成独立交付介质、索引和 SHA-256；两个最终 checkpoint 已入库 |
 | 固定评估矩阵 | 尚未形成统一一键报告 | 固定 terrain/force/amplitude/command，比较 success、tracking、clip、torque 等指标 |
 | 真机验收 | 不属于本仓库完成状态 | 由 Deploy 链路完成架空、台架、低速和完整场景验收 |
 | native PD | 本机编译产物不提交 | 在每台目标机器重新构建并运行可用性检查 |
@@ -179,7 +184,7 @@ Git 不跟踪大型 checkpoint。当前交接只指定两个代表模型：
 - [x] 环境依赖、训练和最小测试命令已说明；
 - [x] WE11 资产、配置、示例数据和测试均在仓库中；
 - [x] 关键参数、单位、频率和坐标合同已说明；
-- [x] 模型位置和跨仓库责任边界已说明；
+- [x] Flat/Rough 最终 checkpoint、来源和 SHA-256 已入库；
 - [x] 仿真/真机安全边界已说明；
 - [ ] 接收人在目标机器完成环境安装和最小训练验证；
 - [ ] 最终模型、日志、曲线和视频完成离线介质归档；

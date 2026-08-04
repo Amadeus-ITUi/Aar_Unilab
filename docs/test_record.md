@@ -2,31 +2,39 @@
 
 负责人：汪成浩
 归档日期：2026-08-04
-功能冻结基线：`532646089dab4f174f7cdc7374190c11909b5fd2`
+上一归档基线：`5a4c7a200f7264c88c9e217cacc5c74907187988`
 
 ## 1. 本次归档变更
 
-本次只增加 README 交付入口、交接说明、接口说明、测试记录和 CHANGELOG，不修改训练代码、配置、模型、资产或实验数据。
+本次新增 Flat/Rough 最终 checkpoint、Conda 一键安装脚本和模型 manifest；将
+`pyproject.toml` 切换为适配 `pip install -e ".[dev]"` 的 setuptools 配置并删除
+`uv.lock`。不修改训练任务、环境动力学、网络、Reward、资产或实验数据。
 
 ## 2. 最小验证
 
 | 检查项 | 命令 | 预期结果 | 结果 |
 |---|---|---|---|
-| 文档引用 | `test -f docs/handover.md -a -f docs/interface.md -a -f docs/test_record.md` | 文件存在 | 通过 |
+| Conda 脚本语法 | `bash -n install_conda_environment.txt` | 无错误 | 通过 |
+| Python 打包 | Conda 验证环境执行 `pip wheel --no-deps --no-build-isolation .` | wheel 成功 | 通过 |
+| 模型 SHA-256 | `(cd models/we11 && sha256sum -c SHA256SUMS)` | 两个成功 | 通过 |
+| Checkpoint 加载 | CPU 加载 Flat/Rough 并核对 checkpoint 字典 | 均成功 | 通过 |
+| native PD 构建/导入 | 本机 GCC/G++ 编译并 Torch-first 导入 | 两项可用 | 通过 |
+| Flat 最小 PPO | CPU、8 env、8 step、1 iteration | 64 steps | 通过 |
+| Rough 最小 PPO | CPU、8 env、8 step、1 iteration | 64 steps | 通过 |
+| Ruff | `python -m ruff format --check .`、`python -m ruff check .` | 全部通过 | 通过 |
+| MyPy | `python -m mypy src/unilab` | 无问题 | 通过 |
 | Git whitespace | `git diff --check` | 无错误 | 通过 |
-| WE11 focused tests | 见下方命令 | 全部通过 | 15 passed |
+| 全部非 slow 测试 | 见下方命令 | 全部通过 | 153 passed |
 
 ```bash
-uv run pytest -q \
-  tests/envs/locomotion/dr002/test_we11_pace_training.py \
-  tests/envs/locomotion/dr002/test_we11_rough_training.py \
-  tests/envs/locomotion/common/test_terrain_spawn.py \
-  tests/terrains/test_mujoco_heightfield.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+MPLBACKEND=Agg \
+MPLCONFIGDIR=/tmp/matplotlib-we11-final-test \
+python -m pytest -m "not slow"
 ```
 
-测试出现 5 条同源 warning：本机未在该临时 worktree 构建 native mixed-PD 扩展，
-环境自动回退为每个 physics substep 一次 BatchEnvPool 调用。测试本身全部通过；
-正式训练前仍必须按 handover 构建 native 扩展并验证可用性。
+未构建本机 native 扩展时，测试会出现 5 条 fallback warning；Conda 一键脚本会在
+正式测试前本机构建扩展，并通过 Torch-first 检查阻止 fallback 环境被误判为成功。
 
 ## 3. 接收方验收
 

@@ -47,7 +47,7 @@ def _check_private_checkout(root: Path) -> None:
     if not (root / "conf").is_dir() or not (root / "scripts").is_dir():
         raise SystemExit(
             "The current UniLab CLI expects a UniLab source checkout. "
-            "Run it from the uv-managed editable environment created by this repo."
+            "Run it from the Conda environment created by install_conda_environment.txt."
         )
 
 

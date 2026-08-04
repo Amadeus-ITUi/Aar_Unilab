@@ -34,7 +34,10 @@ backends have been removed from this archive.
 - `src/unilab/algos/torch/`: retained PPO and WE11 adaptation-network code.
 - `third_party/mujoco_uni_mixed_pd/`: reproducible native command-delay PD
   extension patches and build script.
-- `scripts/data/prepare_u9_skin_wrench.py`: reproducible conversion of the
+- `models/we11/`: final Flat and Rough `model_1500.pt` checkpoints and hashes.
+- `install_conda_environment.txt`: one-command Conda/pip installation and
+  Flat/Rough smoke validation.
+- `scripts/data/prepare_we11_skin_wrench.py`: reproducible conversion of the
   retained hardware acquisition into WE11 wrench replay assets.
 - `tests/`: focused WE11, terrain, resume, and environment-contract tests.
 
@@ -44,19 +47,35 @@ The full physical/training contract is documented in
 ## Setup
 
 ```bash
-cd /home/esd_wch/lsaac_lab_ws/Walking_Eagle-UniLab-we11-clean
-uv sync
-./third_party/mujoco_uni_mixed_pd/build_extension.sh
+git clone --branch Walking_Eagle-Unilab_final \
+  git@git.esdyn.cn:walking-eagle/sar_unilab.git
+cd sar_unilab
+bash install_conda_environment.txt unilab_cuda cu128
+conda activate unilab_cuda
 ```
 
-Always run repository commands through `uv run`.
+The installer creates a Python 3.13 Conda environment, installs the project and
+test dependencies with pip, builds native command-delay PD, runs regression
+tests, and executes one Flat and one Rough PPO smoke. See
+[`WE11_CONDA_INSTALL_GUIDE.txt`](WE11_CONDA_INSTALL_GUIDE.txt).
+
+## Final checkpoints
+
+- Flat: `models/we11/flat/model_1500.pt`
+- Rough: `models/we11/rough/model_1500.pt`
+
+Verify both with:
+
+```bash
+(cd models/we11 && sha256sum -c SHA256SUMS)
+```
 
 ## Train
 
 Flat WE11 is the default Hydra task:
 
 ```bash
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   training.device=cuda:0 \
   training.no_play=true \
   training.play_render_mode=none
@@ -65,16 +84,9 @@ uv run python -u scripts/train_rsl_rl.py \
 Rough WE11:
 
 ```bash
-env -u PYTHONPATH \
 CUDA_VISIBLE_DEVICES=0 \
-PYTHONNOUSERSITE=1 \
-OMP_NUM_THREADS=1 \
-MKL_NUM_THREADS=1 \
-OPENBLAS_NUM_THREADS=1 \
-NUMEXPR_NUM_THREADS=1 \
 UNILAB_MUJOCO_NTHREADS=16 \
-UV_CACHE_DIR=/tmp/unilab_uv_cache \
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
@@ -91,7 +103,7 @@ uv run python -u scripts/train_rsl_rl.py \
 
 ```bash
 # Resume a run; use its directory name for <RUN>
-uv run python -u scripts/train_rsl_rl.py \
+python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
   algo.resume=true \
   algo.load_run=<RUN> \
@@ -99,7 +111,7 @@ uv run python -u scripts/train_rsl_rl.py \
   training.no_play=true
 
 # MuJoCo checkpoint playback
-uv run eval --algo ppo \
+eval --algo ppo \
   --task dr002_joystick_rough_we11 \
   --sim mujoco \
   --load-run <RUN> \
@@ -110,17 +122,18 @@ uv run eval --algo ppo \
 
 ```bash
 # Zero-action rough environment visualization
-uv run python scripts/visualize_task_env.py \
+python scripts/visualize_task_env.py \
   --task DR002JoystickRoughWE11 \
   --num_envs 16
 
 # TensorBoard
-uv run tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
+tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
 
 # Tests and lint
-uv run pytest -q
-uv run ruff check .
+python -m pytest -q
+python -m ruff check .
 ```
 
-The native shared library, checkpoints, logs, videos, and exported deployment
-models are generated artifacts and are intentionally not tracked in Git.
+The two selected final checkpoints are tracked in `models/we11/`. Native shared
+libraries, other checkpoints, logs, videos, and generated deployment exports
+remain machine-specific artifacts and are not tracked in Git.

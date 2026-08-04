@@ -1,17 +1,16 @@
 [build-system]
-requires = ["uv_build>=0.11.3,<0.12"]
-build-backend = "uv_build"
+requires = ["setuptools>=69,<70", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "unilab"
 version = "0.1.0"
 description = "WE11 RSL-RL PPO training and MuJoCo simulation archive"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "numpy",
+    "numpy>=1.26,<3",
     "torch==2.7.0",
     "mujoco-uni==3.8.0",
     "gymnasium",
@@ -27,6 +26,9 @@ dependencies = [
     "onnxruntime<1.20 ; python_version < '3.11'",
     "onnxruntime>=1.20 ; python_version >= '3.11'",
     "ninja ; sys_platform == 'linux'",
+    "cmaes>=0.11,<1",
+    "matplotlib>=3.8,<4",
+    "scipy>=1.11,<2",
 ]
 
 [project.scripts]
@@ -36,24 +38,25 @@ unilab-complete = "unilab.tools.completion:main"
 unilab-viz-nan = "unilab.tools.viz_nan:main"
 unilab-export-scene = "unilab.tools.export_scene:main"
 
-[dependency-groups]
-dev = ["pytest", "pytest-cov", "ruff", "mypy", "pyright>=1.1.408"]
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff", "mypy"]
 
-[[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-explicit = true
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
 
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-cu128", marker = "sys_platform=='linux'" },
-]
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["unilab*"]
 
-[tool.uv]
-exclude-dependencies = ["torchvision"]
-required-environments = [
-    "sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+[tool.setuptools.package-data]
+unilab = [
+    "assets/**/*.STL",
+    "assets/**/*.csv",
+    "assets/**/*.json",
+    "assets/**/*.md",
+    "assets/**/*.urdf",
+    "assets/**/*.xml",
 ]
 
 [tool.ruff]
@@ -100,19 +103,3 @@ omit = ["*/rsl_rl/*"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
-
-[tool.pyright]
-pythonVersion = "3.10"
-venvPath = "."
-venv = ".venv"
-include = ["src/unilab"]
-exclude = [
-    "src/unilab/algos/torch/rsl_rl/",       # vendored third-party
-    "src/unilab/base/backend/",             # mujoco-uni stubs mismatch
-    "src/unilab/envs/",                     # mujoco-uni internal API, stubs mismatch
-    "src/unilab/terrains/",                 # mujoco-uni MjSpec API, stubs mismatch
-    "src/unilab/training/monitoring.py",    # optional pynvml/psutil deps
-    "src/unilab/visualization/",            # direct mujoco C bindings
-]
-reportMissingImports = "warning"
-reportMissingModuleSource = "none"

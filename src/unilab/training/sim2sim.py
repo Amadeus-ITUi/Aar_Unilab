@@ -236,7 +236,7 @@ def policy_load_dim_guard(
             "The checkpoint's tensor shapes do not match the env's observation/action "
             "dimensions. Check the task's obs_groups_spec and action space across "
             "backends; see resolve_sim2sim_config and run "
-            "`uv run scripts/audit_sim2sim_contracts.py`.\n"
+            "`python scripts/audit_sim2sim_contracts.py`.\n"
             f"Original load error:\n{exc}"
         ) from exc
 

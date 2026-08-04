@@ -7,11 +7,16 @@ changing the archive scope.
 ## Setup
 
 ```bash
-uv sync
+git clone --branch Walking_Eagle-Unilab_final \
+  git@git.esdyn.cn:walking-eagle/sar_unilab.git
+cd sar_unilab
+bash install_conda_environment.txt unilab_cuda cu128
+conda activate unilab_cuda
 ```
 
-Always run Python entrypoints through `uv run` so the locked environment is
-used.
+Run Python entrypoints directly after activating this Conda environment. Do not
+mix packages from the base environment, a local virtual environment, or a
+different checkout.
 
 ## Ownership rules
 
@@ -46,5 +51,6 @@ or PPO network dimensions must also initialize and step both WE11 task configs.
 ## Commits
 
 Use concise Conventional Commit prefixes such as `feat:`, `fix:`, `test:`,
-`docs:`, `refactor:`, and `chore:`. Never commit checkpoints, run logs, local
-virtual environments, caches, or temporary exports.
+`docs:`, `refactor:`, and `chore:`. Only the two selected handover checkpoints
+under `models/we11/` may be committed; never commit additional checkpoints,
+run logs, local environments, caches, or temporary exports.

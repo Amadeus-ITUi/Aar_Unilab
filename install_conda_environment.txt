@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Walking Eagle UniLab / WE11：纯 Conda + pip 一键安装与实跑验证
+#
+# 默认安装 CPU 冒烟环境（下载量小，适合验证代码可复现）：
+#   bash install_conda_environment.txt
+#
+# 自定义环境名：
+#   bash install_conda_environment.txt my_we11_test cpu
+#
+# 安装 CUDA 12.8 训练环境：
+#   bash install_conda_environment.txt unilab_cuda cu128
+#
+# 参数 1：Conda 环境名，默认 walking_eagle_we11_test
+# 参数 2：PyTorch 变体，只允许 cpu 或 cu128，默认 cpu
+#
+# 本脚本只使用 Conda + pip，并把环境创建在 Conda 的 envs 目录。它会：
+#   1. 创建 Python 3.13 Conda 环境；
+#   2. 用 pip 安装 PyTorch 2.7.0、项目与测试依赖；
+#   3. 用宿主机 GCC/G++ 编译 native command-delay PD；
+#   4. 运行全部非 slow 测试；
+#   5. 分别跑一轮 WE11 flat 与 rough 最小 PPO。
+
+set -Eeuo pipefail
+
+DEFAULT_ENV_NAME="walking_eagle_we11_test"
+ENV_NAME="${1:-${DEFAULT_ENV_NAME}}"
+TORCH_VARIANT="${2:-cpu}"
+
+if [[ "${ENV_NAME}" == "-h" || "${ENV_NAME}" == "--help" ]]; then
+  sed -n '1,22p' "${BASH_SOURCE[0]}"
+  exit 0
+fi
+
+if [[ ! "${ENV_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "[ERROR] Conda 环境名只能包含字母、数字、点、下划线和短横线：${ENV_NAME}" >&2
+  exit 2
+fi
+
+case "${TORCH_VARIANT}" in
+  cpu|cu128) ;;
+  *)
+    echo "[ERROR] PyTorch 变体只允许 cpu 或 cu128：${TORCH_VARIANT}" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
+  echo "[ERROR] 当前脚本只验证过 Linux x86_64。" >&2
+  exit 2
+fi
+
+if ! command -v conda >/dev/null 2>&1; then
+  echo "[ERROR] 未找到 conda。请先安装 Miniconda/Miniforge。" >&2
+  exit 127
+fi
+
+# 在激活 Conda 前解析宿主机编译器，避免后续误选 Conda GCC 和更高版本
+# libstdc++ ABI。非标准安装路径可显式传入：
+#   WE11_CC=/opt/toolchain/bin/gcc WE11_CXX=/opt/toolchain/bin/g++ bash ...
+HOST_CC="${WE11_CC:-$(type -P gcc || true)}"
+HOST_CXX="${WE11_CXX:-$(type -P g++ || true)}"
+for TOOL in "${HOST_CC}" "${HOST_CXX}"; do
+  if [[ -z "${TOOL}" || ! -x "${TOOL}" ]]; then
+    echo "[ERROR] 未找到可执行的宿主机 GCC/G++。" >&2
+    echo "        Ubuntu 可先执行：sudo apt install build-essential" >&2
+    echo "        或设置 WE11_CC 和 WE11_CXX 指向兼容编译器。" >&2
+    exit 127
+  fi
+done
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${SCRIPT_DIR}"
+
+for REQUIRED_FILE in pyproject.toml third_party/mujoco_uni_mixed_pd/build_extension.sh; do
+  if [[ ! -f "${REPO_ROOT}/${REQUIRED_FILE}" ]]; then
+    echo "[ERROR] 仓库文件缺失：${REPO_ROOT}/${REQUIRED_FILE}" >&2
+    exit 2
+  fi
+done
+
+CONDA_BASE="$(conda info --base)"
+# shellcheck disable=SC1091
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+
+echo "[1/8] 创建或更新 Conda 环境：${ENV_NAME}"
+CONDA_PACKAGES=(
+  "python=3.13"
+  pip
+  "setuptools=69.*"
+  wheel
+  cmake
+  ninja
+  eigen
+  patch
+  curl
+)
+
+if conda run --name "${ENV_NAME}" python -c \
+  'import sys; raise SystemExit(sys.version_info[:2] != (3, 13))' \
+  >/dev/null 2>&1; then
+  conda install --yes --name "${ENV_NAME}" \
+    --override-channels --channel conda-forge "${CONDA_PACKAGES[@]}"
+else
+  if conda env list | awk 'NF >= 2 && $1 !~ /^#/ {print $1}' | \
+    grep -Fxq "${ENV_NAME}"; then
+    echo "[ERROR] 已存在同名环境，但不是可用的 Python 3.13 环境：${ENV_NAME}" >&2
+    echo "        为避免破坏已有环境，请更换环境名；脚本不会自动删除它。" >&2
+    exit 2
+  fi
+  conda create --yes --name "${ENV_NAME}" \
+    --override-channels --channel conda-forge "${CONDA_PACKAGES[@]}"
+fi
+
+conda activate "${ENV_NAME}"
+PYTHON_BIN="${CONDA_PREFIX}/bin/python"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${TMPDIR:-/tmp}/walking_eagle_we11_pip_cache}"
+export UNILAB_NATIVE_BUILD_CACHE="${UNILAB_NATIVE_BUILD_CACHE:-${TMPDIR:-/tmp}/walking_eagle_we11_native_build_cache}"
+
+echo "[2/8] 安装 PyTorch 2.7.0：${TORCH_VARIANT}"
+if [[ "${TORCH_VARIANT}" == "cpu" ]]; then
+  env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -m pip install \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch==2.7.0"
+  TORCH_EXTRA_INDEX="https://download.pytorch.org/whl/cpu"
+else
+  env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -m pip install \
+    --index-url https://download.pytorch.org/whl/cu128 \
+    "torch==2.7.0"
+  TORCH_EXTRA_INDEX="https://download.pytorch.org/whl/cu128"
+fi
+
+echo "[3/8] 用 pip 安装 WE11 项目和测试依赖"
+cd "${REPO_ROOT}"
+env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -m pip install \
+  "setuptools>=69,<70" wheel
+env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -m pip install \
+  --no-build-isolation \
+  --extra-index-url "${TORCH_EXTRA_INDEX}" \
+  -e ".[dev]"
+env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -m pip check
+
+echo "[4/8] 用系统 ABI 编译 native torque-FIFO / command-delay PD"
+# 必须使用激活 Conda 前发现的宿主机 GCC/G++：Conda 新版 libstdc++ 生成的扩展若在 torch 之后加载，
+# 可能因系统 libstdc++ 缺少 CXXABI_1.3.15 而退回慢路径。
+env -u PYTHONPATH \
+  PYTHONNOUSERSITE=1 \
+  CC="${HOST_CC}" \
+  CXX="${HOST_CXX}" \
+  UNILAB_PYTHON="${PYTHON_BIN}" \
+  UNILAB_NATIVE_BUILD_CACHE="${UNILAB_NATIVE_BUILD_CACHE}" \
+  bash third_party/mujoco_uni_mixed_pd/build_extension.sh
+
+echo "[5/8] 验证版本和 Torch-first native 加载"
+env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -c '
+import platform
+import torch
+import mujoco
+from unilab.base.backend.mujoco.native_batch import (
+    native_command_delay_pd_available,
+    native_mixed_pd_available,
+    native_mixed_pd_import_error,
+)
+assert native_mixed_pd_available(), native_mixed_pd_import_error()
+assert native_command_delay_pd_available(), native_mixed_pd_import_error()
+print(f"python={platform.python_version()}")
+print(f"torch={torch.__version__}")
+print(f"mujoco={mujoco.__version__}")
+print(f"cuda_available={torch.cuda.is_available()}")
+print("native_mixed_pd=true")
+print("native_command_delay_pd=true")
+'
+
+echo "[6/8] 运行 WE11 隔离回归测试"
+env -u PYTHONPATH \
+  PYTHONNOUSERSITE=1 \
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+  "${PYTHON_BIN}" -m pytest -m "not slow"
+
+DEVICE="$(env -u PYTHONPATH PYTHONNOUSERSITE=1 "${PYTHON_BIN}" -c \
+  'import torch; print("cuda:0" if torch.cuda.is_available() else "cpu")')"
+LOG_ROOT="logs/conda_validation"
+
+run_smoke_training() {
+  local task_name="$1"
+  local run_name="$2"
+  env -u PYTHONPATH \
+    PYTHONNOUSERSITE=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    UNILAB_MUJOCO_NTHREADS=2 \
+    "${PYTHON_BIN}" -u scripts/train_rsl_rl.py \
+      "task=${task_name}/mujoco" \
+      "training.device=${DEVICE}" \
+      training.no_play=true \
+      training.play_render_mode=none \
+      training.logger=tensorboard \
+      "training.log_root=${LOG_ROOT}" \
+      algo.resume=false \
+      'algo.load_run="-1"' \
+      algo.checkpoint=-1 \
+      algo.num_envs=8 \
+      algo.num_steps_per_env=8 \
+      algo.max_iterations=1 \
+      algo.save_interval=1 \
+      "algo.run_name=${run_name}" \
+      algo.algorithm.num_learning_epochs=1 \
+      algo.algorithm.num_mini_batches=2 \
+      algo.algorithm.enable_compile=false
+}
+
+echo "[7/8] 运行 WE11 flat 最小 PPO：${DEVICE}"
+run_smoke_training dr002_joystick_flat_we11 conda_flat_native_smoke
+
+echo "[8/8] 运行 WE11 rough 最小 PPO：${DEVICE}"
+run_smoke_training dr002_joystick_rough_we11 conda_rough_native_smoke
+
+echo
+echo "============================================================"
+echo "WE11 纯 Conda/pip 环境安装与实跑验证完成"
+echo "环境名：      ${ENV_NAME}"
+echo "PyTorch 变体：${TORCH_VARIANT}"
+echo "训练设备：    ${DEVICE}"
+echo "仓库：        ${REPO_ROOT}"
+echo "宿主机 CC：   ${HOST_CC}"
+echo "宿主机 CXX：  ${HOST_CXX}"
+echo "验证日志：    ${REPO_ROOT}/${LOG_ROOT}"
+echo "环境管理器：  Conda + pip"
+echo
+echo "以后使用："
+echo "  source \"${CONDA_BASE}/etc/profile.d/conda.sh\""
+echo "  conda activate \"${ENV_NAME}\""
+echo "  cd \"${REPO_ROOT}\""
+echo "  env -u PYTHONPATH PYTHONNOUSERSITE=1 python -u scripts/train_rsl_rl.py ..."
+echo "============================================================"

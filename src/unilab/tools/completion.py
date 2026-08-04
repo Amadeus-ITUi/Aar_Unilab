@@ -233,7 +233,7 @@ def _path_choices(candidates: Sequence[str], prefix: str) -> list[str]:
 def _option_state(words: Sequence[str], cword: int) -> tuple[dict[str, str], set[str]]:
     values: dict[str, str] = {}
     used: set[str] = set()
-    index = 3
+    index = 1
     limit = min(cword, len(words))
     while index < limit:
         token = words[index]
@@ -419,22 +419,14 @@ def complete_words(
     metadata: CompletionMetadata | None = None,
 ) -> list[str]:
     selected_metadata = metadata or build_metadata()
-    if len(words) < 2 or words[0] != "uv" or words[1] != "run":
+    if not words:
         return []
 
-    current = _current_word(words, cword)
-    if cword <= 2:
-        return _dedupe(
-            [
-                *_matching(selected_metadata.commands, current),
-                *_path_choices(selected_metadata.run_paths, current),
-            ]
-        )
-
-    command = words[2]
+    command = words[0]
     if command not in selected_metadata.commands:
         return []
 
+    current = _current_word(words, cword)
     previous = _previous_word(words, cword)
     option_values, used_options = _option_state(words, cword)
     choices = selected_metadata.choices.get(command, {})

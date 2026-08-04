@@ -5,15 +5,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
-ENV UV_LINK_MODE=copy
-ENV UV_COMPILE_BYTECODE=1
-ENV PATH="/root/.local/bin:${PATH}"
+ENV PATH="/opt/conda/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python-is-python3 \
     git \
     curl \
     ca-certificates \
@@ -27,14 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN curl -L --fail --retry 3 \
+    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    -o /tmp/miniconda.sh \
+    && bash /tmp/miniconda.sh -b -p /opt/conda \
+    && rm -f /tmp/miniconda.sh
 
 WORKDIR /workspace/UniLab
 
 COPY . /workspace/UniLab
 
-RUN uv sync --dev \
-    && uv cache clean \
-    && rm -rf /root/.cache/uv
+RUN bash install_conda_environment.txt unilab_cuda cu128 \
+    && conda clean --all --yes
 
-CMD ["uv", "run", "train", "--help"]
+CMD ["conda", "run", "--no-capture-output", "-n", "unilab_cuda", "train", "--help"]

@@ -1,6 +1,8 @@
 # WE11 Archive Agent Rules
 
-Always use `uv run`, not a bare Python interpreter.
+Create the supported Conda environment with
+`bash install_conda_environment.txt unilab_cuda cu128`, activate it, and run
+Python entrypoints directly inside that environment.
 
 This branch has one supported product path:
 
@@ -45,11 +47,10 @@ This branch has one supported product path:
 Run focused tests nearest the changed contract, then:
 
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src/unilab
-uv run pyright
-uv run pytest -m "not slow"
+python -m ruff format --check .
+python -m ruff check .
+python -m mypy src/unilab
+python -m pytest -m "not slow"
 git diff --check
 ```
 

@@ -1,45 +1,46 @@
-.PHONY: sync
-sync:
-	uv sync
+CONDA_ENV ?= unilab_cuda
+TORCH_VARIANT ?= cu128
 
 .PHONY: setup
 setup:
-	uv sync
-	uv run --no-sync unilab-complete install
+	bash install_conda_environment.txt $(CONDA_ENV) $(TORCH_VARIANT)
+
+.PHONY: install
+install:
+	python -m pip install --no-build-isolation -e ".[dev]"
 
 .PHONY: install-completion
 install-completion:
-	uv run --no-sync unilab-complete install
+	python -m unilab.tools.completion install
 
 .PHONY: format
 format:
-	uv run ruff format
-	uv run ruff check --fix
+	python -m ruff format
+	python -m ruff check --fix
 
 .PHONY: lint
 lint:
-	uv run ruff format --check .
-	uv run ruff check .
+	python -m ruff format --check .
+	python -m ruff check .
 
 .PHONY: type
 type:
-	uv run mypy src/unilab
-	uv run pyright
+	python -m mypy src/unilab
 
 .PHONY: check
 check: lint type
 
 .PHONY: test
 test:
-	uv run pytest -m "not slow"
+	python -m pytest -m "not slow"
 
 .PHONY: test-cov
 test-cov:
-	uv run pytest -m "not slow" --cov=src/unilab --cov-report=term-missing
+	python -m pytest -m "not slow" --cov=src/unilab --cov-report=term-missing
 
 .PHONY: test-slow
 test-slow:
-	uv run pytest -m "slow" -v
+	python -m pytest -m "slow" -v
 
 .PHONY: test-all
 test-all: check test-cov

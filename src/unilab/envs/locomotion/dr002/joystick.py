@@ -137,7 +137,7 @@ class DR002DomainRandConfig(DomainRandConfig):
     push_randomize_within_interval: bool = False
 
     csv_force_enabled: bool = False
-    csv_force_path: str = "/home/esd_wch/lsaac_lab_ws/force_raw.csv"
+    csv_force_path: str = ""
     csv_force_curriculum_paths: list[str] = field(default_factory=list)
     csv_force_curriculum_hz: list[float] = field(default_factory=list)
     csv_force_period: float = 10.0

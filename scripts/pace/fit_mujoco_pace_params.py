@@ -209,10 +209,7 @@ def coerce_active_joint_ids(
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{name} must contain integer joint ids, got {raw!r}") from exc
         rounded = round(scalar)
-        if (
-            not np.isfinite(scalar)
-            or not np.isclose(scalar, rounded, rtol=0.0, atol=1.0e-12)
-        ):
+        if not np.isfinite(scalar) or not np.isclose(scalar, rounded, rtol=0.0, atol=1.0e-12):
             raise ValueError(f"{name} must contain integer joint ids, got {raw!r}")
         joint_id = int(rounded)
         if joint_id < 0 or joint_id >= len(JOINT_NAMES):
@@ -259,9 +256,7 @@ def source_active_joint_ids(source: dict[str, Any]) -> tuple[int, ...]:
                 name="source.joint_id",
             )[0]
             if representative not in active_joint_ids:
-                raise ValueError(
-                    "source.joint_id must name one of source.active_joint_ids"
-                )
+                raise ValueError("source.joint_id must name one of source.active_joint_ids")
         return active_joint_ids
     if "joint_id" not in source:
         raise ValueError("source must contain active_joint_ids or legacy joint_id")
@@ -316,9 +311,7 @@ def source_controller_gain(
     elif raw.size == len(JOINT_NAMES):
         values[:] = raw
     else:
-        raise ValueError(
-            f"source.{key} must be a scalar or a {len(JOINT_NAMES)}-joint vector"
-        )
+        raise ValueError(f"source.{key} must be a scalar or a {len(JOINT_NAMES)}-joint vector")
     if not np.all(np.isfinite(values)) or np.any(values < 0.0):
         raise ValueError(f"source.{key} must contain finite non-negative values")
     return values
@@ -351,9 +344,7 @@ def source_result_trace(
 
     active_joint_ids = source_active_joint_ids(item.source)
     if joint_id not in active_joint_ids:
-        raise ValueError(
-            f"joint {joint_id} is not active for source {source_label(item.source)}"
-        )
+        raise ValueError(f"joint {joint_id} is not active for source {source_label(item.source)}")
     values = np.asarray(result[key], dtype=np.float64)
     if len(active_joint_ids) == 1:
         if values.ndim != 1:
@@ -716,9 +707,10 @@ def source_target_kind(source: dict[str, Any], payload: dict[str, np.ndarray]) -
     if value in {"position", "velocity"}:
         return str(value)
     active_joint_ids = source_active_joint_ids(source)
-    if any(
-        joint_id in set(WHEEL_JOINT_IDS.tolist()) for joint_id in active_joint_ids
-    ) and payload.get("dof_vel") is not None:
+    if (
+        any(joint_id in set(WHEEL_JOINT_IDS.tolist()) for joint_id in active_joint_ids)
+        and payload.get("dof_vel") is not None
+    ):
         return "velocity"
     return "position"
 
@@ -727,11 +719,7 @@ def parse_fit_joints(text: str, sources: list[SourceData]) -> list[int]:
     text = text.strip().lower()
     if text in {"active", "sources"}:
         return sorted(
-            {
-                joint_id
-                for item in sources
-                for joint_id in source_active_joint_ids(item.source)
-            }
+            {joint_id for item in sources for joint_id in source_active_joint_ids(item.source)}
         )
     if text in {"all", "*"}:
         return list(range(len(JOINT_NAMES)))
@@ -852,9 +840,7 @@ class MujocoPaceReplay:
         self.fixture_mode = resolve_fixture_mode(fixture_mode, lock_non_source_joints)
         self.lock_non_source_joints = self.fixture_mode == "equality"
         self.lock_wheel_positions = bool(lock_wheel_positions)
-        self.needs_joint_equalities = (
-            self.lock_non_source_joints or self.lock_wheel_positions
-        )
+        self.needs_joint_equalities = self.lock_non_source_joints or self.lock_wheel_positions
         if model_prepared:
             self.model, self.loaded_path = load_mujoco_model_with_mesh_fallback(
                 model_path, fixed_base=False
@@ -891,9 +877,7 @@ class MujocoPaceReplay:
                 dtype=np.int32,
             )
             if np.any(self.lock_equality_ids < 0):
-                raise ValueError(
-                    "lockable MJCF is missing one or more joint equality constraints"
-                )
+                raise ValueError("lockable MJCF is missing one or more joint equality constraints")
         else:
             self.lock_equality_ids = np.zeros(0, dtype=np.int32)
         self.free_root = free_root_addresses(self.model)
@@ -964,9 +948,7 @@ class MujocoPaceReplay:
             raise RuntimeError("reset must be called before projecting locked joint states")
         locked_ids = set(
             int(joint_id)
-            for joint_id in (
-                self.locked_wheel_joint_ids if self.lock_wheel_positions else ()
-            )
+            for joint_id in (self.locked_wheel_joint_ids if self.lock_wheel_positions else ())
         )
         if self.lock_non_source_joints:
             locked_ids.update(
@@ -1041,9 +1023,7 @@ class MujocoPaceReplay:
                 self.data.eq_active[self.lock_equality_ids] = True
                 self.data.eq_active[self.lock_equality_ids[active_index]] = False
             elif self.lock_wheel_positions and self.locked_wheel_joint_ids.size:
-                self.data.eq_active[
-                    self.lock_equality_ids[self.locked_wheel_joint_ids]
-                ] = True
+                self.data.eq_active[self.lock_equality_ids[self.locked_wheel_joint_ids]] = True
         self.mujoco.mj_forward(self.model, self.data)
         self.project_locked_joint_states()
 
@@ -1172,9 +1152,7 @@ class MujocoPaceReplay:
             qd = self.data.qvel[self.qvel_ids].copy()
             measured_q = q - bias
             sim_response[step] = (
-                qd[active_index]
-                if item.target_kind == "velocity"
-                else measured_q[active_index]
+                qd[active_index] if item.target_kind == "velocity" else measured_q[active_index]
             )
             if log_full:
                 assert sim_q is not None and sim_qd is not None
@@ -1293,9 +1271,7 @@ def _masked_trajectory_pair(
         return response_values, y
     selected = np.asarray(mask, dtype=bool).reshape(-1)
     if selected.shape[0] != n:
-        raise ValueError(
-            f"trajectory score mask must contain {n} values, got {selected.shape[0]}"
-        )
+        raise ValueError(f"trajectory score mask must contain {n} values, got {selected.shape[0]}")
     return response_values[selected], y[selected]
 
 
@@ -1899,9 +1875,7 @@ def main() -> None:
     if score_fmin < min(chirp_start_hz, chirp_end_hz) or score_fmax > max(
         chirp_start_hz, chirp_end_hz
     ):
-        raise ValueError(
-            "--time-score-freq-range must lie inside --chirp-source-freq-range"
-        )
+        raise ValueError("--time-score-freq-range must lie inside --chirp-source-freq-range")
     if (
         not math.isfinite(args.bode_command_psd_threshold_db)
         or args.bode_command_psd_threshold_db > 0.0
@@ -2064,9 +2038,7 @@ def main() -> None:
         active_joint_ids = source_active_joint_ids(item.source)
         for joint_id in active_joint_ids:
             if item.target_kind == "velocity":
-                command = np.asarray(
-                    item.payload["des_dof_vel"], dtype=np.float64
-                )[:, joint_id]
+                command = np.asarray(item.payload["des_dof_vel"], dtype=np.float64)[:, joint_id]
                 real_velocity = item.payload.get("dof_vel")
                 truth = (
                     np.zeros_like(command)
@@ -2074,12 +2046,8 @@ def main() -> None:
                     else np.asarray(real_velocity, dtype=np.float64)[:, joint_id]
                 )
             else:
-                command = np.asarray(
-                    item.payload["des_dof_pos"], dtype=np.float64
-                )[:, joint_id]
-                truth = np.asarray(
-                    item.payload["dof_pos"], dtype=np.float64
-                )[:, joint_id]
+                command = np.asarray(item.payload["des_dof_pos"], dtype=np.float64)[:, joint_id]
+                truth = np.asarray(item.payload["dof_pos"], dtype=np.float64)[:, joint_id]
             reference_frequency, _, _ = transfer_bode(
                 command[fit_mask], truth[fit_mask], time[fit_mask]
             )
@@ -2138,13 +2106,9 @@ def main() -> None:
     ) -> tuple[float, float]:
         time = np.asarray(result["time"], dtype=np.float64)
         if item.target_kind == "velocity":
-            command = np.asarray(
-                item.payload["des_dof_vel"], dtype=np.float64
-            )[:, joint_id]
+            command = np.asarray(item.payload["des_dof_vel"], dtype=np.float64)[:, joint_id]
         else:
-            command = np.asarray(
-                item.payload["des_dof_pos"], dtype=np.float64
-            )[:, joint_id]
+            command = np.asarray(item.payload["des_dof_pos"], dtype=np.float64)[:, joint_id]
         time_window = source_bode_time_window(
             item,
             time,
@@ -2211,10 +2175,7 @@ def main() -> None:
     print(f"[INFO] out_dir={out_dir}")
     print(f"[INFO] model={model_path}, sha256={model_sha256}")
     print(f"[INFO] loaded_model={replay.loaded_path}")
-    print(
-        "[INFO] integrator="
-        f"{replay.mujoco.mjtIntegrator(replay.model.opt.integrator).name}"
-    )
+    print(f"[INFO] integrator={replay.mujoco.mjtIntegrator(replay.model.opt.integrator).name}")
     print(
         f"[INFO] control_mode={control_mode}, truth_hz={truth_sample_hz:.9g}, "
         f"sim_hz={sim_hz:g}, control_hz={control_hz:g}, limit_steps={args.limit_steps}"
@@ -2506,12 +2467,9 @@ def main() -> None:
             raise RuntimeError(
                 f"non-source fixture state became non-finite for {source_label(item.source)}"
             )
-        if (
-            fixture_mode == "equality"
-            and (
-                non_source_position_drift > EQUALITY_FIXTURE_DRIFT_TOL_RAD
-                or non_source_velocity_max > EQUALITY_FIXTURE_VELOCITY_TOL_RAD_S
-            )
+        if fixture_mode == "equality" and (
+            non_source_position_drift > EQUALITY_FIXTURE_DRIFT_TOL_RAD
+            or non_source_velocity_max > EQUALITY_FIXTURE_VELOCITY_TOL_RAD_S
         ):
             raise RuntimeError(
                 "non-source joint equality lock tolerance exceeded: "
@@ -2519,11 +2477,7 @@ def main() -> None:
                 f"velocity={non_source_velocity_max:.9g} rad/s"
             )
         locked_wheel_ids = np.asarray(
-            [
-                joint_id
-                for joint_id in WHEEL_JOINT_IDS
-                if joint_id not in set(active_joint_ids)
-            ],
+            [joint_id for joint_id in WHEEL_JOINT_IDS if joint_id not in set(active_joint_ids)],
             dtype=np.int32,
         )
         if locked_wheel_ids.size:
@@ -2534,9 +2488,13 @@ def main() -> None:
         else:
             wheel_position_drift = 0.0
             wheel_velocity_max = 0.0
-        if args.lock_wheel_positions and locked_wheel_ids.size and (
-            wheel_position_drift > WHEEL_LOCK_DRIFT_TOL_RAD
-            or wheel_velocity_max > WHEEL_LOCK_VELOCITY_TOL_RAD_S
+        if (
+            args.lock_wheel_positions
+            and locked_wheel_ids.size
+            and (
+                wheel_position_drift > WHEEL_LOCK_DRIFT_TOL_RAD
+                or wheel_velocity_max > WHEEL_LOCK_VELOCITY_TOL_RAD_S
+            )
         ):
             raise RuntimeError(
                 "non-source wheel position lock drift exceeded its exact projection tolerance: "
@@ -2591,12 +2549,8 @@ def main() -> None:
                     "bode_phase_mse_deg2": bode_phase_mse,
                     "bode_phase_rmse_deg": math.sqrt(bode_phase_mse),
                     "selection_score": time_mse,
-                    "non_source_joint_max_abs_position_drift_rad": (
-                        non_source_position_drift
-                    ),
-                    "non_source_joint_max_abs_velocity_rad_s": (
-                        non_source_velocity_max
-                    ),
+                    "non_source_joint_max_abs_position_drift_rad": (non_source_position_drift),
+                    "non_source_joint_max_abs_velocity_rad_s": (non_source_velocity_max),
                     "locked_joint_max_abs_position_drift_rad": (
                         non_source_position_drift if fixture_mode == "equality" else None
                     ),
@@ -2635,13 +2589,9 @@ def main() -> None:
                 f"{active_joint_names[0]}.csv"
             )
         else:
-            joint_token = "-".join(
-                f"{joint_id + 1:02d}" for joint_id in active_joint_ids
-            )
+            joint_token = "-".join(f"{joint_id + 1:02d}" for joint_id in active_joint_ids)
             name_token = "_".join(active_joint_names)
-            replay_name = (
-                f"best_replay_{artifact_token}_joints{joint_token}_{name_token}.csv"
-            )
+            replay_name = f"best_replay_{artifact_token}_joints{joint_token}_{name_token}.csv"
         write_replay_csv(
             out_dir / replay_name,
             replay_result,
@@ -2700,12 +2650,8 @@ def main() -> None:
         "format": "dr002_mujoco_pace_fit_v4",
         "calibration_status": calibration_status,
         "joint_order": JOINT_NAMES,
-        "active_source_joint_ids": [
-            list(source_active_joint_ids(item.source)) for item in sources
-        ],
-        "active_source_joints": [
-            list(source_active_joint_names(item.source)) for item in sources
-        ],
+        "active_source_joint_ids": [list(source_active_joint_ids(item.source)) for item in sources],
+        "active_source_joints": [list(source_active_joint_names(item.source)) for item in sources],
         "parameter_vector_order": parameter_vector_order,
         "parameter_vector": params_to_vector(best_params, len(JOINT_NAMES)).tolist(),
         "armature": params_to_named_dict(best_params, "armature"),
@@ -2748,9 +2694,7 @@ def main() -> None:
             "score_simulation_window": "full_replay_trajectory",
             "score_time_window": "strict_linear_chirp_time_window",
             "score_frequency_range_hz": [score_fmin, score_fmax],
-            "score_chirp_source_frequency_range_hz": list(
-                chirp_source_frequency_range
-            ),
+            "score_chirp_source_frequency_range_hz": list(chirp_source_frequency_range),
             "score_trace_order": [
                 {
                     "source_index": source_index,
@@ -2787,15 +2731,11 @@ def main() -> None:
             ],
             "limit_steps": args.limit_steps,
             "requested_fit_joint_ids": requested_fit_joints,
-            "requested_fit_joints": [
-                JOINT_NAMES[idx] for idx in requested_fit_joints
-            ],
+            "requested_fit_joints": [JOINT_NAMES[idx] for idx in requested_fit_joints],
             "fit_joint_ids": fit_joints,
             "fit_joints": [JOINT_NAMES[idx] for idx in fit_joints],
             "mirrored_fit_joint_canonicalization": (
-                "left_side_when_both_sides_requested"
-                if args.mirror_side_dynamics
-                else "disabled"
+                "left_side_when_both_sides_requested" if args.mirror_side_dynamics else "disabled"
             ),
             "enable_gravity": bool(args.enable_gravity),
             "free_base": bool(args.free_base),

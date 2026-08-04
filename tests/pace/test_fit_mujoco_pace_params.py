@@ -298,8 +298,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_explicit_initial_qpos_only_overrides_non_source_joints(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -485,8 +484,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_high_impedance_fixture_uses_reset_pose_and_independent_hold_gains(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -547,9 +545,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
         self.assertAlmostEqual(tau[3], active_kp[3] * 0.25 - active_kd[3] * qd[3])
         non_source_legs = np.asarray([True, True, False, False, True, False])
         expected_hold = DEFAULT_FIXTURE_HOLD_KP * (initial_qpos - q) - DEFAULT_FIXTURE_HOLD_KD * qd
-        np.testing.assert_allclose(
-            tau[non_source_legs], expected_hold[non_source_legs]
-        )
+        np.testing.assert_allclose(tau[non_source_legs], expected_hold[non_source_legs])
         np.testing.assert_array_equal(tau[[2, 5]], 0.0)
         self.assertGreater(np.max(np.abs(tau[non_source_legs])), 0.0)
 
@@ -568,9 +564,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
             target_kind="position",
         )
         result = replay.replay(source, params, log_full=True)
-        self.assertGreater(
-            np.max(np.abs(result["tau"][:, non_source_legs])), 1.0e-6
-        )
+        self.assertGreater(np.max(np.abs(result["tau"][:, non_source_legs])), 1.0e-6)
         np.testing.assert_array_equal(
             result["q"][:, [2, 5]],
             np.tile(initial_qpos[[2, 5]], (time.size, 1)),
@@ -580,8 +574,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_replay_delays_one_complete_frame_before_pd_with_current_state(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -661,8 +654,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_free_fixture_still_locks_both_wheel_positions_exactly(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -724,8 +716,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_non_source_joint_equalities_hold_five_joints_fixed(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -791,8 +782,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_paired_replay_drives_both_legs_and_locks_all_other_joints(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")
@@ -868,8 +858,7 @@ class PaceParameterAssemblyTests(unittest.TestCase):
 
     def test_wheel_velocity_source_releases_only_target_wheel(self) -> None:
         model_path = (
-            Path(__file__).resolve().parents[2]
-            / "src/unilab/assets/robots/dr002/we11/we11.xml"
+            Path(__file__).resolve().parents[2] / "src/unilab/assets/robots/dr002/we11/we11.xml"
         )
         if not model_path.exists():
             self.skipTest(f"WE11 model is not available: {model_path}")

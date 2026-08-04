@@ -1,9 +1,9 @@
-# Bash completion for UniLab commands launched through `uv run`.
+# Bash completion for UniLab commands installed in the active Conda environment.
 
-_unilab_uv_complete() {
+_unilab_complete() {
     COMPREPLY=()
 
-    if [[ ${#COMP_WORDS[@]} -lt 2 || ${COMP_WORDS[0]} != "uv" || ${COMP_WORDS[1]} != "run" ]]; then
+    if [[ ${COMP_WORDS[0]} != "train" && ${COMP_WORDS[0]} != "eval" ]]; then
         return 0
     fi
 
@@ -13,14 +13,14 @@ _unilab_uv_complete() {
 
     local candidates
     if ! mapfile -t candidates < <(
-        uv run --no-sync unilab-complete --cword "$COMP_CWORD" -- "${COMP_WORDS[@]}" 2>/dev/null \
-            || PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync python -m unilab.tools.completion --cword "$COMP_CWORD" -- "${COMP_WORDS[@]}" 2>/dev/null
+        unilab-complete --cword "$COMP_CWORD" -- "${COMP_WORDS[@]}" 2>/dev/null \
+            || PYTHONPATH="$repo_root/src${PYTHONPATH:+:$PYTHONPATH}" python -m unilab.tools.completion --cword "$COMP_CWORD" -- "${COMP_WORDS[@]}" 2>/dev/null
     ); then
         return 0
     fi
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
-        if [[ $COMP_CWORD -le 2 || ${COMP_WORDS[2]} != "train" && ${COMP_WORDS[2]} != "eval" ]]; then
+        if [[ $COMP_CWORD -le 1 ]]; then
             compopt -o default -o bashdefault 2>/dev/null || true
             return 1
         fi
@@ -30,4 +30,4 @@ _unilab_uv_complete() {
     COMPREPLY=("${candidates[@]}")
 }
 
-complete -o default -o bashdefault -F _unilab_uv_complete uv
+complete -o default -o bashdefault -F _unilab_complete train eval

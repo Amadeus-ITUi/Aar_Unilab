@@ -353,21 +353,16 @@ def build_coordinate_contract(
             "sign_normalized_absolute_motor_coordinate_p_not_runtime_relative_u"
         ),
         "raw_to_policy_sign": [
-            float(JULY30_RAW_TO_POLICY_SIGN[joint_id])
-            if joint_id in active_leg_joint_ids
-            else None
+            float(JULY30_RAW_TO_POLICY_SIGN[joint_id]) if joint_id in active_leg_joint_ids else None
             for joint_id in range(len(JOINT_NAMES))
         ],
         "runtime_joint_default_rad": runtime_default.tolist(),
-        "runtime_topic_center_rad": (
-            JULY30_POLICY_SWEEP_CENTER - runtime_default
-        ).tolist(),
+        "runtime_topic_center_rad": (JULY30_POLICY_SWEEP_CENTER - runtime_default).tolist(),
         "mujoco_qpos_at_policy_center_rad": mujoco_center.tolist(),
         "policy_delta_to_mujoco_sign": mujoco_sign.tolist(),
         "position_formulas": {
             "raw_to_policy": (
-                "p = policy_named_center + raw_to_policy_sign * "
-                "(q_raw - raw_encoder_center)"
+                "p = policy_named_center + raw_to_policy_sign * (q_raw - raw_encoder_center)"
             ),
             "policy_named_to_runtime_topic": "u = p - runtime_joint_default",
             "runtime_topic_to_mujoco": (
@@ -381,9 +376,7 @@ def build_coordinate_contract(
         },
         "velocity_formulas": {
             "raw_to_policy": "qd_policy = raw_to_policy_sign * qd_raw",
-            "policy_to_mujoco": (
-                "qd_mujoco = policy_delta_to_mujoco_sign * qd_policy"
-            ),
+            "policy_to_mujoco": ("qd_mujoco = policy_delta_to_mujoco_sign * qd_policy"),
         },
         "coordinate_layers": {
             "raw_encoder": {
@@ -399,9 +392,7 @@ def build_coordinate_contract(
                 "symbol": "u",
                 "semantics": "relative_position_published_to_policy_joint_states",
                 "joint_default_rad": runtime_default.tolist(),
-                "center_rad": (
-                    JULY30_POLICY_SWEEP_CENTER - runtime_default
-                ).tolist(),
+                "center_rad": (JULY30_POLICY_SWEEP_CENTER - runtime_default).tolist(),
             },
             "mujoco_absolute_qpos": {
                 "symbol": "q_mujoco",
@@ -445,17 +436,14 @@ def slice_after_last_timestamp_reset(
         )
     start_index = int(reset_indices[-1])
     segment = {
-        name: np.asarray(values[start_index:], dtype=np.float64)
-        for name, values in data.items()
+        name: np.asarray(values[start_index:], dtype=np.float64) for name, values in data.items()
     }
     segment_timestamps = segment["timestamp"]
     if segment_timestamps.size < 2:
         raise ValueError("formal sweep segment contains fewer than two samples")
     segment_diffs = np.diff(segment_timestamps)
     if not np.all(segment_diffs > 0.0):
-        raise ValueError(
-            "timestamps after the final rollback must be strictly increasing"
-        )
+        raise ValueError("timestamps after the final rollback must be strictly increasing")
     time = segment_timestamps - float(segment_timestamps[0])
     return (
         time,
@@ -476,9 +464,9 @@ def raw_position_to_policy(
     values: np.ndarray,
     joint_id: int,
 ) -> np.ndarray:
-    return JULY30_POLICY_SWEEP_CENTER[joint_id] + JULY30_RAW_TO_POLICY_SIGN[
-        joint_id
-    ] * (values - JULY30_RAW_ENCODER_CENTER[joint_id])
+    return JULY30_POLICY_SWEEP_CENTER[joint_id] + JULY30_RAW_TO_POLICY_SIGN[joint_id] * (
+        values - JULY30_RAW_ENCODER_CENTER[joint_id]
+    )
 
 
 def policy_position_to_mujoco(
@@ -486,13 +474,9 @@ def policy_position_to_mujoco(
     joint_id: int,
     coordinate_contract: dict[str, Any],
 ) -> np.ndarray:
-    mujoco_center = float(
-        coordinate_contract["mujoco_qpos_at_policy_center_rad"][joint_id]
-    )
+    mujoco_center = float(coordinate_contract["mujoco_qpos_at_policy_center_rad"][joint_id])
     sign = float(coordinate_contract["policy_delta_to_mujoco_sign"][joint_id])
-    return mujoco_center + sign * (
-        values - JULY30_POLICY_SWEEP_CENTER[joint_id]
-    )
+    return mujoco_center + sign * (values - JULY30_POLICY_SWEEP_CENTER[joint_id])
 
 
 def raw_velocity_to_mujoco(
@@ -749,9 +733,7 @@ def import_paired_source(
             }
         )
 
-    policy_command_difference = float(
-        np.max(np.abs(policy_commands[0] - policy_commands[1]))
-    )
+    policy_command_difference = float(np.max(np.abs(policy_commands[0] - policy_commands[1])))
     if policy_command_difference > amplitude_tolerance_rad:
         raise ValueError(
             f"{path.name}: paired policy commands differ by up to "
@@ -796,9 +778,7 @@ def import_paired_source(
         "duration_s": float(time[-1]) if time.shape[0] else 0.0,
         "dt_median_s": float(np.median(np.diff(time))) if time.shape[0] > 1 else 0.0,
         "raw_num_samples": int(raw_time.shape[0]),
-        "raw_dt_median_s": (
-            float(np.median(np.diff(raw_time))) if raw_time.shape[0] > 1 else 0.0
-        ),
+        "raw_dt_median_s": (float(np.median(np.diff(raw_time))) if raw_time.shape[0] > 1 else 0.0),
         "resample_dt_s": float(resample_dt),
         "sample_rate_hz": float(1.0 / resample_dt),
         "resampling": resampling_metadata(resample_dt),
@@ -834,9 +814,7 @@ def _select_paired_csvs(
         meta = parse_paired_csv_name(path)
         key = (str(meta["pair"]), float(meta["kp"]), float(meta["kd"]))
         if key in selected:
-            raise ValueError(
-                f"duplicate paired sweep selector {key}: {selected[key]} and {path}"
-            )
+            raise ValueError(f"duplicate paired sweep selector {key}: {selected[key]} and {path}")
         selected[key] = path
     return selected
 
@@ -857,9 +835,7 @@ def import_july30_paired_directory(
         atol=1.0e-12,
         rtol=0.0,
     ):
-        raise ValueError(
-            "july30-paired import requires resample_dt=0.005 for exact 200 Hz output"
-        )
+        raise ValueError("july30-paired import requires resample_dt=0.005 for exact 200 Hz output")
     coordinate_contract = build_coordinate_contract(
         mujoco_qpos_at_policy_center,
         policy_delta_to_mujoco_sign,
@@ -876,13 +852,11 @@ def import_july30_paired_directory(
             key = (pair, float(selector["kp"]), float(selector["kd"]))
             if key not in selector_to_path:
                 missing_selectors.append(
-                    f"{group_spec['name']}: pair={pair}, "
-                    f"Kp={selector['kp']}, Kd={selector['kd']}"
+                    f"{group_spec['name']}: pair={pair}, Kp={selector['kp']}, Kd={selector['kd']}"
                 )
     if missing_selectors:
         raise FileNotFoundError(
-            "missing required July-30 paired sweeps under "
-            f"{csv_dir}: {missing_selectors}"
+            f"missing required July-30 paired sweeps under {csv_dir}: {missing_selectors}"
         )
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -919,9 +893,7 @@ def import_july30_paired_directory(
             "source_dir": str(csv_dir.resolve()),
             "control_mode": CONTROL_MODE,
             "joint_names": list(JOINT_NAMES),
-            "default_angles": list(
-                coordinate_contract["mujoco_qpos_at_policy_center_rad"]
-            ),
+            "default_angles": list(coordinate_contract["mujoco_qpos_at_policy_center_rad"]),
             "coordinate_contract": coordinate_contract,
             "pd_configuration": selected_pd,
             "alignment_window_s": 0.0,

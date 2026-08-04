@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build phase-aligned WE11 wrench replay assets from the 2026-07-28 U9 sweep.
+"""Build phase-aligned WE11 wrench replay assets from the 2026-07-28 sweep.
 
 The raw logger records one approximately 200 Hz six-axis force snapshot per
 row together with one motor's asynchronous feedback. The WE11 runtime expects a
