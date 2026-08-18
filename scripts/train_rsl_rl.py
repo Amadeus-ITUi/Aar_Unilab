@@ -226,7 +226,8 @@ def play_rsl_rl(cfg: DictConfig, device: str) -> str | None:
     policy = runner.get_inference_policy(device=device)
     if EXPORT_POLICY:
         runner.export_policy_to_onnx(path=str(load_path_dir))
-        runner.export_policy_to_jit(path=str(load_path_dir))
+        if bool(getattr(cfg.training, "export_jit", False)):
+            runner.export_policy_to_jit(path=str(load_path_dir))
     num_steps = _resolve_play_num_steps(cfg)
     output_video = Path(load_path_dir) / "play_video.mp4"
     playback_mode: str | None = None
@@ -410,7 +411,8 @@ def main(cfg: DictConfig) -> None:
                 tracker.update_summary(train_summary)
             env.close()
 
-        if should_run_playback(
+        should_export_play_only_policy = bool(EXPORT_POLICY and cfg.training.play_only)
+        if should_export_play_only_policy or should_run_playback(
             play_only=cfg.training.play_only,
             no_play=cfg.training.no_play,
             play_render_mode=getattr(cfg.training, "play_render_mode", "auto"),

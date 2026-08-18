@@ -74,6 +74,9 @@ training:
     output_dir: null
   play_only: false
   no_play: false
+  # MlpAdaptModel ONNX is the supported deployment artifact.  The current
+  # PyTorch/RSL-RL runtime cannot script this model reliably as TorchScript.
+  export_jit: false
   sim2sim_strict: true
   play_render_mode: auto
   play_env_num: 16
