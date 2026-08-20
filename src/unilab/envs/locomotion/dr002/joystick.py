@@ -272,6 +272,8 @@ class WE11JoystickSensor(JoystickSensor):
         "ancient_upper_left_touch",
         "ancient_upper_right_touch",
         "ancient_front_center_touch",
+        "ancient_tail_rear_touch",
+        "ancient_tail_mid_touch",
     )
 
 
@@ -4913,7 +4915,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             np.sum(contacts > self._reward_cfg.undesired_contact_threshold, axis=1),
             dtype=get_global_dtype(),
         )
-        return self._clip_lingzu_reward("undesired_contacts", reward)
+        return self._clip_lingzu_reward("undesired_contacts", reward, clip_single_reward=10.0)
 
     def _reward_alive(self, ctx: RewardContext) -> np.ndarray:
         return np.asarray(self._alive_values(ctx.num_envs), dtype=get_global_dtype())
