@@ -26,7 +26,6 @@ from unilab.envs.locomotion.dr002.joystick import (
     DR002JoystickEnv,
     DR002JoystickFlatWE11Cfg,
     WE11JoystickSensor,
-    _csv_force_zero_hz_mask,
     build_dr002_backend_reset_randomization,
 )
 from unilab.terrains import (
@@ -113,11 +112,12 @@ class WE11RoughJoystickSensor(WE11JoystickSensor):
 
     termination_contacts: tuple[str, ...] | None = (
         "base_link_touch",
+        "base_shoulder_touch",
         "left_thigh_touch",
         "right_thigh_touch",
-        "ancient_upper_left_touch",
-        "ancient_upper_right_touch",
-        "ancient_front_center_touch",
+        "left_wing_tip_touch",
+        "right_wing_tip_touch",
+        "U2_touch",
     )
 
 
@@ -147,7 +147,7 @@ class DR002JoystickRoughWE11Cfg(DR002JoystickFlatWE11Cfg):
             enabled=True,
             use_path_length=True,
             demote_requires_commanded_distance=True,
-            unlock_after_force_curriculum=True,
+            unlock_after_force_curriculum=False,
             seed=42,
         )
     )
@@ -186,23 +186,16 @@ class DR002JoystickRoughDomainRandomizationProvider(DR002JoystickDomainRandomiza
         csv_force_levels = env.sample_reset_csv_force_levels(num_reset)
         csv_force_start_delay_steps = env.sample_reset_csv_force_start_delay_steps(num_reset)
         csv_force_amplitude_scales = env.sample_reset_csv_force_amplitude_scales(num_reset)
-        wing_angle_obs_amplitude_scales = env.sample_reset_wing_angle_obs_amplitude_scales(
-            num_reset
-        )
         if (
             env._standing_envs_episode_persistent
             and not env.cfg.domain_rand.csv_force_apply_to_standing
         ):
             csv_force_levels[standing_mask] = 0
             csv_force_start_delay_steps[standing_mask] = 0
-        zero_hz_wing_angle_obs = env.sample_reset_zero_hz_wing_angle_obs(
-            _csv_force_zero_hz_mask(env.cfg.domain_rand, csv_force_levels)
-        )
-        env.set_zero_hz_wing_angle_obs(env_ids, zero_hz_wing_angle_obs)
         env.set_csv_force_active_levels(env_ids, csv_force_levels)
         env.set_csv_force_start_delay_steps(env_ids, csv_force_start_delay_steps)
         env.set_csv_force_amplitude_scales(env_ids, csv_force_amplitude_scales)
-        env.set_wing_angle_obs_amplitude_scales(env_ids, wing_angle_obs_amplitude_scales)
+        env.reset_wing_velocity_command(env_ids)
         body_mass_multipliers = self._body_mass_multipliers_for_reset(env, env_ids)
         reset_randomization = build_dr002_backend_reset_randomization(
             env,

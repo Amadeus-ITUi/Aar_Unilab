@@ -18,7 +18,9 @@ env:
     use_path_length: true
     demote_requires_commanded_distance: true
     demote_commanded_distance_frac: 0.25
-    unlock_after_force_curriculum: true
+    # csv_force is off, so terrain curriculum unlocks purely on the command
+    # curriculum.
+    unlock_after_force_curriculum: false
     initial_level: null
     seed: 42
   termination_config:

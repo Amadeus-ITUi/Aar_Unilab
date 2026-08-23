@@ -9,7 +9,6 @@ from unilab.envs.common.rotation import np_yaw_to_quat
 from unilab.envs.locomotion.dr002.base import NoiseConfig
 from unilab.envs.locomotion.dr002.joystick import (
     _CRITIC_DIM,
-    _CRITIC_WITH_MEASURED_MOMENT_DIM,
     _DR002_ASSET_ROOT,
     _HISTORY_LENGTH,
     _LEGACY_CRITIC_DIM,
@@ -41,11 +40,11 @@ def _bare_obs_env(num_envs: int = 2) -> DR002JoystickEnv:
     env._np_dtype = np.dtype(np.float32)
     env._num_envs = num_envs
     env._num_action = 6
-    env._actor_dim = 135
+    env._actor_dim = 145
     env._critic_dim = _CRITIC_DIM
-    env._critic_includes_measured_moment = False
     env._use_isaaclab_critic = True
     env._wing_angle_obs_enabled = True
+    env._wing_velocity_obs_enabled = True
     env.default_angles = np.asarray([0.8, -1.6, 0.0, 0.8, -1.6, 0.0], dtype=np.float32)
     env._cfg = SimpleNamespace(
         ctrl_dt=0.02,
@@ -59,12 +58,18 @@ def _bare_obs_env(num_envs: int = 2) -> DR002JoystickEnv:
             normalization_deg=180.0,
             noise_half_range_deg=0.1,
         ),
+        wing_velocity_obs=SimpleNamespace(
+            enabled=True,
+            force_zero_output=False,
+            scale=0.1,
+            noise_half_range_rad_s=0.2,
+            gaussian_noise_relative_std=0.0,
+        ),
         domain_rand=DR002DomainRandConfig(
-            csv_force_enabled=True,
+            csv_force_enabled=False,
             csv_force_curriculum=True,
             csv_force_curriculum_hz=[0.0, 1.0, 2.0, 3.0, 4.0],
             csv_force_observation_force_normalization=50.0,
-            csv_force_observation_include_measured_moment=False,
             csv_force_observation_moment_normalization=15.0,
         ),
     )
@@ -74,10 +79,13 @@ def _bare_obs_env(num_envs: int = 2) -> DR002JoystickEnv:
     env._gravity_dynamic_noise_rp = np.zeros((num_envs, 2), dtype=np.float32)
     env._history_terms = [
         np.zeros((num_envs, _HISTORY_LENGTH, dim), dtype=np.float32)
-        for dim in (3, 3, 4, 6, 6, 2, 3)
+        for dim in (3, 3, 4, 6, 6, 2, 2, 3)
     ]
     env._compute_wing_angle_obs = lambda *args, **kwargs: np.full(
         (args[0], 2), 0.125, dtype=np.float32
+    )
+    env._compute_wing_vel_obs = lambda *args, **kwargs: np.full(
+        (args[0], 2), 0.05, dtype=np.float32
     )
     env._backend = _FakeBackend(np.asarray([[0.0, 0.0, 0.7], [0.0, 0.0, 1.8]], dtype=np.float32))
     env._privileged_base_mass_delta = np.asarray([[0.1], [0.2]], dtype=np.float32)
@@ -87,14 +95,6 @@ def _bare_obs_env(num_envs: int = 2) -> DR002JoystickEnv:
     env._default_joint_pos_offset = np.arange(num_envs * 6, dtype=np.float32).reshape(num_envs, 6)
     env._privileged_ground_friction_scale = np.asarray([[0.8], [0.9]], dtype=np.float32)
     env._privileged_robot_friction_scale = np.asarray([[1.1], [1.2]], dtype=np.float32)
-    env._measured_csv_force_base = np.asarray(
-        [[50.0, -25.0, 5.0], [100.0, 0.0, -50.0]],
-        dtype=np.float32,
-    )
-    env._measured_csv_moment_base = np.asarray(
-        [[15.0, -7.5, 1.5], [30.0, 0.0, -15.0]],
-        dtype=np.float32,
-    )
     return env
 
 
@@ -129,7 +129,7 @@ def _obs_inputs(num_envs: int = 2) -> dict[str, np.ndarray | dict[str, np.ndarra
     }
 
 
-def test_critic_matches_144_force_only_contract_slice_by_slice() -> None:
+def test_critic_matches_141_dimension_contract_slice_by_slice() -> None:
     env = _bare_obs_env()
     inputs = _obs_inputs()
 
@@ -138,8 +138,8 @@ def test_critic_matches_144_force_only_contract_slice_by_slice() -> None:
     critic = obs["critic"]
     info = inputs["info"]
 
-    assert actor.shape == (2, 135)
-    assert critic.shape == (2, 144)
+    assert actor.shape == (2, 145)
+    assert critic.shape == (2, 141)
     np.testing.assert_array_equal(critic[:, 0:3], inputs["linvel"])
     np.testing.assert_array_equal(critic[:, 3:6], inputs["gyro"])
     np.testing.assert_array_equal(critic[:, 6:9], inputs["projected_gravity"])
@@ -172,10 +172,6 @@ def test_critic_matches_144_force_only_contract_slice_by_slice() -> None:
         env._default_joint_pos_offset[:, [0, 1, 3, 4, 2, 5]],
     )
     np.testing.assert_allclose(critic[:, 139:141], [[1.1, 0.0], [1.2, 0.0]])
-    np.testing.assert_allclose(
-        critic[:, 141:144],
-        [[1.0, -0.5, 0.1], [2.0, 0.0, -1.0]],
-    )
 
 
 def test_existing_dr002_tasks_keep_legacy_critic_contract() -> None:
@@ -199,44 +195,8 @@ def test_existing_dr002_tasks_keep_legacy_critic_contract() -> None:
     )
 
 
-def test_measured_force_changes_critic_only() -> None:
-    env = _bare_obs_env()
-    inputs = _obs_inputs()
-    first = env._compute_obs(**inputs, reset_history=True)
-    env._measured_csv_force_base += 10.0
-    second = env._compute_obs(**inputs, reset_history=True)
-
-    np.testing.assert_array_equal(first["obs"], second["obs"])
-    np.testing.assert_array_equal(first["critic"][:, :141], second["critic"][:, :141])
-    assert not np.array_equal(first["critic"][:, 141:144], second["critic"][:, 141:144])
-
-
-def test_measured_moment_extends_critic_only_to_147_dimensions() -> None:
-    env = _bare_obs_env()
-    env._critic_includes_measured_moment = True
-    env._critic_dim = _CRITIC_WITH_MEASURED_MOMENT_DIM
-    env._cfg.domain_rand.csv_force_observation_include_measured_moment = True
-    inputs = _obs_inputs()
-
-    first = env._compute_obs(**inputs, reset_history=True)
-    env._measured_csv_moment_base += 3.0
-    second = env._compute_obs(**inputs, reset_history=True)
-
-    assert first["obs"].shape == (2, 135)
-    assert first["critic"].shape == (2, 147)
-    np.testing.assert_allclose(
-        first["critic"][:, 144:147],
-        [[1.0, -0.5, 0.1], [2.0, 0.0, -1.0]],
-    )
-    np.testing.assert_array_equal(first["obs"], second["obs"])
-    np.testing.assert_array_equal(first["critic"][:, :144], second["critic"][:, :144])
-    assert not np.array_equal(first["critic"][:, 144:147], second["critic"][:, 144:147])
-
-
 def test_wing_gaussian_noise_changes_only_actor_wing_history(monkeypatch) -> None:
     env = _bare_obs_env()
-    env._critic_includes_measured_moment = True
-    env._critic_dim = _CRITIC_WITH_MEASURED_MOMENT_DIM
     env._csv_force_curriculum_level = 4
     env._cfg.wing_angle_obs.noise_half_range_deg = 0.0
     env._cfg.wing_angle_obs.gaussian_noise_relative_std = 0.0
@@ -252,8 +212,8 @@ def test_wing_gaussian_noise_changes_only_actor_wing_history(monkeypatch) -> Non
     env._cfg.wing_angle_obs.gaussian_noise_relative_std = 0.05
     noisy = env._compute_obs(**inputs, reset_history=True)
 
-    assert clean["obs"].shape == (2, 135)
-    assert clean["critic"].shape == (2, 147)
+    assert clean["obs"].shape == (2, 145)
+    assert clean["critic"].shape == (2, 141)
     np.testing.assert_array_equal(clean["obs"][:, :110], noisy["obs"][:, :110])
     np.testing.assert_allclose(
         noisy["obs"][:, 110:120],
@@ -267,6 +227,9 @@ def test_wing_gaussian_noise_changes_only_actor_wing_history(monkeypatch) -> Non
 
 def test_noise_level_is_force_level_single_source_of_truth() -> None:
     env = _bare_obs_env(num_envs=1)
+    # This test only makes sense when the csv_force curriculum drives the noise
+    # curriculum. WE11 disables csv_force by default; the coupling is opt-in.
+    env._cfg.domain_rand.csv_force_enabled = True
     expected = [0.0, 0.25, 0.5, 0.75, 1.0]
 
     for force_level, noise_level in enumerate(expected):
@@ -291,6 +254,7 @@ def test_actor_uses_separate_leg_and_wheel_velocity_noise(monkeypatch) -> None:
     assert ((2, 2), 0.5, 1.0) in calls
     assert ((2, 3), 0.2, 1.0) in calls
     assert ((2, 2), pytest.approx(0.1 / 180.0), 1.0) in calls
+    assert ((2, 2), pytest.approx(0.2 * 0.1), 1.0) in calls
 
 
 def test_tilt_gravity_noise_rotates_unit_vector_and_keeps_critic_clean() -> None:
@@ -374,6 +338,9 @@ def test_we11_config_uses_episode_bias_and_slow_gravity_tilt_noise() -> None:
 
 def test_noise_curriculum_rejects_level_count_mismatch() -> None:
     env = _bare_obs_env(num_envs=1)
+    # The count-mismatch validation only runs when the csv_force curriculum is
+    # active. WE11 has csv_force disabled by default.
+    env._cfg.domain_rand.csv_force_enabled = True
     env._cfg.noise_config.curriculum_levels = [0.0, 1.0]
 
     with pytest.raises(ValueError, match="one level per CSV force curriculum"):
@@ -386,7 +353,8 @@ def test_we11_base_config_owns_latest_network_observation_and_force_contract() -
     env_cfg = config["env"]
     domain_rand = env_cfg["domain_rand"]
 
-    assert domain_rand["csv_force_curriculum_hz"] == [0, 1, 2, 3]
+    assert domain_rand["csv_force_enabled"] is False
+    assert domain_rand["csv_force_curriculum"] is False
     assert env_cfg["noise_config"]["level"] == 1.0
     assert env_cfg["noise_config"]["curriculum"] is False
     assert env_cfg["noise_config"]["curriculum_levels"] == [1.0] * 4
@@ -394,19 +362,7 @@ def test_we11_base_config_owns_latest_network_observation_and_force_contract() -
     assert env_cfg["control_config"]["action_delay_max_steps"] == 8
     assert env_cfg["control_config"]["resample_action_delay"] is True
     assert domain_rand["push_force_limit"] == [10.0, 10.0, 0.0]
-    assert domain_rand["csv_force_zero_fy"] is True
-    assert config["reward"]["scales"]["joint_acc_wheel_l2"] == pytest.approx(-2.5e-7)
-    assert len(domain_rand["csv_force_curriculum_paths"]) == 3
-    assert len(env_cfg["wing_angle_obs"]["curriculum_paths"]) == 3
-    assert all(
-        "we11/training_data/measured_wrench_20260728_skin" in path
-        for path in domain_rand["csv_force_curriculum_paths"]
-    )
-    assert all(
-        "we11/training_data/wing_angle_20260713" in path
-        for path in env_cfg["wing_angle_obs"]["curriculum_paths"]
-    )
-    assert config["algo"]["actor"]["history_term_dims"] == [3, 3, 4, 6, 6, 2, 3]
+    assert config["algo"]["actor"]["history_term_dims"] == [3, 3, 4, 6, 6, 2, 2, 3]
 
 
 @pytest.mark.parametrize("hz", [1, 2, 3])

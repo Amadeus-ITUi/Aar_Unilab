@@ -16,6 +16,6 @@
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" friction="1.0 0.005 0.0001" />
   </worldbody>
   <keyframe>
-    <key name="home" qpos="0 0 0.30 1 0 0 0 0.8 -1.6 0 0.8 -1.6 0" ctrl="0 0 0 0 0 0" />
+    <key name="home" qpos="0 0 0.30 1 0 0 0 0.8 -1.6 0 0.8 -1.6 0 0 0" ctrl="0 0 0 0 0 0 0 0" />
   </keyframe>
 </mujoco>

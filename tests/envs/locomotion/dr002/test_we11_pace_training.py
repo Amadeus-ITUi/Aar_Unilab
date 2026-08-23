@@ -42,7 +42,7 @@ def test_we11_hydra_is_self_contained_with_network_obs_force_and_control() -> No
 
     assert we11.training.task_name == WE11_TASK_NAME
     assert we11.algo.actor.class_name == "unilab.algos.torch.dr002_mlp_adapt:MlpAdaptModel"
-    assert list(we11.algo.actor.history_term_dims) == [3, 3, 4, 6, 6, 2, 3]
+    assert list(we11.algo.actor.history_term_dims) == [3, 3, 4, 6, 6, 2, 2, 3]
     assert list(we11.algo.actor.actor_hidden_dims) == [128, 64, 32]
     assert list(we11.algo.critic.hidden_dims) == [256, 128, 64]
     assert we11.algo.algorithm.entropy_coef == 0.005
@@ -54,17 +54,12 @@ def test_we11_hydra_is_self_contained_with_network_obs_force_and_control() -> No
     assert we11.env.control_config.action_delay_min_steps == 2
     assert we11.env.control_config.action_delay_max_steps == 8
     assert we11.env.control_config.resample_action_delay is True
-    assert list(we11.env.wing_angle_obs.curriculum_paths) == [
-        "robots/dr002/we11/training_data/wing_angle_20260713/1hz.csv",
-        "robots/dr002/we11/training_data/wing_angle_20260713/2hz.csv",
-        "robots/dr002/we11/training_data/wing_angle_20260713/3hz.csv",
-    ]
-    assert list(we11.env.wing_angle_obs.csv_amplitude_scale_range) == [0.8, 1.2]
+    assert we11.env.wing_angle_obs.enabled is True
     assert we11.env.wing_angle_obs.gaussian_noise_relative_std == 0.05
-    assert list(we11.env.domain_rand.csv_force_curriculum_hz) == [0, 1, 2, 3]
-    assert list(we11.env.domain_rand.csv_force_amplitude_scale_range) == [0.5, 1.5]
-    assert we11.env.domain_rand.csv_force_apply_measured_moment is True
-    assert we11.env.domain_rand.csv_force_observation_include_measured_moment is True
+    assert we11.env.wing_velocity_obs.enabled is True
+    assert we11.env.wing_velocity_cmd.enabled is True
+    assert we11.env.domain_rand.csv_force_enabled is False
+    assert we11.env.domain_rand.csv_force_observation_include_measured_moment is False
 
     task_text = (WE11_TASK_ROOT / "mujoco.yaml").read_text(encoding="utf-8").lower()
     assert "dr002_joystick_flat_we9" not in task_text
@@ -94,10 +89,10 @@ def test_we11_registry_scene_and_compiled_pace_are_exact() -> None:
     assert "DR002JoystickFlatWE10" not in registered
     assert we11.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4
     assert we11.nbody > 0
-    assert we11.nu == 6
-    np.testing.assert_allclose(we11.dof_armature[6:], ARMATURE, rtol=0, atol=1e-15)
-    np.testing.assert_allclose(we11.dof_damping[6:], DAMPING, rtol=0, atol=1e-15)
-    np.testing.assert_allclose(we11.dof_frictionloss[6:], FRICTIONLOSS, rtol=0, atol=1e-15)
+    assert we11.nu == 8
+    np.testing.assert_allclose(we11.dof_armature[6:12], ARMATURE, rtol=0, atol=1e-15)
+    np.testing.assert_allclose(we11.dof_damping[6:12], DAMPING, rtol=0, atol=1e-15)
+    np.testing.assert_allclose(we11.dof_frictionloss[6:12], FRICTIONLOSS, rtol=0, atol=1e-15)
 
     pace = json.loads(WE11_PACE.read_text())
     assert pace["armature"] == ARMATURE
@@ -124,8 +119,8 @@ def test_we11_training_backend_keeps_rk4_through_first_step() -> None:
         state = env.init_state()
         assert state.obs["obs"].shape[0] == 1
         assert env._backend._model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4
-        np.testing.assert_allclose(env._base_motor_kp, KP, rtol=0, atol=0)
-        np.testing.assert_allclose(env._base_motor_kd, KD, rtol=0, atol=0)
+        np.testing.assert_allclose(env._base_motor_kp[:6], KP, rtol=0, atol=0)
+        np.testing.assert_allclose(env._base_motor_kd[:6], KD, rtol=0, atol=0)
         np.testing.assert_array_equal(
             env._clip_policy_actions(np.full((1, 6), 10.0, dtype=np.float32)),
             [[10.0, 10.0, 3.5, 10.0, 10.0, 3.5]],

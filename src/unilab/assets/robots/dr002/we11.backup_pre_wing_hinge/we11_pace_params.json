@@ -1,0 +1,72 @@
+{
+  "format": "walking_eagle_we11_pace_runtime_v1",
+  "source_model": "robots/dr002/we11/we11.xml",
+  "source_fit": "Walking_Eagle-Deploy_final/outputs/we10_real_sweep_20260730_fit/20260730_195917_001_we10_groupA_gravity_soft_hold_05_45_delay4_rk4/pace_best_params.json",
+  "source_fit_sha256": "1d1c1aa04d2ba60040afaba53f1d51637f1e48c2ddaebe3832644f4268f4b973",
+  "fit_frequency_range_hz": [
+    0.5,
+    4.5
+  ],
+  "joint_order": [
+    "left_thigh_joint",
+    "left_calf_joint",
+    "left_foot_joint",
+    "right_thigh_joint",
+    "right_calf_joint",
+    "right_foot_joint"
+  ],
+  "armature": [
+    0.0045092746608505355,
+    0.0056654868268008396,
+    0.0008,
+    0.0045092746608505355,
+    0.0056654868268008396,
+    0.0008
+  ],
+  "damping": [
+    2.3658001235049574e-06,
+    1.7025403002922656e-05,
+    0.0,
+    2.3658001235049574e-06,
+    1.7025403002922656e-05,
+    0.0
+  ],
+  "frictionloss": [
+    9.003633786813792e-06,
+    0.20614840564125578,
+    0.0,
+    9.003633786813792e-06,
+    0.20614840564125578,
+    0.0
+  ],
+  "encoder_bias": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "fit_command_delay_steps": 4,
+  "fit_command_delay_s": 0.02,
+  "runtime_delay_contract": "One shared randomized pre-controller command FIFO with 2-8 motor ticks.",
+  "kp": [
+    2.0,
+    7.59,
+    0.0,
+    2.0,
+    7.59,
+    0.0
+  ],
+  "kd": [
+    0.08,
+    0.682,
+    0.05,
+    0.08,
+    0.682,
+    0.05
+  ],
+  "integrator": "RK4",
+  "sim_hz": 400.0,
+  "motor_control_hz": 200.0
+}

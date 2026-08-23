@@ -57,7 +57,7 @@ def test_we11_rough_hydra_and_registry_preserve_flat_policy_contract() -> None:
     assert cfg.terrain_curriculum.enabled is True
     assert cfg.terrain_curriculum.use_path_length is True
     assert cfg.terrain_curriculum.demote_requires_commanded_distance is True
-    assert cfg.terrain_curriculum.unlock_after_force_curriculum is True
+    assert cfg.terrain_curriculum.unlock_after_force_curriculum is False
     terrain_proportions = {
         name: terrain.proportion
         for name, terrain in cfg.scene.terrain.generator.sub_terrains.items()
@@ -89,10 +89,10 @@ def test_we11_rough_hydra_and_registry_preserve_flat_policy_contract() -> None:
     assert "left_calf_shaft_touch" not in cfg.sensor.termination_contacts
     assert "right_calf_shaft_touch" not in cfg.sensor.termination_contacts
     assert "base_link_touch" in cfg.sensor.termination_contacts
-    assert hydra_cfg.reward.scales.undesired_contacts == -20.0
+    assert hydra_cfg.reward.scales.undesired_contacts == -3.0
     assert not cfg.control_config.use_native_batched_pd
     assert cfg.control_config.use_native_command_delay_pd
-    assert list(hydra_cfg.algo.actor.history_term_dims) == [3, 3, 4, 6, 6, 2, 3]
+    assert list(hydra_cfg.algo.actor.history_term_dims) == [3, 3, 4, 6, 6, 2, 2, 3]
     assert hydra_cfg.env.commands.rel_standing_envs == 0.2
     assert hydra_cfg.env.control_config.wheel_clip_actions == 3.5
     assert registry.list_registered_envs()[TASK_NAME] == {
@@ -105,8 +105,8 @@ def test_we11_rough_constructs_steps_and_restores_terrain_cells() -> None:
     env = _create_env(num_envs=2)
     try:
         state = env.init_state()
-        assert state.obs["obs"].shape == (2, 135)
-        assert state.obs["critic"].shape == (2, 334)
+        assert state.obs["obs"].shape == (2, 145)
+        assert state.obs["critic"].shape == (2, 328)
         assert state.obs["privileged_target"].shape == (2, 3)
         assert env._height_scan_dim == 187
         assert env._backend._model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4
@@ -115,8 +115,8 @@ def test_we11_rough_constructs_steps_and_restores_terrain_cells() -> None:
         hfield_path = Path(env._backend.scene_artifacts_dir) / "hfields" / "hfield.hfield"
         assert hfield_path.is_file()
         assert np.unique(env._backend._model.hfield_data).size > 1000
-        np.testing.assert_allclose(env._base_motor_kp, KP, rtol=0, atol=0)
-        np.testing.assert_allclose(env._base_motor_kd, KD, rtol=0, atol=0)
+        np.testing.assert_allclose(env._base_motor_kp[:6], KP, rtol=0, atol=0)
+        np.testing.assert_allclose(env._base_motor_kd[:6], KD, rtol=0, atol=0)
         np.testing.assert_array_equal(env._spawn.levels, [0, 0])
 
         state = env.step(np.zeros((2, 6), dtype=np.float32))
@@ -136,47 +136,6 @@ def test_we11_rough_constructs_steps_and_restores_terrain_cells() -> None:
         origins_xy = env._backend.terrain_origins[[2, 3], [0, 1], :2]
         assert np.all(np.abs(base_xy - origins_xy) <= 0.6)
         assert all(np.isfinite(value).all() for value in env.state.obs.values())
-    finally:
-        env.close()
-
-
-def test_we11_rough_reset_preserves_standing_and_paired_flapping_contract() -> None:
-    env = _create_env(num_envs=256)
-    try:
-        env.init_state()
-        env._command_curriculum_scale = env._command_curriculum_final_scale
-        env._command_curriculum_yaw_scale = env._command_curriculum_yaw_final_scale
-        env._csv_force_curriculum_level = len(env.cfg.domain_rand.csv_force_curriculum_hz) - 1
-        env.reset(np.arange(env._num_envs, dtype=np.int32))
-
-        standing = env._episode_standing_mask
-        assert np.any(standing)
-        assert np.any(~standing)
-        assert np.any(env._csv_force_active_levels > 0)
-        # Standing changes only the velocity command. It must not suppress the
-        # independently sampled paired force/wing replay.
-        assert np.any(standing & (env._csv_force_active_levels > 0))
-        assert not np.all(env._csv_force_amplitude_scales == 1.0)
-        assert not np.all(env._wing_angle_obs_amplitude_scales == 1.0)
-    finally:
-        env.close()
-
-
-def test_we11_terrain_curriculum_unlocks_only_after_velocity_then_flapping() -> None:
-    env = _create_env(num_envs=1)
-    try:
-        env.init_state()
-        env._command_curriculum_scale = env._command_curriculum_initial_scale
-        env._command_curriculum_yaw_scale = env._command_curriculum_yaw_initial_scale
-        env._csv_force_curriculum_level = 0
-        assert not env._terrain_curriculum_is_unlocked()
-
-        env._command_curriculum_scale = env._command_curriculum_final_scale
-        env._command_curriculum_yaw_scale = env._command_curriculum_yaw_final_scale
-        assert not env._terrain_curriculum_is_unlocked()
-
-        env._csv_force_curriculum_level = len(env.cfg.domain_rand.csv_force_curriculum_hz) - 1
-        assert env._terrain_curriculum_is_unlocked()
     finally:
         env.close()
 

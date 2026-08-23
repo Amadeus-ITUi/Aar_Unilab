@@ -8,17 +8,17 @@
     name="base_link">
     <inertial>
       <origin
-        xyz="0.0031768 4.31E-05 -0.016294"
+        xyz="0.04588263 3.771E-05 0.04501853"
         rpy="0 0 0" />
       <mass
-        value="1.0693" />
+        value="1.79744014" />
       <inertia
-        ixx="0.0034376"
-        ixy="1.2E-07"
-        ixz="-0.0016365"
-        iyy="0.0053496"
-        iyz="-2.07E-06"
-        izz="0.0041925" />
+        ixx="0.01509778"
+        ixy="1.56E-06"
+        ixz="-0.01047094"
+        iyy="0.02513929"
+        iyz="-5.9E-07"
+        izz="0.01378862" />
     </inertial>
     <visual>
       <origin
@@ -26,12 +26,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/base_link.STL" />
+          filename="../meshes_lod/base_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.75294 0.75294 0.75294 1" />
       </material>
     </visual>
     <collision>
@@ -40,7 +40,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/base_link.STL" />
+          filename="../meshes_lod/base_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -48,17 +48,17 @@
     name="left_thigh_link">
     <inertial>
       <origin
-        xyz="-0.00056472 0.01408423 0.04339388"
+        xyz="-0.00030482 0.01377229 0.04429555"
         rpy="0 0 0" />
       <mass
-        value="0.4724629" />
+        value="0.46123591" />
       <inertia
-        ixx="0.00084403"
-        ixy="8.5E-06"
-        ixz="-6.24E-06"
-        iyy="0.00023291"
-        iyz="0.00015111"
-        izz="0.00069749" />
+        ixx="0.00079664"
+        ixy="6.37E-06"
+        ixz="-5.18E-06"
+        iyy="0.0002148"
+        iyz="0.00014042"
+        izz="0.00066294" />
     </inertial>
     <visual>
       <origin
@@ -66,7 +66,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_thigh_link.STL" />
+          filename="../meshes_lod/left_thigh_link.STL" />
       </geometry>
       <material
         name="">
@@ -80,7 +80,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_thigh_link.STL" />
+          filename="../meshes_lod/left_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -88,7 +88,7 @@
     name="left_thigh_joint"
     type="revolute">
     <origin
-      xyz="0.01525 0.0558499999999976 -0.0431991909058736"
+      xyz="0.0150530261970943 0.0558499999999976 -0.0429703632331118"
       rpy="-1.5707963267949 0 0" />
     <parent
       link="base_link" />
@@ -106,7 +106,7 @@
     name="left_calf_link">
     <inertial>
       <origin
-        xyz="-2.777E-05 0.12275622 0.01133502"
+        xyz="-2.777E-05 0.12276 0.011335"
         rpy="0 0 0" />
       <mass
         value="0.30875" />
@@ -124,12 +124,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_calf_link.STL" />
+          filename="../meshes_lod/left_calf_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="1 0.94902 0.9098 1" />
       </material>
     </visual>
     <collision>
@@ -138,7 +138,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_calf_link.STL" />
+          filename="../meshes_lod/left_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -146,7 +146,7 @@
     name="left_calf_joint"
     type="revolute">
     <origin
-      xyz="0 0.135800809094126 0.0199999999999967"
+      xyz="0.000196973802905953 0.136029636766888 0.0200000000000024"
       rpy="0 0 0" />
     <parent
       link="left_thigh_link" />
@@ -164,7 +164,7 @@
     name="left_foot_link">
     <inertial>
       <origin
-        xyz="-6.05E-06 3.53E-06 -0.00262162"
+        xyz="-6.05E-06 3.53E-06 -0.0026216"
         rpy="0 0 0" />
       <mass
         value="0.12784" />
@@ -182,12 +182,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_foot_link.STL" />
+          filename="../meshes_lod/left_foot_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.36863 0.36863 0.36863 1" />
       </material>
     </visual>
     <collision>
@@ -196,7 +196,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/left_foot_link.STL" />
+          filename="../meshes_lod/left_foot_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -204,7 +204,7 @@
     name="left_foot_joint"
     type="revolute">
     <origin
-      xyz="0 0.149999999999687 0.0572000000000056"
+      xyz="0 0.149999999999687 0.0572"
       rpy="0 0 0" />
     <parent
       link="left_calf_link" />
@@ -222,10 +222,10 @@
     name="right_thigh_link">
     <inertial>
       <origin
-        xyz="-0.00056475 -0.01357187 0.04341677"
+        xyz="-0.00056224 -0.01359115 0.04341399"
         rpy="0 0 0" />
       <mass
-        value="0.4724629" />
+        value="0.47246" />
       <inertia
         ixx="0.00085033"
         ixy="-8.62E-06"
@@ -240,12 +240,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_thigh_link.STL" />
+          filename="../meshes_lod/right_thigh_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.86667 0.9098 1 1" />
       </material>
     </visual>
     <collision>
@@ -254,7 +254,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_thigh_link.STL" />
+          filename="../meshes_lod/right_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -280,7 +280,7 @@
     name="right_calf_link">
     <inertial>
       <origin
-        xyz="-3.151E-05 -0.12275531 0.01133692"
+        xyz="-3.151E-05 -0.12276 0.011337"
         rpy="0 0 0" />
       <mass
         value="0.30875" />
@@ -298,12 +298,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_calf_link.STL" />
+          filename="../meshes_lod/right_calf_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="1 0.94902 0.9098 1" />
       </material>
     </visual>
     <collision>
@@ -312,7 +312,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_calf_link.STL" />
+          filename="../meshes_lod/right_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -338,7 +338,7 @@
     name="right_foot_link">
     <inertial>
       <origin
-        xyz="6.08E-06 -3.47E-06 0.00262162"
+        xyz="6.08E-06 -3.47E-06 0.0026216"
         rpy="0 0 0" />
       <mass
         value="0.12784" />
@@ -356,12 +356,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_foot_link.STL" />
+          filename="../meshes_lod/right_foot_link.STL" />
       </geometry>
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.36863 0.36863 0.36863 1" />
       </material>
     </visual>
     <collision>
@@ -370,7 +370,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/right_foot_link.STL" />
+          filename="../meshes_lod/right_foot_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -393,20 +393,20 @@
       velocity="0" />
   </joint>
   <link
-    name="ancient_link">
+    name="left_wing_link">
     <inertial>
       <origin
-        xyz="-0.0551532 1.771E-05 0.05323196"
+        xyz="-0.04294591 0.29416066 -0.11926569"
         rpy="0 0 0" />
       <mass
-        value="0.91479641" />
+        value="0.06633" />
       <inertia
-        ixx="0.02435745"
-        ixy="1.302E-05"
-        ixz="0.00072183"
-        iyy="0.02291713"
-        iyz="4.12E-06"
-        izz="0.04311735" />
+        ixx="0.00448339"
+        ixy="0.00104762"
+        ixz="0.00028627"
+        iyy="0.0013905"
+        iyz="0.00046497"
+        izz="0.00414202" />
     </inertial>
     <visual>
       <origin
@@ -414,7 +414,181 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/ancient_link.STL" />
+          filename="../meshes_lod/left_wing_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/left_wing_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="left_wing_joint"
+    type="revolute">
+    <origin
+      xyz="0.14789 0.031025 0.15872"
+      rpy="0 1.5708 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="left_wing_link" />
+    <axis
+      xyz="0.46947 0 -0.88295" />
+    <limit
+      lower="-0.785"
+      upper="0.785"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="right_wing_link">
+    <inertial>
+      <origin
+        xyz="-0.0449619 -0.29814273 -0.11806333"
+        rpy="0 0 0" />
+      <mass
+        value="0.06506" />
+      <inertia
+        ixx="0.00442133"
+        ixy="-0.00102317"
+        ixz="0.00027117"
+        iyy="0.00135694"
+        iyz="-0.00048216"
+        izz="0.0040807" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/right_wing_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/right_wing_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="right_wing_joint"
+    type="revolute">
+    <origin
+      xyz="0.14789 -0.030975 0.15872"
+      rpy="0 1.5708 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="right_wing_link" />
+    <axis
+      xyz="0.46947 0 -0.88295" />
+    <limit
+      lower="-0.785"
+      upper="0.785"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="U1_link">
+    <inertial>
+      <origin
+        xyz="0 0 -0.00665"
+        rpy="0 0 0" />
+      <mass
+        value="0.00162207" />
+      <inertia
+        ixx="4E-08"
+        ixy="0"
+        ixz="0"
+        iyy="4E-08"
+        iyz="0"
+        izz="4E-08" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/U1_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.29804 0.29804 0.29804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/U1_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="U1_joint"
+    type="revolute">
+    <origin
+      xyz="-0.2383 0.0067051 -0.038129"
+      rpy="-1.5708 -0.48869 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="U1_link" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-0.785"
+      upper="0.785"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="U2_link">
+    <inertial>
+      <origin
+        xyz="-0.16198053 0.00053672 0.00551936"
+        rpy="0 0 0" />
+      <mass
+        value="0.0462933" />
+      <inertia
+        ixx="0.00032768"
+        ixy="1.95E-06"
+        ixz="3.131E-05"
+        iyy="0.00077081"
+        iyz="4.5E-07"
+        izz="0.0009803" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes_lod/U2_link.STL" />
       </geometry>
       <material
         name="">
@@ -428,25 +602,25 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://走地鹰/meshes/ancient_link.STL" />
+          filename="../meshes_lod/U2_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
-    name="ancient_joint"
-    type="fixed">
+    name="U2_joint"
+    type="revolute">
     <origin
-      xyz="0.145433170623286 0 0.110297685557172"
-      rpy="0 -0.488692190558406 0" />
+      xyz="0 -0.00673 -0.00665"
+      rpy="1.5708 0 0" />
     <parent
-      link="base_link" />
+      link="U1_link" />
     <child
-      link="ancient_link" />
+      link="U2_link" />
     <axis
-      xyz="0 0 0" />
+      xyz="0 0 1" />
     <limit
-      lower="0"
-      upper="0"
+      lower="-0.785"
+      upper="0.785"
       effort="0"
       velocity="0" />
   </joint>

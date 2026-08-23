@@ -37,7 +37,7 @@ algo:
     latent_dim: 3
     privileged_target_key: privileged_target
     privileged_target_dim: 3
-    history_term_dims: [3, 3, 4, 6, 6, 2, 3]
+    history_term_dims: [3, 3, 4, 6, 6, 2, 2, 3]
     mlp_hidden_dims: [128, 64]
     actor_hidden_dims: [128, 64, 32]
   critic:
@@ -80,21 +80,33 @@ env:
     Kp: [2.0, 7.59, 0.0, 2.0, 7.59, 0.0]
     Kd: [0.080, 0.682, 0.05, 0.080, 0.682, 0.05]
   wing_angle_obs:
+    # Wing hinge position, read from sim jointpos sensors and normalized by
+    # rad/pi (== deg/180) to match the Deploy path.
     enabled: true
     force_zero_output: false
-    # Force-phase-aligned measured motor angles; 4 Hz is intentionally excluded.
-    curriculum_paths:
-      - robots/dr002/we11/training_data/wing_angle_20260713/1hz.csv
-      - robots/dr002/we11/training_data/wing_angle_20260713/2hz.csv
-      - robots/dr002/we11/training_data/wing_angle_20260713/3hz.csv
     normalization_deg: 180.0
     zero_offsets_deg: [0.0, 0.0]
-    csv_amplitude_scale_range: [0.8, 1.2]
     noise_half_range_deg: 0.0
     gaussian_noise_relative_std: 0.05
-    # Every 0Hz episode samples a fixed bounded wing pose observation for that episode.
-    # This includes both moving-without-force and standing episodes.
-    standing_normalized_range: [-0.05, 0.05]
+  wing_velocity_obs:
+    # Wing hinge angular velocity, scaled by 0.1 to match the leg dof_vel term.
+    enabled: true
+    force_zero_output: false
+    scale: 0.1
+    noise_half_range_rad_s: 0.0
+    gaussian_noise_relative_std: 0.05
+  wing_velocity_cmd:
+    # Env-owned RC-shaped wing velocity command. The env integrates the sampled
+    # velocity into a position setpoint every ctrl step; when the velocity is
+    # zero the setpoint is frozen and the position PD holds the wing at that
+    # angle instead of letting gravity pull it. Max speed matches the hardware
+    # safety limit (pi/4 rad/s == rotate 45 deg in one second).
+    enabled: true
+    max_rad_per_s: 0.7853981633974483
+    resample_period_s: [1.0, 5.0]
+    per_side_independent: true
+    kp: 10.0
+    kd: 0.5
   commands:
     lin_vel_x: [-0.5, 0.5]
     ang_vel_z: [-1.0, 1.0]
@@ -124,9 +136,9 @@ env:
     randomize_body_inertia: true
     body_inertia_multiplier_range: [0.9, 1.2]
     random_com: true
-    com_offset_x: [-0.02, 0.02]
-    com_offset_y: [-0.02, 0.02]
-    com_offset_z: [-0.02, 0.02]
+    com_offset_x: [-0.04, 0.04]
+    com_offset_y: [-0.04, 0.04]
+    com_offset_z: [-0.04, 0.04]
     randomize_ground_friction: true
     ground_friction_multiplier_range: [0.8, 1.2]
     randomize_robot_geom_friction: true
@@ -151,40 +163,13 @@ env:
     push_randomize_within_interval: true
     push_linear_velocity_delta_limit: null
     push_force_limit: [10.0, 10.0, 0.0]
-    csv_force_enabled: true
-    csv_force_path: robots/dr002/we11/training_data/measured_wrench_20260728_skin/1hz.csv
-    csv_force_curriculum_paths:
-      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/1hz.csv
-      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/2hz.csv
-      - robots/dr002/we11/training_data/measured_wrench_20260728_skin/3hz.csv
-    # 0 Hz is no measured replay. Positive levels use only 1-3 Hz measurements.
-    csv_force_curriculum_hz: [0, 1, 2, 3]
-    csv_force_period: 10.0
-    csv_force_transition_seconds: 0.1
-    # Desynchronize environment start times without changing the measured waveform phase.
-    csv_force_start_delay_range_s: [0.0, 1.0]
-    # Preserve the raw measured files, but remove their lateral force channel
-    # before sensor-to-base rotation and physics application.
-    csv_force_zero_fy: true
-    csv_force_rotation: [0.7907964138, 0.0, -0.6120792693, 0.0, 1.0, 0.0, 0.6120792693, 0.0, 0.7907964138]
-    csv_force_push_point: [0.14543, 0.0, 0.1118]
-    csv_force_apply_point_torque: true
-    csv_force_apply_measured_moment: true
-    csv_force_apply_to_standing: true
-    csv_force_amplitude_scale_range: [0.5, 1.5]
-    csv_force_observation_force_normalization: 50.0
-    csv_force_observation_include_measured_moment: true
-    csv_force_observation_moment_normalization: 15.0
-    csv_force_curriculum: true
-    csv_force_curriculum_window_episodes: 4096
-    csv_force_curriculum_promote_tracking_threshold: 0.70
-    csv_force_curriculum_demote_tracking_threshold: 0.45
-    csv_force_curriculum_promote_fail_rate_max: 0.30
-    csv_force_curriculum_demote_fail_rate_min: 0.40
-    csv_force_curriculum_promote_mean_episode_length_fraction: 0.0
-    csv_force_curriculum_demote_mean_episode_length_fraction: 0.60
-    csv_force_curriculum_step_levels: 1
-    csv_force_curriculum_allow_demotion: false
+    # csv_force disturbance is disabled: the new wing hinges replace the
+    # high-frequency flapping wrench that ancient_link approximated. The
+    # csv_force_* keys are kept in this file so the code path can be
+    # re-enabled by flipping csv_force_enabled back to true.
+    csv_force_enabled: false
+    csv_force_curriculum: false
+    csv_force_observation_include_measured_moment: false
     push_body_name: base_link
   noise_config:
     level: 1.0
@@ -223,6 +208,7 @@ reward:
     action_rate_l2: 0.0
     action_smooth_lingzu: 0.0
     undesired_contacts: -3.0
+    zero_cmd_stationary: -1.5
   # Keep the established yaw-tracking width unchanged.
   tracking_sigma: 0.25
   # The real-training forward-velocity curve used 0.25 directly as its
@@ -230,6 +216,10 @@ reward:
   track_lin_vel_x_std: 0.5
   # The historical enhanced term used denominator 0.25 * 10 = 2.5.
   # The explicit-std formula therefore needs sqrt(2.5).
+  zero_cmd_stationary_yaw_weight: 1.0   # 想让 yaw 惩罚更重就调大
+  # 顺便还有两个阈值可控制何时启用该惩罚:
+  # zero_cmd_stationary_gate_vx: 0.05
+  # zero_cmd_stationary_gate_wz: 0.05
   track_lin_vel_x_enhance_std: 1.5811388300841898
   track_lin_vel_x_term_clip: 1.5
   base_height_std: 0.05

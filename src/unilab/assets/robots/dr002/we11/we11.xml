@@ -1,4 +1,4 @@
-<mujoco model="walking_eagle_we11">
+<mujoco model="walking_eagle_we11_third">
   <compiler angle="radian" meshdir="meshes_lod" autolimits="true" inertiafromgeom="false" />
   <option timestep="0.001" gravity="0.0 0.0 -9.81" integrator="RK4" />
   <asset>
@@ -7,30 +7,33 @@
     <mesh name="base_link_part_02" file="base_link_part_02.STL" />
     <mesh name="base_link_part_03" file="base_link_part_03.STL" />
     <mesh name="base_link_part_04" file="base_link_part_04.STL" />
-    <material name="base_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
+    <material name="base_link_material" rgba="0.75294 0.75294 0.75294 1.0" specular="0" />
     <mesh name="left_thigh_link" file="left_thigh_link.STL" />
     <material name="left_thigh_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
-    <mesh name="left_calf_link_part_00" file="left_calf_link_part_00.STL" />
-    <mesh name="left_calf_link_part_01" file="left_calf_link_part_01.STL" />
-    <material name="left_calf_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
+    <mesh name="left_calf_link" file="left_calf_link.STL" />
+    <material name="left_calf_link_material" rgba="1.0 0.94902 0.9098 1.0" specular="0" />
     <mesh name="left_foot_link" file="left_foot_link.STL" />
-    <material name="left_foot_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
+    <material name="left_foot_link_material" rgba="0.36863 0.36863 0.36863 1.0" specular="0" />
     <mesh name="right_thigh_link" file="right_thigh_link.STL" />
-    <material name="right_thigh_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
-    <mesh name="right_calf_link_part_00" file="right_calf_link_part_00.STL" />
-    <mesh name="right_calf_link_part_01" file="right_calf_link_part_01.STL" />
-    <material name="right_calf_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
+    <material name="right_thigh_link_material" rgba="0.86667 0.9098 1.0 1.0" specular="0" />
+    <mesh name="right_calf_link" file="right_calf_link.STL" />
+    <material name="right_calf_link_material" rgba="1.0 0.94902 0.9098 1.0" specular="0" />
     <mesh name="right_foot_link" file="right_foot_link.STL" />
-    <material name="right_foot_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
-    <mesh name="ancient_link" file="ancient_link.STL" />
-    <material name="ancient_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
+    <material name="right_foot_link_material" rgba="0.36863 0.36863 0.36863 1.0" specular="0" />
+    <mesh name="left_wing_link" file="left_wing_link.STL" />
+    <material name="left_wing_link_material" rgba="0.79216 0.81961 0.93333 1.0" specular="0" />
+    <mesh name="right_wing_link" file="right_wing_link.STL" />
+    <material name="right_wing_link_material" rgba="0.79216 0.81961 0.93333 1.0" specular="0" />
+    <mesh name="U1_link" file="U1_link.STL" />
+    <material name="U1_link_material" rgba="0.29804 0.29804 0.29804 1.0" specular="0" />
+    <mesh name="U2_link" file="U2_link.STL" />
+    <material name="U2_link_material" rgba="1.0 1.0 1.0 1.0" specular="0" />
   </asset>
   <worldbody>
     <body name="base_link" pos="0 0 0.30">
-      <inertial pos="0.0031768 4.31e-05 -0.016294" mass="1.0693" fullinertia="0.0034376 0.0053496 0.0041925 1.2e-07 -0.0016365 -2.07e-06" />
+      <inertial pos="0.04588263 3.771e-05 0.04501853" mass="1.79744014" fullinertia="0.01509778 0.02513929 0.01378862 1.56e-06 -0.01047094 -5.9e-07" />
       <freejoint name="base_freejoint" />
       <site name="imu" pos="0 0 0" />
-      <site name="push_site" size="0.008" pos="0.145433170623286 0.0 0.110297685557172" quat="0.9702957262759973 0.0 -0.24192189559966468 0.0" />
       <geom name="base_link_visual_00" type="mesh" mesh="base_link_part_00" material="base_link_material" group="1" contype="0" conaffinity="0" />
       <geom name="base_link_visual_01" type="mesh" mesh="base_link_part_01" material="base_link_material" group="1" contype="0" conaffinity="0" />
       <geom name="base_link_visual_02" type="mesh" mesh="base_link_part_02" material="base_link_material" group="1" contype="0" conaffinity="0" />
@@ -38,66 +41,82 @@
       <geom name="base_link_visual_04" type="mesh" mesh="base_link_part_04" material="base_link_material" group="1" contype="0" conaffinity="0" />
       <geom name="base_link_collision" type="box" pos="-0.019765003 0.0 -0.024499988" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.063984999 0.059149999 0.075000012" />
       <site type="box" pos="-0.019765003 0.0 -0.024499988" rgba="1 0 0 0.15" size="0.063984999 0.059149999 0.075000012" name="base_link_touch_site" />
-      <body name="left_thigh_joint" pos="0.01525 0.0558499999999976 -0.0431991909058736" quat="0.7071067811865462 -0.7071067811865488 0.0 0.0">
+      <geom name="base_shoulder_collision" type="box" pos="0.143 0.0 0.149" quat="0.687569468466653 0.687569243772496 -0.165070861844035 0.165070807899729" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.055 0.04 0.135" />
+      <site type="box" pos="0.143 0.0 0.149" quat="0.687569468466653 0.687569243772496 -0.165070861844035 0.165070807899729" rgba="1 0 0 0.15" size="0.055 0.04 0.135" name="base_shoulder_touch_site" />
+
+      <body name="left_thigh_link" pos="0.01525 0.0558499999999976 -0.0431991909058736" quat="0.707106781186546 -0.707106781186549 0 0">
         <inertial pos="-0.00056472 0.01408423 0.04339388" mass="0.4724629" fullinertia="0.00084403 0.00023291 0.00069749 8.5e-06 -6.24e-06 0.00015111" />
         <joint name="left_thigh_joint" type="hinge" axis="0.0 0.0 1.0" damping="2.3658001235049574e-06" frictionloss="9.003633786813792e-06" armature="0.0045092746608505355" limited="true" range="-0.43 1.57" />
-        <geom name="left_thigh_link_visual_00" type="mesh" mesh="left_thigh_link" material="left_thigh_link_material" group="1" contype="0" conaffinity="0" />
+        <geom name="left_thigh_link_visual" type="mesh" mesh="left_thigh_link" material="left_thigh_link_material" group="1" contype="0" conaffinity="0" />
         <geom name="left_thigh_collision" type="box" pos="-1.2701e-05 0.057495112 0.027400002" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.031453958 0.0892 0.071400002" />
         <site type="box" pos="-1.2701e-05 0.057495112 0.027400002" rgba="1 0 0 0.15" size="0.031453958 0.0892 0.071400002" name="left_thigh_touch_site" />
-        <body name="left_calf_joint" pos="0.0 0.135800809094126 0.0199999999999967">
+        <body name="left_calf_link" pos="0 0.135800809094126 0.0199999999999967">
           <inertial pos="-2.777e-05 0.12275622 0.01133502" mass="0.30875" fullinertia="0.00078788 5.504e-05 0.00077188 3.9e-07 -1e-07 -9.686e-05" />
-          <joint name="left_calf_joint" type="hinge" axis="-0.0 -0.0 1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.669 -0.17" />
-          <geom name="left_calf_link_visual_00" type="mesh" mesh="left_calf_link_part_00" material="left_calf_link_material" group="1" contype="0" conaffinity="0" />
-          <geom name="left_calf_link_visual_01" type="mesh" mesh="left_calf_link_part_01" material="left_calf_link_material" group="1" contype="0" conaffinity="0" />
+          <joint name="left_calf_joint" type="hinge" axis="0.0 0.0 1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.669 -0.17" />
+          <geom name="left_calf_link_visual" type="mesh" mesh="left_calf_link" material="left_calf_link_material" group="1" contype="0" conaffinity="0" />
           <geom name="left_calf_shaft_collision" type="box" pos="0.0 0.07836197 0.0" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.03 0.098638031 0.01" />
           <site type="box" pos="0.0 0.07836197 0.0" rgba="1 0 0 0.15" size="0.03 0.098638031 0.01" name="left_calf_shaft_touch_site" />
-          <body name="left_foot_joint" pos="0.0 0.149999999999687 0.0572000000000056">
+          <body name="left_foot_link" pos="0 0.149999999999687 0.0572000000000056">
             <inertial pos="-6.05e-06 3.53e-06 -0.00262162" mass="0.12784" fullinertia="7.506e-05 7.507e-05 0.00012118 1e-08 1e-08 0.0" />
-            <joint name="left_foot_joint" type="hinge" axis="-0.0 -0.0 1.0" damping="0.0" frictionloss="0.0" armature="0.0008" limited="false" />
-            <geom name="left_foot_link_visual_00" type="mesh" mesh="left_foot_link" material="left_foot_link_material" group="1" contype="0" conaffinity="0" />
+            <joint name="left_foot_joint" type="hinge" axis="0.0 0.0 1.0" damping="0.0" frictionloss="0.0" armature="0.0008" limited="false" />
+            <geom name="left_foot_link_visual" type="mesh" mesh="left_foot_link" material="left_foot_link_material" group="1" contype="0" conaffinity="0" />
             <geom name="left_foot_collision" type="cylinder" pos="0.0 0.0 -0.001914845" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.0425 0.017285155" />
             <site type="cylinder" pos="0.0 0.0 -0.001914845" rgba="1 0 0 0.15" size="0.0425 0.017285155" name="left_foot_touch_site" />
           </body>
         </body>
       </body>
-      <body name="right_thigh_joint" pos="0.0152499999999884 -0.05585 -0.0431991909058702" quat="0.7071067811865462 0.7071067811865488 0.0 0.0">
+
+      <body name="right_thigh_link" pos="0.0152499999999884 -0.05585 -0.0431991909058702" quat="0.707106781186546 0.707106781186549 0 0">
         <inertial pos="-0.0005647199999883994 -0.014084230000003398 0.043393879999997616" mass="0.4724629" fullinertia="0.00084403 0.00023291 0.00069749 -8.5e-06 -6.24e-06 -0.00015111" />
-        <joint name="right_thigh_joint" type="hinge" axis="-0.0 -0.0 -1.0" damping="2.3658001235049574e-06" frictionloss="9.003633786813792e-06" armature="0.0045092746608505355" limited="true" range="-0.43 1.57" />
-        <geom name="right_thigh_link_visual_00" type="mesh" mesh="right_thigh_link" material="right_thigh_link_material" group="1" contype="0" conaffinity="0" />
+        <joint name="right_thigh_joint" type="hinge" axis="0.0 0.0 -1.0" damping="2.3658001235049574e-06" frictionloss="9.003633786813792e-06" armature="0.0045092746608505355" limited="true" range="-0.43 1.57" />
+        <geom name="right_thigh_link_visual" type="mesh" mesh="right_thigh_link" material="right_thigh_link_material" group="1" contype="0" conaffinity="0" />
         <geom name="right_thigh_collision" type="box" pos="-1.2701e-05 -0.057495112 0.027400002" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.031453958 0.0892 0.071400002" />
         <site type="box" pos="-1.2701e-05 -0.057495112 0.027400002" rgba="1 0 0 0.15" size="0.031453958 0.0892 0.071400002" name="right_thigh_touch_site" />
-        <body name="right_calf_joint" pos="0.0 -0.13580080909413 0.02">
+        <body name="right_calf_link" pos="0 -0.13580080909413 0.02">
           <inertial pos="-2.7769999988399782e-05 -0.12275621999999943 0.011335019999994296" mass="0.30875" fullinertia="0.00078788 5.504e-05 0.00077188 -3.9e-07 -1e-07 9.686e-05" />
-          <joint name="right_calf_joint" type="hinge" axis="-0.0 -0.0 -1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.669 -0.17" />
-          <geom name="right_calf_link_visual_00" type="mesh" mesh="right_calf_link_part_00" material="right_calf_link_material" group="1" contype="0" conaffinity="0" />
-          <geom name="right_calf_link_visual_01" type="mesh" mesh="right_calf_link_part_01" material="right_calf_link_material" group="1" contype="0" conaffinity="0" />
+          <joint name="right_calf_joint" type="hinge" axis="0.0 0.0 -1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.669 -0.17" />
+          <geom name="right_calf_link_visual" type="mesh" mesh="right_calf_link" material="right_calf_link_material" group="1" contype="0" conaffinity="0" />
           <geom name="right_calf_shaft_collision" type="box" pos="0.0 -0.07836197 0.0" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.03 0.098638031 0.01" />
           <site type="box" pos="0.0 -0.07836197 0.0" rgba="1 0 0 0.15" size="0.03 0.098638031 0.01" name="right_calf_shaft_touch_site" />
-          <body name="right_foot_joint" pos="0.0 -0.150000000000294 0.0572000000000011" quat="1.6155445744325867e-15 1.0 0.0 0.0">
-            <inertial pos="-6.0499999884004035e-06 3.529999392349453e-06 0.0026216200000012124" mass="0.12784" fullinertia="7.506e-05 7.507e-05 0.00012118 1.0000000000000032e-08 -9.999999999999969e-09 -1.4898552065417316e-19" />
+          <body name="right_foot_link" pos="0 -0.150000000000294 0.0572000000000011" quat="0 1 0 0">
+            <inertial pos="-6.0499999884004035e-06 3.529999392349453e-06 0.0026216200000012124" mass="0.12784" fullinertia="7.506e-05 7.507e-05 0.00012118 1.0000000000000032e-08 -9.999999999999969e-09 0.0" />
             <joint name="right_foot_joint" type="hinge" axis="0.0 0.0 1.0" damping="0.0" frictionloss="0.0" armature="0.0008" limited="false" />
-            <geom name="right_foot_link_visual_00" type="mesh" mesh="right_foot_link" material="right_foot_link_material" group="1" contype="0" conaffinity="0" />
+            <geom name="right_foot_link_visual" type="mesh" mesh="right_foot_link" material="right_foot_link_material" group="1" contype="0" conaffinity="0" />
             <geom name="right_foot_collision" type="cylinder" pos="0.0 0.0 0.001914845" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.0425 0.017285155" />
             <site type="cylinder" pos="0.0 0.0 0.001914845" rgba="1 0 0 0.15" size="0.0425 0.017285155" name="right_foot_touch_site" />
           </body>
         </body>
       </body>
-      <body name="ancient_link" pos="0.145433170623286 0.0 0.110297685557172" quat="0.9702957262759973 0.0 -0.24192189559966468 0.0">
-        <inertial pos="-0.0551532 1.771e-05 0.05323196" mass="0.91479641" fullinertia="0.02435745 0.02291713 0.04311735 1.302e-05 0.00072183 4.12e-06" />
-        <geom name="ancient_link_visual_00" type="mesh" mesh="ancient_link" material="ancient_link_material" group="1" contype="0" conaffinity="0" />
-        <geom name="ancient_upper_left_collision" type="box" pos="-0.15145913884043694 0.5448607355356216 0.20693397521972656" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.21690913799405098 0.2588063119649887 0.08434064078330994" />
-        <site type="box" pos="-0.15145913884043694 0.5448607355356216 0.20693397521972656" rgba="1 0 0 0.15" size="0.21690913799405098 0.2588063119649887 0.08434064078330994" name="ancient_upper_left_touch_site" />
-        <geom name="ancient_upper_right_collision" type="box" pos="-0.15145913884043694 -0.5448104739189148 0.20693397521972656" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.21690913799405098 0.2588063268661499 0.08434064078330994" />
-        <site type="box" pos="-0.15145913884043694 -0.5448104739189148 0.20693397521972656" rgba="1 0 0 0.15" size="0.21690913799405098 0.2588063268661499 0.08434064078330994" name="ancient_upper_right_touch_site" />
-        <geom name="ancient_tail_rear_collision" type="box" pos="-0.6829455494880676 5.5149197578430176e-05 0.13310958445072174" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.11842022228240967 0.22869452226161957 0.09300958502292633" />
-        <site type="box" pos="-0.6829455494880676 5.5149197578430176e-05 0.13310958445072174" rgba="1 0 0 0.15" size="0.11842022228240967 0.22869452226161957 0.09300958502292633" name="ancient_tail_rear_touch_site" />
-        <geom name="ancient_tail_mid_collision" type="box" pos="-0.4141962379217148 2.514570951461792e-05 0.10103941895067692" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.12959622728824616 0.21641197937726975 0.08043941806256771" />
-        <site type="box" pos="-0.4141962379217148 2.514570951461792e-05 0.10103941895067692" rgba="1 0 0 0.15" size="0.12959622728824616 0.21641197937726975 0.08043941806256771" name="ancient_tail_mid_touch_site" />
-        <geom name="ancient_front_center_collision" type="box" pos="0.010047579184174538 2.5153160095214844e-05 0.04243551103770721" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.05540241996943951 0.15852812814712525 0.04543551285564912" />
-        <site type="box" pos="0.010047579184174538 2.5153160095214844e-05 0.04243551103770721" rgba="1 0 0 0.15" size="0.05540241996943951 0.15852812814712525 0.04543551285564912" name="ancient_front_center_touch_site" />
+
+      <body name="left_wing_link" pos="0.14789 0.031025 0.15872" quat="0.69887716812071 -0.0444767255712987 0.698877106045074 -0.145476167835476">
+        <inertial pos="-0.04294591 0.29416066 -0.11926569" mass="0.06633" fullinertia="0.00448339 0.0013905 0.00414202 0.00104762 0.00028627 0.00046497" />
+        <joint name="left_wing_joint" type="hinge" axis="0.46947 0 -0.88295" damping="6.925991655493124e-05" frictionloss="0.00039277340996955734" armature="0.0045092746608505355" limited="true" range="-1.5708 0" />
+        <geom name="left_wing_link_visual" type="mesh" mesh="left_wing_link" material="left_wing_link_material" group="1" contype="0" conaffinity="0" />
+        <geom name="left_wing_tip_collision" type="box" pos="-0.18 0.66 -0.12" quat="0.965657749908004 0.000919589125477398 -0.202158173137944 0.163206425829316" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.02 0.18 0.115" />
+        <site type="box" pos="-0.18 0.66 -0.12" quat="0.965657749908004 0.000919589125477398 -0.202158173137944 0.163206425829316" rgba="1 0 0 0.15" size="0.02 0.18 0.115" name="left_wing_tip_touch_site" />
+      </body>
+
+      <body name="right_wing_link" pos="0.14789 -0.031025 0.15872" quat="0.69887716812071 0.0444767255712987 0.698877106045074 0.145476167835476">
+        <inertial pos="-0.04294591 -0.29416066 -0.11926569" mass="0.06633" fullinertia="0.00448339 0.0013905 0.00414202 -0.00104762 0.00028627 -0.00046497" />
+        <joint name="right_wing_joint" type="hinge" axis="-0.46947 0 0.88295" damping="6.925991655493124e-05" frictionloss="0.00039277340996955734" armature="0.0045092746608505355" limited="true" range="-1.5708 0" />
+        <geom name="right_wing_link_visual" type="mesh" mesh="right_wing_link" material="right_wing_link_material" group="1" contype="0" conaffinity="0" />
+        <geom name="right_wing_tip_collision" type="box" pos="-0.18 -0.66 -0.12" quat="0.965657749908004 -0.000919589125477398 -0.202158173137944 -0.163206425829316" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.02 0.18 0.115" />
+        <site type="box" pos="-0.18 -0.66 -0.12" quat="0.965657749908004 -0.000919589125477398 -0.202158173137944 -0.163206425829316" rgba="1 0 0 0.15" size="0.02 0.18 0.115" name="right_wing_tip_touch_site" />
+      </body>
+
+      <body name="U1_link" pos="-0.2383 0.0067051 -0.038129" quat="0.686101615069737 -0.686104135266319 -0.171063547245306 -0.171064175597955">
+        <inertial pos="0 0 -0.00665" mass="0.00162207" fullinertia="4e-08 4e-08 4e-08 0 0 0" />
+        <geom name="U1_link_visual" type="mesh" mesh="U1_link" material="U1_link_material" group="1" contype="0" conaffinity="0" />
+        <body name="U2_link" pos="0 -0.00673 -0.00665" quat="0.707105482511236 0.707108079859474 0 0">
+          <inertial pos="-0.16198053 0.00053672 0.00551936" mass="0.0462933" fullinertia="0.00032768 0.00077081 0.0009803 1.95e-06 3.131e-05 4.5e-07" />
+          <geom name="U2_link_visual" type="mesh" mesh="U2_link" material="U2_link_material" group="1" contype="0" conaffinity="0" />
+          <geom name="U2_collision" type="box" pos="-0.193 0 0.075" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.197 0.2255 0.0925" />
+          <site type="box" pos="-0.193 0 0.075" rgba="1 0 0 0.15" size="0.197 0.2255 0.0925" name="U2_touch_site" />
+        </body>
       </body>
     </body>
   </worldbody>
+
   <actuator>
     <motor name="left_thigh_motor" joint="left_thigh_joint" ctrlrange="-5.5 5.5" />
     <motor name="left_calf_motor" joint="left_calf_joint" ctrlrange="-14 14" />
@@ -105,7 +124,10 @@
     <motor name="right_thigh_motor" joint="right_thigh_joint" ctrlrange="-5.5 5.5" />
     <motor name="right_calf_motor" joint="right_calf_joint" ctrlrange="-14 14" />
     <motor name="right_foot_motor" joint="right_foot_joint" ctrlrange="-5.5 5.5" />
+    <motor name="left_wing_motor" joint="left_wing_joint" ctrlrange="-5.5 5.5" />
+    <motor name="right_wing_motor" joint="right_wing_joint" ctrlrange="-5.5 5.5" />
   </actuator>
+
   <sensor>
     <jointpos name="left_thigh_pos" joint="left_thigh_joint" />
     <jointpos name="left_calf_pos" joint="left_calf_joint" />
@@ -125,6 +147,10 @@
     <jointactuatorfrc name="right_thigh_torque" joint="right_thigh_joint" />
     <jointactuatorfrc name="right_calf_torque" joint="right_calf_joint" />
     <jointactuatorfrc name="right_foot_torque" joint="right_foot_joint" />
+    <jointpos name="left_wing_pos" joint="left_wing_joint" />
+    <jointpos name="right_wing_pos" joint="right_wing_joint" />
+    <jointvel name="left_wing_vel_sensor" joint="left_wing_joint" />
+    <jointvel name="right_wing_vel_sensor" joint="right_wing_joint" />
     <framequat name="imu_quat" objtype="site" objname="imu" noise="0.0" />
     <gyro name="imu_gyro" site="imu" noise="0.0" />
     <accelerometer name="imu_acc" site="imu" />
@@ -134,46 +160,73 @@
     <frameyaxis name="yvector" objtype="site" objname="imu" />
     <framezaxis name="upvector" objtype="site" objname="imu" />
     <touch name="base_link_touch" site="base_link_touch_site" />
+    <touch name="base_shoulder_touch" site="base_shoulder_touch_site" />
     <touch name="left_thigh_touch" site="left_thigh_touch_site" />
     <touch name="left_calf_shaft_touch" site="left_calf_shaft_touch_site" />
     <touch name="left_foot_touch" site="left_foot_touch_site" />
     <touch name="right_thigh_touch" site="right_thigh_touch_site" />
     <touch name="right_calf_shaft_touch" site="right_calf_shaft_touch_site" />
     <touch name="right_foot_touch" site="right_foot_touch_site" />
-    <touch name="ancient_upper_left_touch" site="ancient_upper_left_touch_site" />
-    <touch name="ancient_upper_right_touch" site="ancient_upper_right_touch_site" />
-    <touch name="ancient_tail_rear_touch" site="ancient_tail_rear_touch_site" />
-    <touch name="ancient_tail_mid_touch" site="ancient_tail_mid_touch_site" />
-    <touch name="ancient_front_center_touch" site="ancient_front_center_touch_site" />
+    <touch name="left_wing_tip_touch" site="left_wing_tip_touch_site" />
+    <touch name="right_wing_tip_touch" site="right_wing_tip_touch_site" />
+    <touch name="U2_touch" site="U2_touch_site" />
   </sensor>
+
   <contact>
-    <exclude body1="base_link" body2="left_thigh_joint" />
-    <exclude body1="base_link" body2="left_calf_joint" />
-    <exclude body1="base_link" body2="left_foot_joint" />
-    <exclude body1="base_link" body2="right_thigh_joint" />
-    <exclude body1="base_link" body2="right_calf_joint" />
-    <exclude body1="base_link" body2="right_foot_joint" />
-    <exclude body1="base_link" body2="ancient_link" />
-    <exclude body1="left_thigh_joint" body2="left_calf_joint" />
-    <exclude body1="left_thigh_joint" body2="left_foot_joint" />
-    <exclude body1="left_thigh_joint" body2="right_thigh_joint" />
-    <exclude body1="left_thigh_joint" body2="right_calf_joint" />
-    <exclude body1="left_thigh_joint" body2="right_foot_joint" />
-    <exclude body1="left_thigh_joint" body2="ancient_link" />
-    <exclude body1="left_calf_joint" body2="left_foot_joint" />
-    <exclude body1="left_calf_joint" body2="right_thigh_joint" />
-    <exclude body1="left_calf_joint" body2="right_calf_joint" />
-    <exclude body1="left_calf_joint" body2="right_foot_joint" />
-    <exclude body1="left_calf_joint" body2="ancient_link" />
-    <exclude body1="left_foot_joint" body2="right_thigh_joint" />
-    <exclude body1="left_foot_joint" body2="right_calf_joint" />
-    <exclude body1="left_foot_joint" body2="right_foot_joint" />
-    <exclude body1="left_foot_joint" body2="ancient_link" />
-    <exclude body1="right_thigh_joint" body2="right_calf_joint" />
-    <exclude body1="right_thigh_joint" body2="right_foot_joint" />
-    <exclude body1="right_thigh_joint" body2="ancient_link" />
-    <exclude body1="right_calf_joint" body2="right_foot_joint" />
-    <exclude body1="right_calf_joint" body2="ancient_link" />
-    <exclude body1="right_foot_joint" body2="ancient_link" />
+    <exclude body1="base_link" body2="left_thigh_link" />
+    <exclude body1="base_link" body2="left_calf_link" />
+    <exclude body1="base_link" body2="left_foot_link" />
+    <exclude body1="base_link" body2="right_thigh_link" />
+    <exclude body1="base_link" body2="right_calf_link" />
+    <exclude body1="base_link" body2="right_foot_link" />
+    <exclude body1="base_link" body2="left_wing_link" />
+    <exclude body1="base_link" body2="right_wing_link" />
+    <exclude body1="base_link" body2="U1_link" />
+    <exclude body1="base_link" body2="U2_link" />
+    <exclude body1="left_thigh_link" body2="left_calf_link" />
+    <exclude body1="left_thigh_link" body2="left_foot_link" />
+    <exclude body1="left_thigh_link" body2="right_thigh_link" />
+    <exclude body1="left_thigh_link" body2="right_calf_link" />
+    <exclude body1="left_thigh_link" body2="right_foot_link" />
+    <exclude body1="left_thigh_link" body2="left_wing_link" />
+    <exclude body1="left_thigh_link" body2="right_wing_link" />
+    <exclude body1="left_thigh_link" body2="U1_link" />
+    <exclude body1="left_thigh_link" body2="U2_link" />
+    <exclude body1="left_calf_link" body2="left_foot_link" />
+    <exclude body1="left_calf_link" body2="right_thigh_link" />
+    <exclude body1="left_calf_link" body2="right_calf_link" />
+    <exclude body1="left_calf_link" body2="right_foot_link" />
+    <exclude body1="left_calf_link" body2="left_wing_link" />
+    <exclude body1="left_calf_link" body2="right_wing_link" />
+    <exclude body1="left_calf_link" body2="U1_link" />
+    <exclude body1="left_calf_link" body2="U2_link" />
+    <exclude body1="left_foot_link" body2="right_thigh_link" />
+    <exclude body1="left_foot_link" body2="right_calf_link" />
+    <exclude body1="left_foot_link" body2="right_foot_link" />
+    <exclude body1="left_foot_link" body2="left_wing_link" />
+    <exclude body1="left_foot_link" body2="right_wing_link" />
+    <exclude body1="left_foot_link" body2="U1_link" />
+    <exclude body1="left_foot_link" body2="U2_link" />
+    <exclude body1="right_thigh_link" body2="right_calf_link" />
+    <exclude body1="right_thigh_link" body2="right_foot_link" />
+    <exclude body1="right_thigh_link" body2="left_wing_link" />
+    <exclude body1="right_thigh_link" body2="right_wing_link" />
+    <exclude body1="right_thigh_link" body2="U1_link" />
+    <exclude body1="right_thigh_link" body2="U2_link" />
+    <exclude body1="right_calf_link" body2="right_foot_link" />
+    <exclude body1="right_calf_link" body2="left_wing_link" />
+    <exclude body1="right_calf_link" body2="right_wing_link" />
+    <exclude body1="right_calf_link" body2="U1_link" />
+    <exclude body1="right_calf_link" body2="U2_link" />
+    <exclude body1="right_foot_link" body2="left_wing_link" />
+    <exclude body1="right_foot_link" body2="right_wing_link" />
+    <exclude body1="right_foot_link" body2="U1_link" />
+    <exclude body1="right_foot_link" body2="U2_link" />
+    <exclude body1="left_wing_link" body2="right_wing_link" />
+    <exclude body1="left_wing_link" body2="U1_link" />
+    <exclude body1="left_wing_link" body2="U2_link" />
+    <exclude body1="right_wing_link" body2="U1_link" />
+    <exclude body1="right_wing_link" body2="U2_link" />
+    <exclude body1="U1_link" body2="U2_link" />
   </contact>
 </mujoco>

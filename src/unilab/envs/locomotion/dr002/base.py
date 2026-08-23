@@ -30,6 +30,14 @@ NUM_DR002_ACTIONS = len(JOINT_SENSOR_PREFIXES)
 NUM_LEG_ACTIONS = len(LEG_ACTION_INDICES)
 NUM_WHEEL_ACTIONS = len(WHEEL_ACTION_INDICES)
 
+# Wing joints sit after the six leg actuators in the MuJoCo model. The policy
+# never actuates them; they are driven by an env-owned velocity command that
+# mirrors the RC channel used on hardware.
+WING_SENSOR_PREFIXES: tuple[str, ...] = ("left_wing", "right_wing")
+WING_ACTUATOR_INDICES = np.asarray([6, 7], dtype=np.int32)
+NUM_WING_ACTUATORS = len(WING_SENSOR_PREFIXES)
+NUM_DR002_TOTAL_ACTUATORS = NUM_DR002_ACTIONS + NUM_WING_ACTUATORS
+
 DEFAULT_DR002_ANGLES = np.asarray([0.8, -1.6, 0.0, 0.8, -1.6, 0.0], dtype=np.float64)
 
 
@@ -104,6 +112,18 @@ def stack_joint_sensors(backend, suffix: str, *, dtype: np.dtype | type) -> np.n
     names = tuple(f"{prefix}_{suffix}" for prefix in JOINT_SENSOR_PREFIXES)
     values = backend.get_sensor_data_batch(names)
     return np.asarray(values.reshape(values.shape[0], -1)[:, :NUM_DR002_ACTIONS], dtype=dtype)
+
+
+def stack_wing_sensors(backend, suffix: str, *, dtype: np.dtype | type) -> np.ndarray:
+    """Read the two wing joint scalar sensors as an (num_envs, 2) array.
+
+    The XML exposes ``left_wing_pos`` / ``right_wing_pos`` for position and
+    ``left_wing_vel_sensor`` / ``right_wing_vel_sensor`` for velocity, so
+    ``pos``/``vel_sensor`` are the two supported suffixes.
+    """
+    names = tuple(f"{prefix}_{suffix}" for prefix in WING_SENSOR_PREFIXES)
+    values = backend.get_sensor_data_batch(names)
+    return np.asarray(values.reshape(values.shape[0], -1)[:, :NUM_WING_ACTUATORS], dtype=dtype)
 
 
 def compute_dr002_motor_ctrl(

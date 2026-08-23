@@ -32,24 +32,42 @@ from unilab.envs.locomotion.dr002.base import (
     JOINT_VEL_OBSERVATION_INDICES,
     LEG_ACTION_INDICES,
     NUM_DR002_ACTIONS,
+    NUM_DR002_TOTAL_ACTUATORS,
+    NUM_WING_ACTUATORS,
     WHEEL_ACTION_INDICES,
+    WING_ACTUATOR_INDICES,
+    WING_SENSOR_PREFIXES,
     ControlConfig,
     DR002BaseCfg,
     DR002BaseEnv,
     NoiseConfig,
     compute_dr002_motor_ctrl,
     stack_joint_sensors,
+    stack_wing_sensors,
 )
 
 _HISTORY_LENGTH = 5
-_TERM_DIMS = (3, 3, 4, 6, 6, 3)
+# Frame term dims in emission order:
+#   gyro, projected_gravity, leg_pos_rel, dof_vel, current_actions,
+#   wing_angle, wing_vel, commands.
+_TERM_DIMS = (3, 3, 4, 6, 6, 2, 2, 3)
 _WING_ANGLE_OBS_DIM = 2
+_WING_VEL_OBS_DIM = 2
 _DR002_ASSET_ROOT = ASSETS_ROOT_PATH / "robots" / "dr002"
-_JOINT_POS_SENSOR_NAMES = tuple(f"{prefix}_pos" for prefix in JOINT_SENSOR_PREFIXES)
-_JOINT_VEL_SENSOR_NAMES = tuple(f"{prefix}_vel" for prefix in JOINT_SENSOR_PREFIXES)
-_POSITION_CONTROL_MASK = np.ones((NUM_DR002_ACTIONS,), dtype=np.int32)
+_JOINT_POS_SENSOR_NAMES = tuple(f"{prefix}_pos" for prefix in JOINT_SENSOR_PREFIXES) + tuple(
+    f"{prefix}_pos" for prefix in WING_SENSOR_PREFIXES
+)
+_JOINT_VEL_SENSOR_NAMES = tuple(f"{prefix}_vel" for prefix in JOINT_SENSOR_PREFIXES) + tuple(
+    f"{prefix}_vel_sensor" for prefix in WING_SENSOR_PREFIXES
+)
+_POSITION_CONTROL_MASK = np.ones((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.int32)
 _POSITION_CONTROL_MASK[WHEEL_ACTION_INDICES] = 0
-_PRIVILEGED_BODY_NAMES = tuple(f"{prefix}_joint" for prefix in JOINT_SENSOR_PREFIXES)
+# Wings run position PD (mask=1): the env owns a per-episode position setpoint
+# integrated from the sampled velocity command, and the backend applies
+# ``kp*(pos_target - pos) - kd*vel`` so vel_cmd=0 holds the current angle.
+_POSITION_CONTROL_MASK[WING_ACTUATOR_INDICES] = 1
+_PRIVILEGED_BODY_NAMES = tuple(f"{prefix}_link" for prefix in JOINT_SENSOR_PREFIXES)
+_PRIVILEGED_JOINT_NAMES = tuple(f"{prefix}_joint" for prefix in JOINT_SENSOR_PREFIXES)
 _ISAACLAB_CRITIC_TERM_DIMS = (
     3,  # base linear velocity
     3,  # base angular velocity
@@ -67,13 +85,10 @@ _ISAACLAB_CRITIC_TERM_DIMS = (
     3,  # gym_base_com
     NUM_DR002_ACTIONS,  # gym_default_joint_pos_delta
     2,  # gym_material_properties: robot friction, restitution
-    3,  # measured CSV force [Fx, Fy, Fz] (critic only)
 )
 _LEGACY_CRITIC_DIM = 52
 _CRITIC_DIM = sum(_ISAACLAB_CRITIC_TERM_DIMS)
-assert _CRITIC_DIM == 144
-_CRITIC_WITH_MEASURED_MOMENT_DIM = _CRITIC_DIM + 3
-assert _CRITIC_WITH_MEASURED_MOMENT_DIM == 147
+assert _CRITIC_DIM == 141
 
 
 @dataclass
@@ -190,25 +205,68 @@ class DR002DomainRandConfig(DomainRandConfig):
 
 @dataclass
 class WingAngleObservationConfig:
+    """Actor observation of wing joint positions.
+
+    The wing hinges are physical joints in the MuJoCo model; the observation
+    reads their instantaneous position directly and normalizes by ``rad/pi``
+    (equivalent to ``deg/180``, matching Deploy's normalization).
+    """
+
     enabled: bool = False
-    # Preserve the two-channel observation/history contract while replacing
-    # the generated motor-position frame with exact zeros at actor input.
+    # Keep the observation slot present but zero at the actor input.
     force_zero_output: bool = False
-    curriculum_paths: list[str] = field(default_factory=list)
     normalization_deg: float = 180.0
     zero_offsets_deg: list[float] = field(default_factory=lambda: [0.0, 0.0])
-    # Sample one scalar per environment at reset and apply it only to the
-    # positive-Hz CSV motor-position observation for the complete episode.
-    # Left/right share the scalar; physical CSV wrench playback is unaffected.
-    csv_amplitude_scale_range: list[float] = field(default_factory=lambda: [1.0, 1.0])
-    standing_normalized_range: list[float] = field(default_factory=lambda: [0.0, 0.0])
     # Per-frame uniform actor-observation noise, specified as a physical-angle
     # half range and normalized by ``normalization_deg`` before policy input.
     noise_half_range_deg: float = 0.0
     # Per-frame, per-motor multiplicative Gaussian noise. A value of 0.05 means
-    # obs *= 1 + Normal(0, 0.05). This is dimensionless and independent from
-    # the reset-owned CSV amplitude scale.
+    # obs *= 1 + Normal(0, 0.05). Dimensionless.
     gaussian_noise_relative_std: float = 0.0
+
+
+@dataclass
+class WingVelocityObservationConfig:
+    """Actor observation of wing joint velocity in ``rad/s * 0.1``.
+
+    The scaling factor matches the leg ``dof_vel * 0.1`` term so that all
+    joint-velocity slots share a comparable magnitude at the actor input.
+    """
+
+    enabled: bool = False
+    force_zero_output: bool = False
+    scale: float = 0.1
+    # Per-frame uniform actor-observation noise, specified as ``rad/s``.
+    noise_half_range_rad_s: float = 0.0
+    gaussian_noise_relative_std: float = 0.0
+
+
+@dataclass
+class WingVelocityCommandConfig:
+    """Env-owned wing velocity command that mirrors the RC input on hardware.
+
+    The RL policy does not control the wings. The env samples a per-episode
+    signed velocity (rad/s) per side, integrates it into a position target,
+    and lets the backend position PD hold that target. When the velocity
+    command is zero the target is frozen, so the wings do NOT drift under
+    gravity — they lock to whatever angle the last non-zero command left
+    them at. This matches the hardware RC controller (wing_motor_node), which
+    integrates the joystick axis into a position setpoint and commands
+    kp/kd hold.
+    """
+
+    enabled: bool = True
+    # 1 s to rotate 45 deg == pi/4 rad/s. Matches the hardware speed limit.
+    max_rad_per_s: float = 0.7853981633974483
+    # Range of hold time (seconds) between velocity command resamples.
+    resample_period_s: list[float] = field(default_factory=lambda: [1.0, 5.0])
+    # If False, left and right share the same signed magnitude (mirror mode).
+    per_side_independent: bool = True
+    # Position-PD gains for the wing joints. The env integrates the sampled
+    # velocity into a position setpoint, then the backend applies
+    # ``kp * (pos_target - pos) - kd * vel`` at every physics step.
+    kp: float = 10.0
+    kd: float = 0.5
 
 
 @dataclass
@@ -223,6 +281,9 @@ class RewardConfig:
     # Keep the historical +/-1/s default; tasks using a larger scale can raise
     # this limit explicitly so that the configured scale is not clipped away.
     track_lin_vel_x_term_clip: float = 1.0
+    zero_cmd_stationary_gate_vx: float = 0.05
+    zero_cmd_stationary_gate_wz: float = 0.05
+    zero_cmd_stationary_yaw_weight: float = 0.5
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
     only_positive_rewards: bool = False
@@ -261,19 +322,22 @@ class JoystickSensor:
 
 @dataclass
 class WE11JoystickSensor(JoystickSensor):
-    """Contact sensors exposed by the self-contained WE11 model."""
+    """Contact sensors exposed by the self-contained WE11 model.
+
+    The new asset splits the former ``ancient_link`` block into a hinged wing
+    pair, a fixed shoulder box on ``base_link``, and a rigid tail ``U2_link``.
+    """
 
     undesired_contacts: tuple[str, ...] = (
         "base_link_touch",
+        "base_shoulder_touch",
         "left_thigh_touch",
         "left_calf_shaft_touch",
         "right_thigh_touch",
         "right_calf_shaft_touch",
-        "ancient_upper_left_touch",
-        "ancient_upper_right_touch",
-        "ancient_front_center_touch",
-        "ancient_tail_rear_touch",
-        "ancient_tail_mid_touch",
+        "left_wing_tip_touch",
+        "right_wing_tip_touch",
+        "U2_touch",
     )
 
 
@@ -290,6 +354,12 @@ class DR002JoystickCfg(DR002BaseCfg):
     sensor: JoystickSensor = field(default_factory=JoystickSensor)  # type: ignore[assignment]
     domain_rand: DR002DomainRandConfig = field(default_factory=DR002DomainRandConfig)
     wing_angle_obs: WingAngleObservationConfig = field(default_factory=WingAngleObservationConfig)
+    wing_velocity_obs: WingVelocityObservationConfig = field(
+        default_factory=WingVelocityObservationConfig
+    )
+    wing_velocity_cmd: WingVelocityCommandConfig = field(
+        default_factory=WingVelocityCommandConfig
+    )
     critic_obs_mode: str = "legacy"
 
 
@@ -311,6 +381,8 @@ class WE11ControlConfig(ControlConfig):
     )
     resample_action_delay: bool = True
     use_native_batched_pd: bool = False
+    # Six-leg-joint PACE gains; wing gains are configured separately via
+    # ``wing_velocity_cmd.kd``.
     Kp: list[float] = field(  # noqa: N815
         default_factory=lambda: [2.0, 7.59, 0.0, 2.0, 7.59, 0.0]
     )
@@ -745,99 +817,12 @@ def _sample_wrench_csv_replay(
     return wrench
 
 
-def _load_wing_angle_csv(path: str | Path) -> np.ndarray:
-    samples: list[list[float]] = []
-    with Path(path).open("r", newline="", encoding="utf-8") as file:
-        for row in csv.reader(file):
-            try:
-                values = [float(value) for value in row[:3]]
-            except (TypeError, ValueError):
-                continue
-            if len(values) >= 3:
-                samples.append(values[:3])
-    if not samples:
-        raise ValueError(f"wing angle CSV has no numeric rows: {path}")
-    angles = np.asarray(samples, dtype=np.float64)
-    order = np.argsort(angles[:, 0])
-    angles = angles[order]
-    if not np.all(np.isfinite(angles)):
-        raise ValueError(f"wing angle CSV contains non-finite values: {path}")
-    if angles.shape[0] < 2 or np.any(np.diff(angles[:, 0]) <= 0.0):
-        raise ValueError(f"wing angle CSV timestamps must be strictly increasing: {path}")
-    return angles
-
-
-def _interp_wing_angle_csv_batch(samples: np.ndarray, phase_t: np.ndarray) -> np.ndarray:
-    phase = np.asarray(phase_t, dtype=np.float64).reshape(-1)
-    angles = np.zeros((phase.shape[0], _WING_ANGLE_OBS_DIM), dtype=np.float64)
-    for motor_index in range(_WING_ANGLE_OBS_DIM):
-        angles[:, motor_index] = np.interp(
-            phase,
-            samples[:, 0],
-            samples[:, motor_index + 1],
-        )
-    return angles
-
-
-def _wing_angle_curriculum_paths(cfg: WingAngleObservationConfig) -> list[Path]:
-    paths: list[Path] = []
-    for configured_path in cfg.curriculum_paths:
-        path = Path(configured_path).expanduser()
-        paths.append(path if path.is_absolute() else ASSETS_ROOT_PATH / path)
-    return paths
-
-
-def _wing_angle_path_for_level(
-    domain_rand: DR002DomainRandConfig,
-    cfg: WingAngleObservationConfig,
-    level: int,
-) -> Path | None:
-    paths = _wing_angle_curriculum_paths(cfg)
-    hz_values = _csv_force_curriculum_hz_values(domain_rand)
-    if not hz_values:
-        return paths[int(np.clip(level, 0, len(paths) - 1))]
-
-    level = int(np.clip(level, 0, len(hz_values) - 1))
-    if hz_values[level] <= 0.0:
-        return None
-    if len(paths) == len(hz_values):
-        return paths[level]
-
-    positive_path_index = sum(1 for hz in hz_values[: level + 1] if hz > 0.0) - 1
-    if positive_path_index < 0:
-        return None
-    if positive_path_index >= len(paths):
-        raise ValueError(
-            "wing_angle_obs.curriculum_paths does not contain enough positive-Hz paths"
-        )
-    return paths[positive_path_index]
-
-
-def _wing_angle_obs_csv_amplitude_scale_bounds(
-    cfg: WingAngleObservationConfig,
-) -> tuple[float, float]:
-    scale_range = np.asarray(cfg.csv_amplitude_scale_range, dtype=np.float64)
-    if scale_range.shape != (2,):
-        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must contain [min, max]")
-    if not np.all(np.isfinite(scale_range)):
-        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must contain finite values")
-    low, high = float(scale_range[0]), float(scale_range[1])
-    if low < 0.0 or high < low:
-        raise ValueError("wing_angle_obs.csv_amplitude_scale_range must satisfy 0 <= min <= max")
-    return low, high
-
-
-def _validate_wing_angle_observation_mapping(
-    domain_rand: DR002DomainRandConfig,
-    cfg: WingAngleObservationConfig,
-) -> None:
+def _validate_wing_angle_observation_mapping(cfg: WingAngleObservationConfig) -> None:
+    """Shape/finite validation for the sim-backed wing angle observation."""
     if not cfg.enabled:
         return
-    if not domain_rand.csv_force_enabled:
-        raise ValueError("wing_angle_obs.enabled requires domain_rand.csv_force_enabled")
     if float(cfg.normalization_deg) <= 0.0:
         raise ValueError("wing_angle_obs.normalization_deg must be positive")
-    _wing_angle_obs_csv_amplitude_scale_bounds(cfg)
     noise_half_range_deg = float(cfg.noise_half_range_deg)
     if not np.isfinite(noise_half_range_deg) or noise_half_range_deg < 0.0:
         raise ValueError("wing_angle_obs.noise_half_range_deg must be finite and non-negative")
@@ -849,36 +834,41 @@ def _validate_wing_angle_observation_mapping(
     zero_offsets = np.asarray(cfg.zero_offsets_deg, dtype=np.float64)
     if zero_offsets.shape != (_WING_ANGLE_OBS_DIM,) or not np.all(np.isfinite(zero_offsets)):
         raise ValueError("wing_angle_obs.zero_offsets_deg must contain two finite values")
-    standing_range = np.asarray(cfg.standing_normalized_range, dtype=np.float64)
-    if standing_range.shape != (2,) or not np.all(np.isfinite(standing_range)):
-        raise ValueError("wing_angle_obs.standing_normalized_range must contain two finite values")
-    if standing_range[0] > standing_range[1]:
-        raise ValueError("wing_angle_obs.standing_normalized_range must be ordered [low, high]")
 
-    hz_values = _csv_force_curriculum_hz_values(domain_rand)
-    if not hz_values:
-        raise ValueError("wing angle observations require csv_force_curriculum_hz labels")
-    paths = _wing_angle_curriculum_paths(cfg)
-    positive_count = sum(1 for hz in hz_values if hz > 0.0)
-    if len(paths) not in (len(hz_values), positive_count):
+
+def _validate_wing_velocity_observation_mapping(cfg: WingVelocityObservationConfig) -> None:
+    if not cfg.enabled:
+        return
+    scale = float(cfg.scale)
+    if not np.isfinite(scale) or scale <= 0.0:
+        raise ValueError("wing_velocity_obs.scale must be finite and positive")
+    noise_half = float(cfg.noise_half_range_rad_s)
+    if not np.isfinite(noise_half) or noise_half < 0.0:
+        raise ValueError("wing_velocity_obs.noise_half_range_rad_s must be finite and non-negative")
+    gaussian = float(cfg.gaussian_noise_relative_std)
+    if not np.isfinite(gaussian) or gaussian < 0.0:
         raise ValueError(
-            "wing_angle_obs.curriculum_paths must either match csv_force_curriculum_hz "
-            "length or contain only the positive-Hz paths"
+            "wing_velocity_obs.gaussian_noise_relative_std must be finite and non-negative"
         )
-    for level, source_hz in enumerate(hz_values):
-        if source_hz <= 0.0:
-            continue
-        path = _wing_angle_path_for_level(domain_rand, cfg, level)
-        if path is None:
-            raise ValueError(f"wing angle path is missing for {source_hz:g}Hz")
-        samples = _load_wing_angle_csv(path)
-        expected_period = 1.0 / source_hz
-        tolerance = max(1.0e-6, expected_period * 1.0e-3)
-        if samples[0, 0] > tolerance or samples[-1, 0] < expected_period - tolerance:
-            raise ValueError(
-                f"wing angle CSV must span one full {source_hz:g}Hz period "
-                f"[0, {expected_period:g}]s: {path}"
-            )
+
+
+def _validate_wing_velocity_command_config(cfg: WingVelocityCommandConfig) -> None:
+    if not cfg.enabled:
+        return
+    max_vel = float(cfg.max_rad_per_s)
+    if not np.isfinite(max_vel) or max_vel <= 0.0:
+        raise ValueError("wing_velocity_cmd.max_rad_per_s must be finite and positive")
+    period = np.asarray(cfg.resample_period_s, dtype=np.float64)
+    if period.shape != (2,) or not np.all(np.isfinite(period)):
+        raise ValueError("wing_velocity_cmd.resample_period_s must be [min, max] finite values")
+    if period[0] <= 0.0 or period[1] < period[0]:
+        raise ValueError(
+            "wing_velocity_cmd.resample_period_s must satisfy 0 < min <= max"
+        )
+    if not np.isfinite(float(cfg.kp)) or float(cfg.kp) < 0.0:
+        raise ValueError("wing_velocity_cmd.kp must be finite and non-negative")
+    if not np.isfinite(float(cfg.kd)) or float(cfg.kd) < 0.0:
+        raise ValueError("wing_velocity_cmd.kd must be finite and non-negative")
 
 
 def _csv_force_curriculum_paths(domain_rand: DR002DomainRandConfig) -> list[str]:
@@ -1725,23 +1715,16 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         csv_force_levels = env.sample_reset_csv_force_levels(num_reset)
         csv_force_start_delay_steps = env.sample_reset_csv_force_start_delay_steps(num_reset)
         csv_force_amplitude_scales = env.sample_reset_csv_force_amplitude_scales(num_reset)
-        wing_angle_obs_amplitude_scales = env.sample_reset_wing_angle_obs_amplitude_scales(
-            num_reset
-        )
         if (
             env._standing_envs_episode_persistent
             and not env.cfg.domain_rand.csv_force_apply_to_standing
         ):
             csv_force_levels[standing_mask] = 0
             csv_force_start_delay_steps[standing_mask] = 0
-        zero_hz_wing_angle_obs = env.sample_reset_zero_hz_wing_angle_obs(
-            _csv_force_zero_hz_mask(env.cfg.domain_rand, csv_force_levels)
-        )
-        env.set_zero_hz_wing_angle_obs(env_ids, zero_hz_wing_angle_obs)
         env.set_csv_force_active_levels(env_ids, csv_force_levels)
         env.set_csv_force_start_delay_steps(env_ids, csv_force_start_delay_steps)
         env.set_csv_force_amplitude_scales(env_ids, csv_force_amplitude_scales)
-        env.set_wing_angle_obs_amplitude_scales(env_ids, wing_angle_obs_amplitude_scales)
+        env.reset_wing_velocity_command(env_ids)
         body_mass_multipliers = self._body_mass_multipliers_for_reset(env, env_ids)
         reset_randomization = build_dr002_backend_reset_randomization(
             env,
@@ -1825,11 +1808,11 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._np_dtype = get_global_dtype()
         self._reward_cfg = cfg.reward_config
         self._wing_angle_obs_enabled = bool(cfg.wing_angle_obs.enabled)
-        self._history_term_dims = (
-            _TERM_DIMS[:-1] + (_WING_ANGLE_OBS_DIM,) + _TERM_DIMS[-1:]
-            if self._wing_angle_obs_enabled
-            else _TERM_DIMS
-        )
+        self._wing_velocity_obs_enabled = bool(cfg.wing_velocity_obs.enabled)
+        # Actor obs frame is fixed at 29 dims (see _TERM_DIMS); disabling a
+        # wing observation config only zeroes those slots at the actor input
+        # via force_zero_output. This keeps the deployment ONNX shape stable.
+        self._history_term_dims = _TERM_DIMS
         self._actor_dim = _HISTORY_LENGTH * sum(self._history_term_dims)
         critic_obs_mode = str(cfg.critic_obs_mode)
         if critic_obs_mode not in {"legacy", "isaaclab"}:
@@ -1837,29 +1820,43 @@ class DR002JoystickEnv(DR002BaseEnv):
                 f"critic_obs_mode must be either 'legacy' or 'isaaclab', got {critic_obs_mode!r}"
             )
         self._use_isaaclab_critic = critic_obs_mode == "isaaclab"
-        self._critic_includes_measured_moment = self._use_isaaclab_critic and bool(
-            cfg.domain_rand.csv_force_observation_include_measured_moment
-        )
-        # Force-only IsaacLab critics retain 144D. WE11 opts into the rotated
-        # measured Mx/My/Mz for 147D, while legacy DR002 stays checkpoint-safe.
-        if not self._use_isaaclab_critic:
-            self._critic_dim = _LEGACY_CRITIC_DIM
-        elif self._critic_includes_measured_moment:
-            self._critic_dim = _CRITIC_WITH_MEASURED_MOMENT_DIM
-        else:
-            self._critic_dim = _CRITIC_DIM
-        self._wing_angle_samples_by_path: dict[Path, np.ndarray] = {}
-        self._wing_angle_force_samples_by_path: dict[str, np.ndarray] = {}
+        # Legacy critic keeps its 52-dim contract; the current WE11 critic
+        # runs isaaclab-style at 141 dims (no measured CSV force/moment).
+        self._critic_dim = _CRITIC_DIM if self._use_isaaclab_critic else _LEGACY_CRITIC_DIM
         self._enable_reward_log = True
         ctrl_range = np.asarray(self._backend.get_actuator_ctrl_range(), dtype=np.float64)
         self._validate_motor_control_contract(ctrl_range, num_envs)
         self._ctrl_lower = ctrl_range[:, 0].astype(self._np_dtype)
         self._ctrl_upper = ctrl_range[:, 1].astype(self._np_dtype)
-        self._base_motor_kp = np.asarray(cfg.control_config.Kp, dtype=np.float64)
-        self._base_motor_kd = np.asarray(cfg.control_config.Kd, dtype=np.float64)
-        self._motor_kp = np.broadcast_to(self._base_motor_kp, (num_envs, NUM_DR002_ACTIONS)).copy()
-        self._motor_kd = np.broadcast_to(self._base_motor_kd, (num_envs, NUM_DR002_ACTIONS)).copy()
-        self._motor_torque_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
+        base_leg_kp = np.asarray(cfg.control_config.Kp, dtype=np.float64)
+        base_leg_kd = np.asarray(cfg.control_config.Kd, dtype=np.float64)
+        if base_leg_kp.shape != (NUM_DR002_ACTIONS,) or base_leg_kd.shape != (NUM_DR002_ACTIONS,):
+            raise ValueError(
+                "DR002 Kp/Kd must have length NUM_DR002_ACTIONS=6; wing gains are configured "
+                "separately via wing_velocity_cmd.kp / wing_velocity_cmd.kd"
+            )
+        wing_kp = float(getattr(cfg.wing_velocity_cmd, "kp", 10.0))
+        wing_kd = float(getattr(cfg.wing_velocity_cmd, "kd", 0.5))
+        # Backend PD kernels operate on all model actuators, so expand every
+        # motor-related buffer to (num_envs, NUM_DR002_TOTAL_ACTUATORS=8).
+        # Wings run position PD (mask=1) with kp / kd from wing_velocity_cmd
+        # so the env-owned position setpoint is held when vel_cmd = 0.
+        self._base_motor_kp = np.zeros((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.float64)
+        self._base_motor_kp[:NUM_DR002_ACTIONS] = base_leg_kp
+        self._base_motor_kp[WING_ACTUATOR_INDICES] = wing_kp
+        self._base_motor_kd = np.zeros((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.float64)
+        self._base_motor_kd[:NUM_DR002_ACTIONS] = base_leg_kd
+        self._base_motor_kd[WING_ACTUATOR_INDICES] = wing_kd
+        self._motor_kp = np.broadcast_to(
+            self._base_motor_kp, (num_envs, NUM_DR002_TOTAL_ACTUATORS)
+        ).copy()
+        self._motor_kd = np.broadcast_to(
+            self._base_motor_kd, (num_envs, NUM_DR002_TOTAL_ACTUATORS)
+        ).copy()
+        self._motor_torque_scale = np.ones(
+            (num_envs, NUM_DR002_TOTAL_ACTUATORS), dtype=np.float64
+        )
+        # Policy sees leg joint pos offset only, keep it 6-wide.
         self._default_joint_pos_offset = np.zeros(
             (num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype
         )
@@ -1867,7 +1864,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             [self._backend.get_body_id(name) for name in _PRIVILEGED_BODY_NAMES],
             dtype=np.int32,
         )
-        self._privileged_joint_dof_ids = self._backend.get_joint_dof_indices(_PRIVILEGED_BODY_NAMES)
+        self._privileged_joint_dof_ids = self._backend.get_joint_dof_indices(
+            _PRIVILEGED_JOINT_NAMES
+        )
         self._privileged_base_mass_delta = np.zeros((num_envs, 1), dtype=np.float64)
         self._privileged_body_mass_scale = np.ones((num_envs, NUM_DR002_ACTIONS), dtype=np.float64)
         self._privileged_base_com_offset = np.zeros((num_envs, 3), dtype=np.float64)
@@ -1877,7 +1876,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._privileged_dof_armature_scale = np.ones(
             (num_envs, NUM_DR002_ACTIONS), dtype=np.float64
         )
-        self._last_motor_ctrl = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        self._last_motor_ctrl = np.zeros(
+            (num_envs, NUM_DR002_TOTAL_ACTUATORS), dtype=self._np_dtype
+        )
         self._last_dof_vel_for_acc = np.zeros(
             (num_envs, NUM_DR002_ACTIONS), dtype=get_global_dtype()
         )
@@ -1938,7 +1939,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             raw_delay_steps = np.asarray(fixed_delay_steps, dtype=np.float64)
             if raw_delay_steps.shape != (NUM_DR002_ACTIONS,):
                 raise ValueError(
-                    "action_delay_steps_by_joint must follow the six-joint DR002 order, "
+                    "action_delay_steps_by_joint must follow the six-leg-joint DR002 order, "
                     f"got shape {raw_delay_steps.shape}"
                 )
             if (
@@ -1951,9 +1952,12 @@ class DR002JoystickEnv(DR002BaseEnv):
                 raise ValueError(
                     "action_delay_steps_by_joint requires simulate_action_latency=True"
                 )
-            self._fixed_action_delay_steps = raw_delay_steps.astype(np.int32)
-            self._action_delay_min_steps = int(np.min(self._fixed_action_delay_steps))
-            self._action_delay_max_steps = int(np.max(self._fixed_action_delay_steps))
+            # Extend to 8 with wing entries = 0 (no delay on env-owned commands).
+            full = np.zeros((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.int32)
+            full[:NUM_DR002_ACTIONS] = raw_delay_steps.astype(np.int32)
+            self._fixed_action_delay_steps = full
+            self._action_delay_min_steps = int(np.min(full))
+            self._action_delay_max_steps = int(np.max(full))
         else:
             self._action_delay_min_steps = int(cfg.control_config.action_delay_min_steps)
             self._action_delay_max_steps = int(cfg.control_config.action_delay_max_steps)
@@ -1977,13 +1981,14 @@ class DR002JoystickEnv(DR002BaseEnv):
                 f"got leg={self._leg_clip_actions}, wheel={self._wheel_clip_actions}"
             )
         self._action_delay_buffer = np.zeros(
-            (num_envs, self._action_delay_max_steps + 1, NUM_DR002_ACTIONS), dtype=self._np_dtype
+            (num_envs, self._action_delay_max_steps + 1, NUM_DR002_TOTAL_ACTUATORS),
+            dtype=self._np_dtype,
         )
         if self._fixed_action_delay_steps is None:
             self._action_delay_indices = np.zeros((num_envs,), dtype=np.int32)
         else:
             self._action_delay_indices = np.broadcast_to(
-                self._fixed_action_delay_steps, (num_envs, NUM_DR002_ACTIONS)
+                self._fixed_action_delay_steps, (num_envs, NUM_DR002_TOTAL_ACTUATORS)
             ).copy()
         fixed_torque_delay_steps = cfg.control_config.torque_delay_steps_by_joint
         uniform_torque_delay_steps = cfg.control_config.torque_delay_steps
@@ -1998,7 +2003,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             raw_torque_delay_steps = np.asarray(fixed_torque_delay_steps, dtype=np.float64)
         if raw_torque_delay_steps.shape != (NUM_DR002_ACTIONS,):
             raise ValueError(
-                "torque_delay_steps_by_joint must follow the six-joint DR002 order, "
+                "torque_delay_steps_by_joint must follow the six-leg-joint DR002 order, "
                 f"got shape {raw_torque_delay_steps.shape}"
             )
         if (
@@ -2007,7 +2012,10 @@ class DR002JoystickEnv(DR002BaseEnv):
             or np.any(raw_torque_delay_steps != np.rint(raw_torque_delay_steps))
         ):
             raise ValueError("torque delay steps must contain non-negative integers")
-        self._torque_delay_steps_by_joint = raw_torque_delay_steps.astype(np.int32)
+        # Widen to 8, wings never delayed.
+        full_torque_delay = np.zeros((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.int32)
+        full_torque_delay[:NUM_DR002_ACTIONS] = raw_torque_delay_steps.astype(np.int32)
+        self._torque_delay_steps_by_joint = full_torque_delay
         self._torque_delay_max_steps = int(np.max(self._torque_delay_steps_by_joint))
         has_command_delay = self._action_delay_max_steps > 0
         has_torque_delay = self._torque_delay_max_steps > 0
@@ -2026,9 +2034,11 @@ class DR002JoystickEnv(DR002BaseEnv):
                 raise ValueError(
                     "use_native_command_delay_pd does not support a post-controller torque FIFO"
                 )
-        self._computed_motor_ctrl = np.zeros((num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        self._computed_motor_ctrl = np.zeros(
+            (num_envs, NUM_DR002_TOTAL_ACTUATORS), dtype=self._np_dtype
+        )
         self._torque_delay_buffer = np.zeros(
-            (num_envs, self._torque_delay_max_steps + 1, NUM_DR002_ACTIONS),
+            (num_envs, self._torque_delay_max_steps + 1, NUM_DR002_TOTAL_ACTUATORS),
             dtype=self._np_dtype,
         )
         self._reset_action_delay(np.arange(num_envs, dtype=np.int32), resample=True)
@@ -2055,10 +2065,26 @@ class DR002JoystickEnv(DR002BaseEnv):
                 f"got {self._standing_probability}"
             )
         self._episode_standing_mask = np.zeros((num_envs,), dtype=np.bool_)
-        self._zero_hz_wing_angle_obs = np.zeros(
-            (num_envs, _WING_ANGLE_OBS_DIM), dtype=self._np_dtype
+        # Env-owned wing state. Two channels [left_wing, right_wing].
+        # * _wing_velocity_command: RC-like rad/s target that is resampled at
+        #   reset and every ``_wing_command_hold_steps`` control steps.
+        # * _wing_position_command: setpoint fed to the backend position PD;
+        #   integrated from the velocity command at ctrl_dt and clamped to
+        #   the joint range so vel=0 freezes the setpoint (the PD keeps the
+        #   wings from drooping under gravity).
+        self._wing_velocity_command = np.zeros(
+            (num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype
         )
-        self._wing_angle_obs_amplitude_scales = np.ones((num_envs,), dtype=self._np_dtype)
+        self._wing_position_command = np.zeros(
+            (num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype
+        )
+        self._wing_command_hold_steps = np.zeros((num_envs,), dtype=np.int32)
+        # Wing joint position bounds read once from the model. The XML's
+        # ``left_wing_joint`` / ``right_wing_joint`` range is [-pi/2, 0].
+        self._wing_joint_lower = np.full(
+            (NUM_WING_ACTUATORS,), -np.pi / 2, dtype=self._np_dtype
+        )
+        self._wing_joint_upper = np.zeros((NUM_WING_ACTUATORS,), dtype=self._np_dtype)
         self._standing_window_episodes = 0
         self._standing_window_fail_count = 0
         self._standing_window_episode_length_fraction_sum = 0.0
@@ -2125,7 +2151,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._measured_csv_force_base = np.zeros((num_envs, 3), dtype=get_global_dtype())
         self._measured_csv_moment_base = np.zeros((num_envs, 3), dtype=get_global_dtype())
         self._validate_csv_force_curriculum_cfg()
-        _validate_wing_angle_observation_mapping(cfg.domain_rand, cfg.wing_angle_obs)
+        _validate_wing_angle_observation_mapping(cfg.wing_angle_obs)
+        _validate_wing_velocity_observation_mapping(cfg.wing_velocity_obs)
+        _validate_wing_velocity_command_config(cfg.wing_velocity_cmd)
         self._validate_noise_curriculum_cfg()
         self._episode_track_lin_vel_x_sum = np.zeros((num_envs,), dtype=np.float64)
         self._episode_track_ang_vel_z_sum = np.zeros((num_envs,), dtype=np.float64)
@@ -2546,12 +2574,14 @@ class DR002JoystickEnv(DR002BaseEnv):
         return obs, info
 
     def _neutral_policy_ctrl(self, env_ids: np.ndarray) -> np.ndarray:
+        """Neutral ctrl in the full backend actuator space (nu=8)."""
         env_ids = np.asarray(env_ids, dtype=np.int32)
-        neutral = np.zeros((len(env_ids), NUM_DR002_ACTIONS), dtype=self._np_dtype)
+        neutral = np.zeros((len(env_ids), NUM_DR002_TOTAL_ACTUATORS), dtype=self._np_dtype)
         neutral[:, LEG_ACTION_INDICES] = (
             self.default_angles[LEG_ACTION_INDICES]
             + self._default_joint_pos_offset[env_ids][:, LEG_ACTION_INDICES]
         )
+        # Wings default to zero velocity command; wheel entries already 0.
         return neutral
 
     def _reset_action_delay(self, env_ids: np.ndarray, *, resample: bool) -> None:
@@ -2579,7 +2609,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         env_ids = np.arange(policy_ctrl.shape[0], dtype=np.int32)
         if self._action_delay_indices.ndim == 1:
             return self._action_delay_buffer[env_ids, self._action_delay_indices[env_ids]]
-        joint_ids = np.arange(NUM_DR002_ACTIONS, dtype=np.int32)
+        joint_ids = np.arange(NUM_DR002_TOTAL_ACTUATORS, dtype=np.int32)
         return self._action_delay_buffer[
             env_ids[:, None], self._action_delay_indices[env_ids], joint_ids[None, :]
         ]
@@ -2591,7 +2621,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._torque_delay_buffer[:, 1:] = self._torque_delay_buffer[:, :-1].copy()
         self._torque_delay_buffer[:, 0] = motor_ctrl
         env_ids = np.arange(motor_ctrl.shape[0], dtype=np.int32)
-        joint_ids = np.arange(NUM_DR002_ACTIONS, dtype=np.int32)
+        joint_ids = np.arange(NUM_DR002_TOTAL_ACTUATORS, dtype=np.int32)
         return self._torque_delay_buffer[
             env_ids[:, None], self._torque_delay_steps_by_joint[None, :], joint_ids[None, :]
         ]
@@ -2602,13 +2632,15 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._torque_delay_buffer[np.asarray(env_ids, dtype=np.intp)] = 0.0
 
     def _validate_motor_control_contract(self, ctrl_range: np.ndarray, num_envs: int) -> None:
-        if self._backend.num_actuators != NUM_DR002_ACTIONS:
+        if self._backend.num_actuators != NUM_DR002_TOTAL_ACTUATORS:
             raise ValueError(
-                f"DR002 requires {NUM_DR002_ACTIONS} motor actuators, got {self._backend.num_actuators}"
+                f"DR002 requires {NUM_DR002_TOTAL_ACTUATORS} motor actuators "
+                f"(6 legs + 2 wings), got {self._backend.num_actuators}"
             )
-        if ctrl_range.shape != (NUM_DR002_ACTIONS, 2):
+        if ctrl_range.shape != (NUM_DR002_TOTAL_ACTUATORS, 2):
             raise ValueError(
-                f"DR002 actuator ctrl_range must have shape ({NUM_DR002_ACTIONS}, 2), got {ctrl_range.shape}"
+                f"DR002 actuator ctrl_range must have shape ({NUM_DR002_TOTAL_ACTUATORS}, 2), "
+                f"got {ctrl_range.shape}"
             )
         expected_shape = (num_envs, NUM_DR002_ACTIONS)
         pos = stack_joint_sensors(self._backend, "pos", dtype=self.default_angles.dtype)
@@ -2617,6 +2649,21 @@ class DR002JoystickEnv(DR002BaseEnv):
             raise ValueError(f"DR002 joint position sensor stack must have shape {expected_shape}")
         if vel.shape != expected_shape:
             raise ValueError(f"DR002 joint velocity sensor stack must have shape {expected_shape}")
+        expected_wing_shape = (num_envs, NUM_WING_ACTUATORS)
+        wing_pos = stack_wing_sensors(self._backend, "pos", dtype=self.default_angles.dtype)
+        wing_vel = stack_wing_sensors(
+            self._backend, "vel_sensor", dtype=self.default_angles.dtype
+        )
+        if wing_pos.shape != expected_wing_shape:
+            raise ValueError(
+                f"DR002 wing position sensor stack must have shape {expected_wing_shape}, "
+                f"got {wing_pos.shape}"
+            )
+        if wing_vel.shape != expected_wing_shape:
+            raise ValueError(
+                f"DR002 wing velocity sensor stack must have shape {expected_wing_shape}, "
+                f"got {wing_vel.shape}"
+            )
 
     def _init_reward_functions(self) -> None:
         self._reward_fns: dict[str, Any] = {
@@ -2638,11 +2685,19 @@ class DR002JoystickEnv(DR002BaseEnv):
             "action_smooth_lingzu": self._reward_action_smooth_lingzu,
             "undesired_contacts": self._reward_undesired_contacts,
             "alive": self._reward_alive,
+            "zero_cmd_stationary": self._reward_zero_cmd_stationary,
         }
 
     def sample_reset_motor_gains(self, num_reset: int) -> tuple[np.ndarray, np.ndarray]:
-        kp = np.broadcast_to(self._base_motor_kp, (num_reset, NUM_DR002_ACTIONS)).copy()
-        kd = np.broadcast_to(self._base_motor_kd, (num_reset, NUM_DR002_ACTIONS)).copy()
+        # Gains cover all 8 actuators. Leg gains randomize per-env; wing gains
+        # are fixed position-PD values from wing_velocity_cmd.kp/kd so vel=0
+        # holds the wing at its current position setpoint.
+        kp = np.broadcast_to(
+            self._base_motor_kp, (num_reset, NUM_DR002_TOTAL_ACTUATORS)
+        ).copy()
+        kd = np.broadcast_to(
+            self._base_motor_kd, (num_reset, NUM_DR002_TOTAL_ACTUATORS)
+        ).copy()
         domain_rand = self._cfg.domain_rand
         if domain_rand.randomize_kp:
             low, high = domain_rand.kp_multiplier_range
@@ -2651,17 +2706,24 @@ class DR002JoystickEnv(DR002BaseEnv):
             low, high = domain_rand.kd_multiplier_range
             kd *= np.random.uniform(low, high, size=(num_reset, 1))
         kp[:, WHEEL_ACTION_INDICES] = 0.0
+        # Wings run position PD with fixed kp/kd; do not let the leg-oriented
+        # DR multipliers touch them.
+        kp[:, WING_ACTUATOR_INDICES] = self._base_motor_kp[WING_ACTUATOR_INDICES]
+        kd[:, WING_ACTUATOR_INDICES] = self._base_motor_kd[WING_ACTUATOR_INDICES]
         return kp, kd
 
     def sample_reset_motor_runtime_randomization(
         self, num_reset: int
     ) -> tuple[np.ndarray, np.ndarray]:
-        torque_scale = np.ones((num_reset, NUM_DR002_ACTIONS), dtype=np.float64)
+        torque_scale = np.ones((num_reset, NUM_DR002_TOTAL_ACTUATORS), dtype=np.float64)
         default_joint_pos_offset = np.zeros((num_reset, NUM_DR002_ACTIONS), dtype=self._np_dtype)
         domain_rand = self._cfg.domain_rand
         if domain_rand.randomize_torque_scale:
             low, high = domain_rand.torque_scale_range
-            torque_scale *= np.random.uniform(low, high, size=(num_reset, NUM_DR002_ACTIONS))
+            leg_scale = np.random.uniform(low, high, size=(num_reset, NUM_DR002_ACTIONS))
+            torque_scale[:, :NUM_DR002_ACTIONS] *= leg_scale
+            # Wing torque scale is left at 1.0 so the RC velocity command is
+            # applied faithfully at the actuator PD stage.
         if domain_rand.randomize_default_joint_pos:
             low, high = domain_rand.default_joint_pos_offset_range
             default_joint_pos_offset[:, LEG_ACTION_INDICES] = np.random.uniform(
@@ -2996,80 +3058,76 @@ class DR002JoystickEnv(DR002BaseEnv):
             dtype=np.bool_,
         )
 
-    def sample_reset_zero_hz_wing_angle_obs(
-        self,
-        zero_hz_mask: np.ndarray,
-    ) -> np.ndarray:
-        mask = np.asarray(zero_hz_mask, dtype=np.bool_).reshape(-1)
-        result = np.zeros((mask.size, _WING_ANGLE_OBS_DIM), dtype=self._np_dtype)
-        if not self._wing_angle_obs_enabled or not np.any(mask):
-            return result
-        low, high = np.asarray(
-            self._cfg.wing_angle_obs.standing_normalized_range,
-            dtype=np.float64,
-        )
-        result[mask] = np.random.uniform(
-            low,
-            high,
-            size=(int(np.count_nonzero(mask)), _WING_ANGLE_OBS_DIM),
-        ).astype(self._np_dtype)
-        return result
-
-    def set_zero_hz_wing_angle_obs(
-        self,
-        env_ids: np.ndarray,
-        wing_angle_obs: np.ndarray,
-    ) -> None:
-        rows = np.asarray(env_ids, dtype=np.int32)
-        values = np.asarray(wing_angle_obs, dtype=self._np_dtype)
-        expected_shape = (rows.size, _WING_ANGLE_OBS_DIM)
-        if values.shape != expected_shape:
-            raise ValueError(
-                f"zero-Hz wing angle obs must have shape {expected_shape}, got {values.shape}"
-            )
-        self._zero_hz_wing_angle_obs[rows] = values
-
-    def sample_reset_wing_angle_obs_amplitude_scales(self, num_reset: int) -> np.ndarray:
-        if num_reset <= 0:
-            return np.ones((0,), dtype=self._np_dtype)
-        if not self._wing_angle_obs_enabled:
-            return np.ones((num_reset,), dtype=self._np_dtype)
-        low, high = _wing_angle_obs_csv_amplitude_scale_bounds(self._cfg.wing_angle_obs)
+    def _sample_wing_command_hold_steps(self, num_reset: int) -> np.ndarray:
+        cfg = self._cfg.wing_velocity_cmd
+        period = np.asarray(cfg.resample_period_s, dtype=np.float64)
+        ctrl_dt = float(self._cfg.ctrl_dt)
+        low = max(1, int(round(period[0] / ctrl_dt)))
+        high = max(low, int(round(period[1] / ctrl_dt)))
         if high <= low:
-            return np.full((num_reset,), low, dtype=self._np_dtype)
-        return np.asarray(
-            np.random.uniform(low, high, size=(num_reset,)),
-            dtype=self._np_dtype,
+            return np.full((num_reset,), low, dtype=np.int32)
+        return np.random.randint(low, high + 1, size=(num_reset,), dtype=np.int32)
+
+    def _sample_wing_velocity_command(self, num_reset: int) -> np.ndarray:
+        cfg = self._cfg.wing_velocity_cmd
+        max_v = float(cfg.max_rad_per_s)
+        if not cfg.enabled or max_v <= 0.0 or num_reset <= 0:
+            return np.zeros((num_reset, NUM_WING_ACTUATORS), dtype=self._np_dtype)
+        if cfg.per_side_independent:
+            values = np.random.uniform(
+                -max_v, max_v, size=(num_reset, NUM_WING_ACTUATORS)
+            )
+        else:
+            shared = np.random.uniform(-max_v, max_v, size=(num_reset, 1))
+            values = np.broadcast_to(shared, (num_reset, NUM_WING_ACTUATORS)).copy()
+        return values.astype(self._np_dtype)
+
+    def reset_wing_velocity_command(self, env_ids: np.ndarray) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        num_reset = int(rows.size)
+        if num_reset == 0:
+            return
+        self._wing_velocity_command[rows] = self._sample_wing_velocity_command(num_reset)
+        self._wing_command_hold_steps[rows] = self._sample_wing_command_hold_steps(num_reset)
+        # The keyframe starts wings at qpos = 0 (upper bound of the range); the
+        # position setpoint tracks the actual joint pose at reset so the PD is
+        # neutral until vel_cmd advances it.
+        wing_pos_at_reset = stack_wing_sensors(
+            self._backend, "pos", dtype=self._np_dtype
+        )
+        self._wing_position_command[rows] = wing_pos_at_reset[rows]
+
+    def _advance_wing_velocity_command(self) -> None:
+        """Tick down hold counters, resample expired sides, and integrate the
+        signed velocity command into the position setpoint used by the PD.
+        A vel_cmd of 0 therefore leaves the setpoint unchanged and the PD
+        actively holds the wing at that angle instead of letting it droop."""
+        cfg = self._cfg.wing_velocity_cmd
+        if not cfg.enabled or float(cfg.max_rad_per_s) <= 0.0:
+            self._wing_velocity_command.fill(0.0)
+            return
+        active = np.arange(self._num_envs, dtype=np.int32)
+        self._wing_command_hold_steps[active] = self._wing_command_hold_steps[active] - 1
+        resample_mask = self._wing_command_hold_steps[active] <= 0
+        if np.any(resample_mask):
+            resample_ids = active[resample_mask]
+            self.reset_wing_velocity_command(resample_ids)
+        # Integrate vel_cmd (rad/s) into pos_cmd (rad) at ctrl_dt and clamp
+        # to the mechanical range. If the setpoint hits an edge and the
+        # command still points outward, freeze it there so the resample loop
+        # naturally spends more time near the boundary.
+        dt = np.asarray(self._cfg.ctrl_dt, dtype=self._wing_position_command.dtype)
+        self._wing_position_command += self._wing_velocity_command * dt
+        np.clip(
+            self._wing_position_command,
+            self._wing_joint_lower,
+            self._wing_joint_upper,
+            out=self._wing_position_command,
         )
 
-    def set_wing_angle_obs_amplitude_scales(
-        self,
-        env_ids: np.ndarray,
-        amplitude_scales: np.ndarray,
-    ) -> None:
-        rows = np.asarray(env_ids, dtype=np.int32)
-        values = np.asarray(amplitude_scales, dtype=self._np_dtype).reshape(-1)
-        if values.shape != (rows.size,):
-            raise ValueError(
-                "wing-angle observation amplitude scales must have shape "
-                f"({rows.size},), got {values.shape}"
-            )
-        low, high = _wing_angle_obs_csv_amplitude_scale_bounds(self._cfg.wing_angle_obs)
-        tolerance = max(1.0, abs(low), abs(high)) * 1.0e-6
-        if (
-            not np.all(np.isfinite(values))
-            or np.any(values < low - tolerance)
-            or np.any(values > high + tolerance)
-        ):
-            raise ValueError(
-                "wing-angle observation amplitude scales must be finite and inside "
-                f"the configured [{low}, {high}] range"
-            )
-        self._wing_angle_obs_amplitude_scales[rows] = values
-
-    def wing_angle_obs_amplitude_scales(self) -> np.ndarray:
+    def wing_velocity_command(self) -> np.ndarray:
         return np.asarray(
-            self._wing_angle_obs_amplitude_scales[: self._num_envs],
+            self._wing_velocity_command[: self._num_envs],
             dtype=np.float64,
         )
 
@@ -3112,6 +3170,11 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _validate_csv_force_curriculum_cfg(self) -> None:
         domain_rand = self._cfg.domain_rand
+        # The csv_force disturbance path is dormant unless explicitly enabled.
+        # Skip every downstream shape check when it is off to avoid tripping
+        # on defaults left in this dataclass for backwards compatibility.
+        if not domain_rand.csv_force_enabled:
+            return
         self._csv_force_start_delay_step_bounds()
         self._csv_force_amplitude_scale_bounds()
         force_normalization = float(domain_rand.csv_force_observation_force_normalization)
@@ -3215,119 +3278,51 @@ class DR002JoystickEnv(DR002BaseEnv):
         self,
         num_obs: int,
         env_ids: np.ndarray | None,
-        *,
-        preview_next_step: bool,
-        episode_steps_override: np.ndarray | None = None,
     ) -> np.ndarray:
+        """Actor observation for wing joint angles read straight from the sim.
+
+        Normalization matches Deploy: physical radians divided by ``pi`` (i.e.
+        ``deg/180``). The optional ``zero_offsets_deg`` re-centers around the
+        mounting zero used on hardware.
+        """
         result = np.zeros((num_obs, _WING_ANGLE_OBS_DIM), dtype=get_global_dtype())
         if not self._wing_angle_obs_enabled:
             return result
-
-        domain_rand = self._cfg.domain_rand
         angle_cfg = self._cfg.wing_angle_obs
-        levels = np.asarray(
-            self._select_env_rows(self.csv_force_active_levels(), num_obs, env_ids),
-            dtype=np.int32,
+        wing_pos_rad = stack_wing_sensors(self._backend, "pos", dtype=np.float64)
+        wing_pos_rad = self._select_env_rows(wing_pos_rad, num_obs, env_ids)
+        zero_offsets_rad = np.deg2rad(
+            np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64)
         )
-        resume_suppressed = np.asarray(
-            self._select_env_rows(
-                self.csv_force_resume_suppressed(),
-                num_obs,
-                env_ids,
-            ),
-            dtype=np.bool_,
-        )
-        amplitude_scales = np.asarray(
-            self._select_env_rows(
-                self.wing_angle_obs_amplitude_scales(),
-                num_obs,
-                env_ids,
-            ),
-            dtype=np.float64,
-        )
-        if episode_steps_override is None:
-            state = getattr(self, "_state", None)
-            if state is None:
-                episode_steps = np.zeros((num_obs,), dtype=np.int64)
-            else:
-                episode_steps = np.asarray(
-                    self._select_env_rows(self.episode_steps(), num_obs, env_ids),
-                    dtype=np.int64,
-                )
-        else:
-            episode_steps = np.asarray(episode_steps_override, dtype=np.int64).reshape(-1)
-            if episode_steps.shape != (num_obs,):
-                raise ValueError(
-                    "episode_steps_override must match observation rows, "
-                    f"got {episode_steps.shape} and ({num_obs},)"
-                )
-        if preview_next_step:
-            episode_steps = episode_steps + 1
-        start_delay_steps = np.asarray(
-            self._select_env_rows(self.csv_force_start_delay_steps(), num_obs, env_ids),
-            dtype=np.int32,
-        )
-        elapsed_after_startup, replay_t = _csv_replay_clock(
-            domain_rand,
-            episode_steps,
-            self._startup_stand_steps,
-            float(self._cfg.ctrl_dt),
-            start_delay_steps=start_delay_steps,
-        )
-        elapsed_s = np.maximum(elapsed_after_startup, 0).astype(np.float64) * float(
-            self._cfg.ctrl_dt
-        )
-
-        zero_offsets = np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64)
+        relative_rad = wing_pos_rad - zero_offsets_rad[None, :]
+        wrapped_rad = np.mod(relative_rad + np.pi, 2.0 * np.pi) - np.pi
+        # Physical deg / normalization_deg == physical rad / (normalization_deg
+        # * pi / 180). With the default 180 deg normalization this is rad/pi,
+        # exactly what Deploy computes from JointState.position.
+        deg_per_rad = 180.0 / np.pi
         normalization_deg = float(angle_cfg.normalization_deg)
-        for level in np.unique(levels):
-            level_int = int(level)
-            source_hz = _csv_force_curriculum_source_hz(domain_rand, level_int)
-            force_path = _csv_force_curriculum_path_for_level(domain_rand, level_int)
-            angle_path = _wing_angle_path_for_level(domain_rand, angle_cfg, level_int)
-            if source_hz <= 0.0 or force_path is None or angle_path is None:
-                continue
+        result[:] = ((wrapped_rad * deg_per_rad) / normalization_deg).astype(
+            get_global_dtype()
+        )
+        return result
 
-            if force_path not in self._wing_angle_force_samples_by_path:
-                self._wing_angle_force_samples_by_path[force_path] = _load_force_csv(force_path)
-            if angle_path not in self._wing_angle_samples_by_path:
-                self._wing_angle_samples_by_path[angle_path] = _load_wing_angle_csv(angle_path)
-            force_samples = self._wing_angle_force_samples_by_path[force_path]
-            angle_samples = self._wing_angle_samples_by_path[angle_path]
+    def _compute_wing_vel_obs(
+        self,
+        num_obs: int,
+        env_ids: np.ndarray | None,
+    ) -> np.ndarray:
+        """Actor observation for wing joint angular velocity.
 
-            level_rows = levels == level_int
-            level_indices = np.flatnonzero(level_rows)
-            activity_weight = _csv_replay_activity_weight(
-                force_samples,
-                replay_t[level_rows],
-                elapsed_s[level_rows],
-                period=float(domain_rand.csv_force_period),
-                transition_seconds=float(domain_rand.csv_force_transition_seconds),
-            )
-            activity_weight[elapsed_after_startup[level_rows] < 0] = 0.0
-            active_local = activity_weight > 0.0
-            if not np.any(active_local):
-                continue
-            active_indices = level_indices[active_local]
-            phase_t = np.mod(replay_t[active_indices], 1.0 / source_hz)
-            angles_deg = _interp_wing_angle_csv_batch(angle_samples, phase_t)
-            relative_deg = angles_deg - zero_offsets[None, :]
-            wrapped_deg = np.mod(relative_deg + 180.0, 360.0) - 180.0
-            result[active_indices] = np.asarray(
-                (wrapped_deg / normalization_deg)
-                * activity_weight[active_local, None]
-                * amplitude_scales[active_indices, None],
-                dtype=get_global_dtype(),
-            )
-        zero_hz_mask = _csv_force_zero_hz_mask(domain_rand, levels)
-        if np.any(zero_hz_mask):
-            zero_hz_obs = self._select_env_rows(
-                self._zero_hz_wing_angle_obs,
-                num_obs,
-                env_ids,
-            )
-            result[zero_hz_mask] = zero_hz_obs[zero_hz_mask]
-        result[resume_suppressed] = 0.0
+        Scale mirrors the leg ``dof_vel * 0.1`` term so the actor sees all
+        joint-velocity slots at comparable magnitudes.
+        """
+        result = np.zeros((num_obs, _WING_VEL_OBS_DIM), dtype=get_global_dtype())
+        if not self._wing_velocity_obs_enabled:
+            return result
+        vel_cfg = self._cfg.wing_velocity_obs
+        wing_vel_rad_s = stack_wing_sensors(self._backend, "vel_sensor", dtype=np.float64)
+        wing_vel_rad_s = self._select_env_rows(wing_vel_rad_s, num_obs, env_ids)
+        result[:] = (wing_vel_rad_s * float(vel_cfg.scale)).astype(get_global_dtype())
         return result
 
     @staticmethod
@@ -3510,23 +3505,30 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
         state.info["current_actions"] = clipped_actions
 
-        ctrl = np.zeros((clipped_actions.shape[0], NUM_DR002_ACTIONS), dtype=self._np_dtype)
-        num_actions = clipped_actions.shape[0]
+        # ctrl is 8-wide: [leg_thigh, leg_calf, wheel, leg_thigh, leg_calf,
+        # wheel, left_wing_pos_target, right_wing_pos_target]. Legs 0..5 come
+        # from policy actions; wings 6..7 carry the env-integrated position
+        # setpoint that the backend position PD tracks (position_control_mask
+        # is 1 on wing slots, so the kernel computes kp*(target - pos) - kd*vel).
+        batch = clipped_actions.shape[0]
+        ctrl = np.zeros((batch, NUM_DR002_TOTAL_ACTUATORS), dtype=self._np_dtype)
         ctrl[:, LEG_ACTION_INDICES] = (
             clipped_actions[:, LEG_ACTION_INDICES] * self._cfg.control_config.action_scale
             + self.default_angles[LEG_ACTION_INDICES]
-            + self._default_joint_pos_offset[:num_actions, LEG_ACTION_INDICES]
+            + self._default_joint_pos_offset[:batch, LEG_ACTION_INDICES]
         )
         ctrl[:, WHEEL_ACTION_INDICES] = (
             clipped_actions[:, WHEEL_ACTION_INDICES] * self._cfg.control_config.wheel_action_scale
         )
+        self._advance_wing_velocity_command()
+        ctrl[:, WING_ACTUATOR_INDICES] = self._wing_position_command[:batch]
         return ctrl
 
     def _pre_step_motor_control(self, backend: Any, policy_ctrl: np.ndarray) -> np.ndarray:
         if self._motor_control_substep_index == 0:
             delayed_policy_ctrl = self._delayed_policy_ctrl(policy_ctrl)
-            joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
-            joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
+            joint_pos = self._stack_full_joint_pos()
+            joint_vel = self._stack_full_joint_vel()
             compute_dr002_motor_ctrl(
                 delayed_policy_ctrl,
                 joint_pos,
@@ -3544,14 +3546,26 @@ class DR002JoystickEnv(DR002BaseEnv):
         ) % self._motor_control_decimation
         return self._last_motor_ctrl
 
+    def _stack_full_joint_pos(self) -> np.ndarray:
+        """Return joint positions for all 8 actuators (legs first, then wings)."""
+        leg = stack_joint_sensors(self._backend, "pos", dtype=self.default_angles.dtype)
+        wing = stack_wing_sensors(self._backend, "pos", dtype=self.default_angles.dtype)
+        return np.concatenate([leg, wing], axis=1)
+
+    def _stack_full_joint_vel(self) -> np.ndarray:
+        """Return joint velocities for all 8 actuators (legs first, then wings)."""
+        leg = stack_joint_sensors(self._backend, "vel", dtype=self.default_angles.dtype)
+        wing = stack_wing_sensors(self._backend, "vel_sensor", dtype=self.default_angles.dtype)
+        return np.concatenate([leg, wing], axis=1)
+
     def _batched_motor_control(
         self, backend: Any, policy_ctrl: np.ndarray, nsteps: int
     ) -> BatchedMixedPdControl:
         if nsteps < 1:
             raise ValueError("DR002 batched motor control requires at least one physics substep")
-        joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
-        joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
-        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_ACTIONS)
+        joint_pos = self._stack_full_joint_pos()
+        joint_vel = self._stack_full_joint_vel()
+        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_TOTAL_ACTUATORS)
         target_trajectory = getattr(self, "_batched_policy_ctrl_trajectory", None)
         if target_trajectory is None or target_trajectory.shape != trajectory_shape:
             target_trajectory = np.empty(trajectory_shape, dtype=self._np_dtype)
@@ -3584,9 +3598,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             raise ValueError(
                 "DR002 batched command-delay motor control requires at least one physics substep"
             )
-        joint_pos = stack_joint_sensors(backend, "pos", dtype=self.default_angles.dtype)
-        joint_vel = stack_joint_sensors(backend, "vel", dtype=self.default_angles.dtype)
-        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_ACTIONS)
+        joint_pos = self._stack_full_joint_pos()
+        joint_vel = self._stack_full_joint_vel()
+        trajectory_shape = (policy_ctrl.shape[0], int(nsteps), NUM_DR002_TOTAL_ACTUATORS)
         target_trajectory = getattr(self, "_batched_command_policy_ctrl_trajectory", None)
         if target_trajectory is None or target_trajectory.shape != trajectory_shape:
             target_trajectory = np.empty(trajectory_shape, dtype=self._np_dtype)
@@ -3596,7 +3610,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         if self._action_delay_indices.ndim == 1:
             command_delay_steps = np.broadcast_to(
                 self._action_delay_indices[:, None],
-                (policy_ctrl.shape[0], NUM_DR002_ACTIONS),
+                (policy_ctrl.shape[0], NUM_DR002_TOTAL_ACTUATORS),
             )
         else:
             command_delay_steps = self._action_delay_indices
@@ -3650,7 +3664,9 @@ class DR002JoystickEnv(DR002BaseEnv):
         projected_gravity = self.get_projected_gravity()
         dof_pos = self.get_dof_pos()
         dof_vel = self.get_dof_vel()
-        state.info["torques"] = self._last_motor_ctrl.copy()
+        # Info-bag ``torques`` stays 6-wide (leg-only) for policy/critic obs.
+        # Wing torques live in _last_motor_ctrl[:, 6:8] and are not exposed.
+        state.info["torques"] = self._last_motor_ctrl[:, :NUM_DR002_ACTIONS].copy()
         state.info["qacc"] = self._estimate_dof_acc(dof_vel)
         terminated = self._compute_terminated(gravity)
         reward = self._compute_reward(state.info, linvel, gyro, gravity, dof_pos, dof_vel)
@@ -4532,16 +4548,8 @@ class DR002JoystickEnv(DR002BaseEnv):
             noisy_dof_vel_obs * 0.1,
             current_actions,
         ]
-        wing_angle_obs = None
+        wing_angle_obs = self._compute_wing_angle_obs(num_obs, env_ids)
         if self._wing_angle_obs_enabled:
-            wing_angle_obs = self._compute_wing_angle_obs(
-                num_obs,
-                env_ids,
-                preview_next_step=not reset_history,
-                episode_steps_override=(
-                    np.zeros((num_obs,), dtype=np.int64) if reset_history else None
-                ),
-            )
             wing_angle_obs = self._obs_multiplicative_gaussian_noise_at_level(
                 wing_angle_obs,
                 float(self._cfg.wing_angle_obs.gaussian_noise_relative_std),
@@ -4555,7 +4563,23 @@ class DR002JoystickEnv(DR002BaseEnv):
             )
             if self._cfg.wing_angle_obs.force_zero_output:
                 wing_angle_obs.fill(0.0)
-            frame_terms.append(wing_angle_obs)
+        frame_terms.append(wing_angle_obs)
+        wing_vel_obs = self._compute_wing_vel_obs(num_obs, env_ids)
+        if self._wing_velocity_obs_enabled:
+            vel_cfg = self._cfg.wing_velocity_obs
+            wing_vel_obs = self._obs_multiplicative_gaussian_noise_at_level(
+                wing_vel_obs,
+                float(vel_cfg.gaussian_noise_relative_std),
+                noise_level,
+            )
+            wing_vel_obs = self._obs_noise_at_level(
+                wing_vel_obs,
+                float(vel_cfg.noise_half_range_rad_s) * float(vel_cfg.scale),
+                noise_level,
+            )
+            if vel_cfg.force_zero_output:
+                wing_vel_obs.fill(0.0)
+        frame_terms.append(wing_vel_obs)
         frame_terms.append(commands)
         actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
         previous_actions = np.asarray(
@@ -4618,11 +4642,6 @@ class DR002JoystickEnv(DR002BaseEnv):
             axis=1,
             dtype=get_global_dtype(),
         )
-        measured_csv_force = np.asarray(
-            self._select_env_rows(self._measured_csv_force_base, num_obs, env_ids),
-            dtype=get_global_dtype(),
-        ).copy()
-        measured_csv_force /= float(self._cfg.domain_rand.csv_force_observation_force_normalization)
         critic_terms = [
             linvel,
             gyro,
@@ -4640,17 +4659,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._select_env_rows(self._privileged_base_com_offset, num_obs, env_ids),
             ordered_default_joint_pos_offset,
             material_properties,
-            measured_csv_force,
         ]
-        if self._critic_includes_measured_moment:
-            measured_csv_moment = np.asarray(
-                self._select_env_rows(self._measured_csv_moment_base, num_obs, env_ids),
-                dtype=get_global_dtype(),
-            ).copy()
-            measured_csv_moment /= float(
-                self._cfg.domain_rand.csv_force_observation_moment_normalization
-            )
-            critic_terms.append(measured_csv_moment)
         critic = np.concatenate(
             critic_terms,
             axis=1,
@@ -4793,6 +4802,18 @@ class DR002JoystickEnv(DR002BaseEnv):
         error = np.square(ctx.info["commands"][:, 1] - ctx.gyro[:, 2])
         reward = np.asarray(np.exp(-error / (ctx.tracking_sigma**2)), dtype=get_global_dtype())
         return self._clip_lingzu_reward("track_ang_vel_z", reward)
+
+    def _reward_zero_cmd_stationary(self, ctx: RewardContext) -> np.ndarray:
+        cmd = ctx.info["commands"]
+        gate = (
+            (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx)
+            & (np.abs(cmd[:, 1]) < self._reward_cfg.zero_cmd_stationary_gate_wz)
+        )
+        err = np.abs(ctx.linvel[:, 0]) + self._reward_cfg.zero_cmd_stationary_yaw_weight * np.abs(
+            ctx.gyro[:, 2]
+        )
+        reward = np.where(gate, err, 0.0).astype(get_global_dtype())
+        return self._clip_lingzu_reward("zero_cmd_stationary", reward)
 
     def _reward_lin_vel_z_lingzu(self, ctx: RewardContext) -> np.ndarray:
         reward = np.asarray(np.square(ctx.linvel[:, 2]), dtype=get_global_dtype())
