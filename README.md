@@ -1,8 +1,14 @@
 # Walking Eagle WE11 UniLab
 
-**算法交付负责人：汪成浩**
+**算法交付负责人：熊铭煊**
 
-**正式分支：`Walking_Eagle-Unilab_final`**
+**交付日期：2026-08-31**
+
+**正式分支：`pheonix-we11/unilab-bringup`**
+
+本次交付目的是实现新需求：手动控制上肢机翼扑打角度。倒地自启方面，
+已在仿真中成功实现腿部收拢状态下的倒地自启；前倾和后倾状态下的倒地
+自启正在实现。
 
 交接范围、接口、安全边界和验证记录见：
 
@@ -47,8 +53,8 @@ The full physical/training contract is documented in
 ## Setup
 
 ```bash
-git clone --branch Walking_Eagle-Unilab_final \
-  git@git.esdyn.cn:walking-eagle/sar_unilab.git
+git clone --branch pheonix-we11/unilab-bringup \
+  https://git.esdyn.cn/pheonix-eagle/sar_unilab.git
 cd sar_unilab
 bash install_conda_environment.txt unilab_cuda cu128
 conda activate unilab_cuda

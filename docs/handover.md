@@ -5,13 +5,14 @@
 | 项目 | 内容 |
 |---|---|
 | 项目 | Walking Eagle WE11 UniLab 训练与仿真 |
-| 负责人 | 汪成浩 |
-| 交付日期 | 2026-08-04 |
-| 仓库 | `git@git.esdyn.cn:walking-eagle/sar_unilab.git` |
-| 分支 | `Walking_Eagle-Unilab_final` |
+| 负责人 | 熊铭煊 |
+| 交付日期 | 2026-08-31 |
+| 仓库 | `https://git.esdyn.cn/pheonix-eagle/sar_unilab.git` |
+| 分支 | `pheonix-we11/unilab-bringup` |
+| 交付目的 | 实现手动控制上肢机翼扑打角度的新需求 |
 | 功能冻结基线 | `532646089dab4f174f7cdc7374190c11909b5fd2` |
 | 归档提交 | 以该分支最新 `HEAD` 为准，使用 `git rev-parse HEAD` 获取 |
-| 当前状态 | WE11 MuJoCo flat/rough 可训练、可评估；不代表真机验收通过 |
+| 当前状态 | WE11 MuJoCo flat/rough 可训练、可评估；腿部收拢状态下的倒地自启已完成仿真验证，前倾和后倾状态下的倒地自启正在实现；不代表真机验收通过 |
 | 适用平台 | Walking Eagle WE11 |
 
 ## 2. 交接范围与责任边界
@@ -69,8 +70,8 @@ WE11 URDF/MJCF + 实机扫频数据
 按仓库当前冻结版本安装：
 
 ```bash
-git clone -b Walking_Eagle-Unilab_final \
-  git@git.esdyn.cn:walking-eagle/sar_unilab.git sar_unilab
+git clone -b pheonix-we11/unilab-bringup \
+  https://git.esdyn.cn/pheonix-eagle/sar_unilab.git sar_unilab
 cd sar_unilab
 bash install_conda_environment.txt unilab_cuda cu128
 conda activate unilab_cuda
@@ -192,7 +193,7 @@ Git 已跟踪两个选定的最终 checkpoint：
 
 ## 12. 交接信息
 
-- 交接人：汪成浩
+- 交接人：熊铭煊
 - 接收人：待填写
-- 交接日期：2026-08-04
-- 备注：本次提交只增加归档文档，不修改冻结运行代码、配置、资产或数据。
+- 交接日期：2026-08-31
+- 备注：本次交付目的是实现手动控制上肢机翼扑打角度；腿部收拢状态下的倒地自启已完成仿真验证，前倾和后倾状态下的倒地自启正在实现。
