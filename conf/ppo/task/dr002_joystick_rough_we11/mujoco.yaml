@@ -8,8 +8,12 @@ defaults:
 training:
   task_name: DR002JoystickRoughWE11
   sim_backend: mujoco
+  play_start_pose: upright
 
 env:
+  # Get-up training is deliberately limited to the flat task.
+  reset_pose:
+    mode: upright
   terrain_scan:
     enabled: true
     geom_name: floor

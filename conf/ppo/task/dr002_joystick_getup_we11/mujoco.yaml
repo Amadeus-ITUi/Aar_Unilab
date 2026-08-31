@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - /task/dr002_joystick_getup_we11/base
+  - _self_
+
+training:
+  task_name: DR002JoystickGetupWE11
+  sim_backend: mujoco

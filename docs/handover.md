@@ -144,7 +144,7 @@ python -m pytest -q \
 - Kd：`[0.08,0.682,0.05,0.08,0.682,0.05]`；
 - 腿 action scale：`0.5`；轮 action scale/raw clip：`10/±3.5`；
 - shared command FIFO：每次 reset 随机 `2..8` 个 200 Hz tick；
-- actor/rough critic：`135/334` 维；
+- 本节冻结归档 checkpoint 的 actor/rough critic：`135/334` 维；当前正式 Flat `model_499.pt` 发布契约为 actor `145` 维，不与该旧归档混用；
 - 冻结基线实测回放等级：`0/1/2/3 Hz`，4 Hz 不在该提交中。
 
 完整输入输出和单位见 [`interface.md`](interface.md)。

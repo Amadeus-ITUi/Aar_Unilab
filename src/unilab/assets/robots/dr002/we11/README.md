@@ -44,6 +44,7 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
 
 - `we11.xml`: 独立 WE11 MuJoCo 运行模型（nq=15, nu=8）
 - `scene_flat_we11.xml`: 平地场景，含 keyframe `home`
+- `scene_getup_alignment_we11.xml`: 独立的起立初始姿态对齐场景，不被 Flat/Rough 训练任务引用
 - `rough_locomotion_task.xml`: rough 环境注入片段
 - `meshes_lod/`: WE11 自包含 visual 网格（新版 STL + 旧版 base_link 5 分片 LOD）
 - `urdf/we11_reviewed.urdf`: 与运行模型物理属性对应的审核版 URDF

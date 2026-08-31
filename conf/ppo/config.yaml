@@ -80,6 +80,10 @@ training:
   sim2sim_strict: true
   play_render_mode: auto
   play_env_num: 16
+  # Optional task-owned reset-pose override used only when constructing Play.
+  play_start_pose: null
+  # Optional Getup-only deterministic curriculum pose used by automatic Play.
+  play_getup_difficulty: null
   render_spacing: 1.0
   play_steps: 200
   cam_distance: 6.0

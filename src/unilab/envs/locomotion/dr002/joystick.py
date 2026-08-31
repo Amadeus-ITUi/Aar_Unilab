@@ -112,6 +112,16 @@ class DR002Commands:
 
 
 @dataclass
+class ResetPoseConfig:
+    """Episode reset-pose selection for flat get-up training and Play."""
+
+    mode: str = "upright"
+    getup_probability: float = 0.0
+    getup_keyframe: str = "getup_start_v2"
+    getup_termination_grace_seconds: float = 3.0
+
+
+@dataclass
 class DR002DomainRandConfig(DomainRandConfig):
     randomize_init_yaw: bool = True
     init_yaw_range: list[float] = field(default_factory=lambda: [-np.pi, np.pi])
@@ -350,6 +360,7 @@ class DR002JoystickCfg(DR002BaseCfg):
     )
     max_episode_seconds: float = 23.0
     commands: DR002Commands = field(default_factory=DR002Commands)
+    reset_pose: ResetPoseConfig = field(default_factory=ResetPoseConfig)
     reward_config: RewardConfig | None = None
     sensor: JoystickSensor = field(default_factory=JoystickSensor)  # type: ignore[assignment]
     domain_rand: DR002DomainRandConfig = field(default_factory=DR002DomainRandConfig)
@@ -357,9 +368,7 @@ class DR002JoystickCfg(DR002BaseCfg):
     wing_velocity_obs: WingVelocityObservationConfig = field(
         default_factory=WingVelocityObservationConfig
     )
-    wing_velocity_cmd: WingVelocityCommandConfig = field(
-        default_factory=WingVelocityCommandConfig
-    )
+    wing_velocity_cmd: WingVelocityCommandConfig = field(default_factory=WingVelocityCommandConfig)
     critic_obs_mode: str = "legacy"
 
 
@@ -862,9 +871,7 @@ def _validate_wing_velocity_command_config(cfg: WingVelocityCommandConfig) -> No
     if period.shape != (2,) or not np.all(np.isfinite(period)):
         raise ValueError("wing_velocity_cmd.resample_period_s must be [min, max] finite values")
     if period[0] <= 0.0 or period[1] < period[0]:
-        raise ValueError(
-            "wing_velocity_cmd.resample_period_s must satisfy 0 < min <= max"
-        )
+        raise ValueError("wing_velocity_cmd.resample_period_s must satisfy 0 < min <= max")
     if not np.isfinite(float(cfg.kp)) or float(cfg.kp) < 0.0:
         raise ValueError("wing_velocity_cmd.kp must be finite and non-negative")
     if not np.isfinite(float(cfg.kd)) or float(cfg.kd) < 0.0:
@@ -1688,6 +1695,12 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         num_reset = len(env_ids)
         qpos = np.tile(env._init_qpos, (num_reset, 1))
         qvel = np.tile(env._init_qvel, (num_reset, 1))
+        getup_mask = env.sample_reset_getup_mask(num_reset)
+        if np.any(getup_mask):
+            if env._getup_qpos is None:
+                raise RuntimeError("get-up reset selected without a loaded get-up keyframe")
+            qpos[getup_mask] = env.sample_getup_reset_qpos(int(np.count_nonzero(getup_mask)))
+        env.set_episode_getup_mask(env_ids, getup_mask)
         low_xy, high_xy = env.cfg.domain_rand.init_xy_range
         qpos[:, 0:2] += np.random.uniform(low_xy, high_xy, (num_reset, 2))
         qpos[:, 0:3] += env._spawn.origins_for(env_ids)
@@ -1750,13 +1763,19 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             "motor_kd": motor_kd.astype(get_global_dtype()),
             "torques": np.zeros((num_reset, env._num_action), dtype=get_global_dtype()),
         }
-        return ResetPlan(
+        plan = ResetPlan(
             env_ids=env_ids,
             qpos=qpos,
             qvel=qvel,
             info_updates=info_updates,
             randomization=reset_randomization,
         )
+        # Specialized reset curricula may attach episode metadata without
+        # replacing the shared Flat domain-randomization provider/manager.
+        record_reset = getattr(env, "record_getup_reset", None)
+        if callable(record_reset):
+            record_reset(plan.env_ids, plan.qpos[:, :2])
+        return plan
 
     def _compute_reset_obs(
         self,
@@ -1807,6 +1826,34 @@ class DR002JoystickEnv(DR002BaseEnv):
         super().__init__(cfg, backend, num_envs)
         self._np_dtype = get_global_dtype()
         self._reward_cfg = cfg.reward_config
+        reset_mode = str(cfg.reset_pose.mode).strip().lower()
+        if reset_mode not in {"upright", "getup", "mixed"}:
+            raise ValueError(
+                "reset_pose.mode must be one of: upright, getup, mixed; "
+                f"got {cfg.reset_pose.mode!r}"
+            )
+        getup_probability = float(cfg.reset_pose.getup_probability)
+        if not 0.0 <= getup_probability <= 1.0:
+            raise ValueError(
+                f"reset_pose.getup_probability must be between 0 and 1, got {getup_probability}"
+            )
+        getup_grace_seconds = float(cfg.reset_pose.getup_termination_grace_seconds)
+        if getup_grace_seconds <= 0.0:
+            raise ValueError(
+                "reset_pose.getup_termination_grace_seconds must be positive, "
+                f"got {getup_grace_seconds}"
+            )
+        self._reset_pose_mode = reset_mode
+        self._getup_probability = getup_probability
+        self._getup_grace_steps = max(int(round(getup_grace_seconds / cfg.ctrl_dt)), 1)
+        self._getup_qpos = (
+            np.asarray(
+                self._backend.get_keyframe_qpos(str(cfg.reset_pose.getup_keyframe)),
+                dtype=self._np_dtype,
+            )
+            if reset_mode in {"getup", "mixed"}
+            else None
+        )
         self._wing_angle_obs_enabled = bool(cfg.wing_angle_obs.enabled)
         self._wing_velocity_obs_enabled = bool(cfg.wing_velocity_obs.enabled)
         # Actor obs frame is fixed at 29 dims (see _TERM_DIMS); disabling a
@@ -1853,9 +1900,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._motor_kd = np.broadcast_to(
             self._base_motor_kd, (num_envs, NUM_DR002_TOTAL_ACTUATORS)
         ).copy()
-        self._motor_torque_scale = np.ones(
-            (num_envs, NUM_DR002_TOTAL_ACTUATORS), dtype=np.float64
-        )
+        self._motor_torque_scale = np.ones((num_envs, NUM_DR002_TOTAL_ACTUATORS), dtype=np.float64)
         # Policy sees leg joint pos offset only, keep it 6-wide.
         self._default_joint_pos_offset = np.zeros(
             (num_envs, NUM_DR002_ACTIONS), dtype=self._np_dtype
@@ -2050,6 +2095,14 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._lingzu_action_history_count = np.zeros((num_envs,), dtype=np.int32)
         self._lingzu_fail_steps = np.zeros((num_envs,), dtype=np.int32)
         self._lingzu_contact_fail_accum_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._episode_getup_mask = np.zeros((num_envs,), dtype=np.bool_)
+        self._getup_success_hold_steps = np.zeros((num_envs,), dtype=np.int32)
+        self._getup_succeeded = np.zeros((num_envs,), dtype=np.bool_)
+        self._getup_timeout_recorded = np.zeros((num_envs,), dtype=np.bool_)
+        self._getup_episode_count = 0
+        self._getup_success_count = 0
+        self._getup_success_time_sum_s = 0.0
+        self._getup_timeout_count = 0
         self._last_termination_contact_now_fraction = 0.0
         self._last_termination_contact_accum_mean = 0.0
         self._last_termination_contact_accum_max = 0.0
@@ -2072,18 +2125,12 @@ class DR002JoystickEnv(DR002BaseEnv):
         #   integrated from the velocity command at ctrl_dt and clamped to
         #   the joint range so vel=0 freezes the setpoint (the PD keeps the
         #   wings from drooping under gravity).
-        self._wing_velocity_command = np.zeros(
-            (num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype
-        )
-        self._wing_position_command = np.zeros(
-            (num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype
-        )
+        self._wing_velocity_command = np.zeros((num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype)
+        self._wing_position_command = np.zeros((num_envs, NUM_WING_ACTUATORS), dtype=self._np_dtype)
         self._wing_command_hold_steps = np.zeros((num_envs,), dtype=np.int32)
         # Wing joint position bounds read once from the model. The XML's
         # ``left_wing_joint`` / ``right_wing_joint`` range is [-pi/2, 0].
-        self._wing_joint_lower = np.full(
-            (NUM_WING_ACTUATORS,), -np.pi / 2, dtype=self._np_dtype
-        )
+        self._wing_joint_lower = np.full((NUM_WING_ACTUATORS,), -np.pi / 2, dtype=self._np_dtype)
         self._wing_joint_upper = np.zeros((NUM_WING_ACTUATORS,), dtype=self._np_dtype)
         self._standing_window_episodes = 0
         self._standing_window_fail_count = 0
@@ -2551,6 +2598,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._external_disturbance_current_wrench[env_ids] = 0.0
         self._measured_csv_force_base[env_ids] = 0.0
         self._measured_csv_moment_base[env_ids] = 0.0
+        self.set_episode_getup_mask(env_ids, np.zeros(len(env_ids), dtype=np.bool_))
         obs, info = super().reset(env_ids)
         dof_vel = self.get_dof_vel()
         if dof_vel.shape[0] == self._num_envs:
@@ -2651,9 +2699,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             raise ValueError(f"DR002 joint velocity sensor stack must have shape {expected_shape}")
         expected_wing_shape = (num_envs, NUM_WING_ACTUATORS)
         wing_pos = stack_wing_sensors(self._backend, "pos", dtype=self.default_angles.dtype)
-        wing_vel = stack_wing_sensors(
-            self._backend, "vel_sensor", dtype=self.default_angles.dtype
-        )
+        wing_vel = stack_wing_sensors(self._backend, "vel_sensor", dtype=self.default_angles.dtype)
         if wing_pos.shape != expected_wing_shape:
             raise ValueError(
                 f"DR002 wing position sensor stack must have shape {expected_wing_shape}, "
@@ -2692,12 +2738,8 @@ class DR002JoystickEnv(DR002BaseEnv):
         # Gains cover all 8 actuators. Leg gains randomize per-env; wing gains
         # are fixed position-PD values from wing_velocity_cmd.kp/kd so vel=0
         # holds the wing at its current position setpoint.
-        kp = np.broadcast_to(
-            self._base_motor_kp, (num_reset, NUM_DR002_TOTAL_ACTUATORS)
-        ).copy()
-        kd = np.broadcast_to(
-            self._base_motor_kd, (num_reset, NUM_DR002_TOTAL_ACTUATORS)
-        ).copy()
+        kp = np.broadcast_to(self._base_motor_kp, (num_reset, NUM_DR002_TOTAL_ACTUATORS)).copy()
+        kd = np.broadcast_to(self._base_motor_kd, (num_reset, NUM_DR002_TOTAL_ACTUATORS)).copy()
         domain_rand = self._cfg.domain_rand
         if domain_rand.randomize_kp:
             low, high = domain_rand.kp_multiplier_range
@@ -3033,6 +3075,45 @@ class DR002JoystickEnv(DR002BaseEnv):
         low, high = self._base_command_ang_vel_z * scale
         return float(low), float(high)
 
+    def sample_reset_getup_mask(self, num_reset: int) -> np.ndarray:
+        if num_reset <= 0 or self._reset_pose_mode == "upright":
+            return np.zeros((max(num_reset, 0),), dtype=np.bool_)
+        if self._reset_pose_mode == "getup":
+            return np.ones((num_reset,), dtype=np.bool_)
+        if self._getup_probability <= 0.0:
+            return np.zeros((num_reset,), dtype=np.bool_)
+        if self._getup_probability >= 1.0:
+            return np.ones((num_reset,), dtype=np.bool_)
+        return np.asarray(
+            np.random.uniform(size=(num_reset,)) < self._getup_probability,
+            dtype=np.bool_,
+        )
+
+    def sample_getup_reset_qpos(self, num_reset: int) -> np.ndarray:
+        """Return full qpos rows for get-up resets.
+
+        Flat keeps the historical fixed-keyframe behavior.  Dedicated get-up
+        tasks override this hook to sample a pose curriculum without changing
+        the Flat or Rough reset contracts.
+        """
+        if self._getup_qpos is None:
+            raise RuntimeError("get-up qpos requested without a loaded get-up keyframe")
+        return np.broadcast_to(self._getup_qpos, (num_reset, self._getup_qpos.size)).copy()
+
+    def set_episode_getup_mask(self, env_ids: np.ndarray, getup_mask: np.ndarray) -> None:
+        rows = np.asarray(env_ids, dtype=np.int32)
+        mask = np.asarray(getup_mask, dtype=np.bool_).reshape(-1)
+        if mask.shape != (rows.shape[0],):
+            raise ValueError(f"getup_mask must have shape ({rows.shape[0]},), got {mask.shape}")
+        self._episode_getup_mask[rows] = mask
+        self._getup_success_hold_steps[rows] = 0
+        self._getup_succeeded[rows] = False
+        self._getup_timeout_recorded[rows] = False
+        self._getup_episode_count += int(np.count_nonzero(mask))
+
+    def episode_getup_mask(self) -> np.ndarray:
+        return np.asarray(self._episode_getup_mask[: self._num_envs], dtype=np.bool_)
+
     def sample_reset_standing_mask(self, env_ids: np.ndarray) -> np.ndarray:
         rows = np.asarray(env_ids, dtype=np.int32)
         num_reset = int(rows.size)
@@ -3074,9 +3155,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         if not cfg.enabled or max_v <= 0.0 or num_reset <= 0:
             return np.zeros((num_reset, NUM_WING_ACTUATORS), dtype=self._np_dtype)
         if cfg.per_side_independent:
-            values = np.random.uniform(
-                -max_v, max_v, size=(num_reset, NUM_WING_ACTUATORS)
-            )
+            values = np.random.uniform(-max_v, max_v, size=(num_reset, NUM_WING_ACTUATORS))
         else:
             shared = np.random.uniform(-max_v, max_v, size=(num_reset, 1))
             values = np.broadcast_to(shared, (num_reset, NUM_WING_ACTUATORS)).copy()
@@ -3092,9 +3171,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         # The keyframe starts wings at qpos = 0 (upper bound of the range); the
         # position setpoint tracks the actual joint pose at reset so the PD is
         # neutral until vel_cmd advances it.
-        wing_pos_at_reset = stack_wing_sensors(
-            self._backend, "pos", dtype=self._np_dtype
-        )
+        wing_pos_at_reset = stack_wing_sensors(self._backend, "pos", dtype=self._np_dtype)
         self._wing_position_command[rows] = wing_pos_at_reset[rows]
 
     def _advance_wing_velocity_command(self) -> None:
@@ -3291,9 +3368,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         angle_cfg = self._cfg.wing_angle_obs
         wing_pos_rad = stack_wing_sensors(self._backend, "pos", dtype=np.float64)
         wing_pos_rad = self._select_env_rows(wing_pos_rad, num_obs, env_ids)
-        zero_offsets_rad = np.deg2rad(
-            np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64)
-        )
+        zero_offsets_rad = np.deg2rad(np.asarray(angle_cfg.zero_offsets_deg, dtype=np.float64))
         relative_rad = wing_pos_rad - zero_offsets_rad[None, :]
         wrapped_rad = np.mod(relative_rad + np.pi, 2.0 * np.pi) - np.pi
         # Physical deg / normalization_deg == physical rad / (normalization_deg
@@ -3301,9 +3376,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         # exactly what Deploy computes from JointState.position.
         deg_per_rad = 180.0 / np.pi
         normalization_deg = float(angle_cfg.normalization_deg)
-        result[:] = ((wrapped_rad * deg_per_rad) / normalization_deg).astype(
-            get_global_dtype()
-        )
+        result[:] = ((wrapped_rad * deg_per_rad) / normalization_deg).astype(get_global_dtype())
         return result
 
     def _compute_wing_vel_obs(
@@ -3679,6 +3752,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         return state.replace(obs=obs, reward=reward, terminated=terminated)
 
     def _compute_terminated(self, gravity: np.ndarray) -> np.ndarray:
+        self._update_getup_success(gravity)
         gravity_failed_now = gravity[:, 2] <= self._reward_cfg.termination_gravity_z_threshold
         contact_failed_now = self._has_termination_contact(
             gravity.shape[0], threshold=self._reward_cfg.termination_contact_threshold
@@ -3695,8 +3769,28 @@ class DR002JoystickEnv(DR002BaseEnv):
             int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1
         )
         contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
-        gravity_done = self._lingzu_fail_steps >= fail_steps
-        contact_done = self._lingzu_contact_fail_accum_steps >= contact_fail_steps
+        episode_steps = self.episode_steps()
+        getup_episode = self._episode_getup_mask[: gravity.shape[0]]
+        getup_grace_active = getup_episode & (episode_steps < self._getup_grace_steps)
+        gravity_fail_steps = np.where(getup_grace_active, self._getup_grace_steps, fail_steps)
+        gravity_done = self._lingzu_fail_steps >= gravity_fail_steps
+        contact_done = (self._lingzu_contact_fail_accum_steps >= contact_fail_steps) & (
+            ~getup_grace_active
+        )
+        getup_timeout_now = (
+            getup_episode
+            & (~self._getup_succeeded[: gravity.shape[0]])
+            & (~self._getup_timeout_recorded[: gravity.shape[0]])
+            & (
+                (episode_steps >= self._getup_grace_steps)
+                | (self._lingzu_fail_steps >= self._getup_grace_steps)
+            )
+            & (gravity_done | contact_done)
+        )
+        if np.any(getup_timeout_now):
+            timeout_rows = np.flatnonzero(getup_timeout_now)
+            self._getup_timeout_recorded[timeout_rows] = True
+            self._getup_timeout_count += int(np.count_nonzero(getup_timeout_now))
         self._last_termination_contact_now_fraction = float(np.mean(contact_failed_now))
         self._last_termination_contact_accum_mean = float(
             np.mean(self._lingzu_contact_fail_accum_steps)
@@ -3707,6 +3801,63 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._last_termination_contact_done_fraction = float(np.mean(contact_done))
         self._last_termination_gravity_done_fraction = float(np.mean(gravity_done))
         return gravity_done | contact_done
+
+    def _update_getup_success(self, gravity: np.ndarray) -> None:
+        num_envs = gravity.shape[0]
+        if not np.any(self._episode_getup_mask[:num_envs] & ~self._getup_succeeded[:num_envs]):
+            return
+        base_height = self._reward_base_height_values(num_envs)
+        # A get-up is only complete after every non-wheel body has cleared the
+        # ground.  Checking only the shoulder can incorrectly count a rear
+        # (U2), wing, base, or leg-supported pose as upright and would corrupt
+        # the pose curriculum's promotion statistics.
+        undesired_contacts = self._undesired_contact_values(num_envs)
+        contacts_clear = (
+            np.all(undesired_contacts < self._reward_cfg.undesired_contact_threshold, axis=1)
+            if undesired_contacts.shape[1] > 0
+            else np.ones((num_envs,), dtype=np.bool_)
+        )
+        success_now = (
+            self._episode_getup_mask[:num_envs]
+            & (~self._getup_succeeded[:num_envs])
+            & (gravity[:, 2] > 0.9)
+            & (base_height > 0.20)
+            & contacts_clear
+        )
+        self._getup_success_hold_steps[:num_envs] = np.where(
+            success_now,
+            self._getup_success_hold_steps[:num_envs] + 1,
+            0,
+        )
+        required_steps = max(int(round(0.5 / self._cfg.ctrl_dt)), 1)
+        newly_succeeded = (~self._getup_succeeded[:num_envs]) & (
+            self._getup_success_hold_steps[:num_envs] >= required_steps
+        )
+        if not np.any(newly_succeeded):
+            return
+        succeeded_rows = np.flatnonzero(newly_succeeded)
+        self._getup_succeeded[succeeded_rows] = True
+        success_steps = self.episode_steps()[succeeded_rows]
+        self._getup_success_count += int(np.count_nonzero(newly_succeeded))
+        self._getup_success_time_sum_s += float(
+            np.sum(success_steps.astype(np.float64) * self._cfg.ctrl_dt)
+        )
+
+    def _log_getup_diagnostics(self, log: dict[str, Any], num_envs: int) -> None:
+        active = self._episode_getup_mask[:num_envs]
+        log["getup/current_fraction"] = float(np.mean(active)) if num_envs > 0 else 0.0
+        log["getup/episodes"] = float(self._getup_episode_count)
+        log["getup/successes"] = float(self._getup_success_count)
+        log["getup/success_rate"] = float(
+            self._getup_success_count / max(self._getup_episode_count, 1)
+        )
+        log["getup/mean_success_time_s"] = float(
+            self._getup_success_time_sum_s / max(self._getup_success_count, 1)
+        )
+        log["getup/recovery_timeouts"] = float(self._getup_timeout_count)
+        log["getup/recovery_timeout_rate"] = float(
+            self._getup_timeout_count / max(self._getup_episode_count, 1)
+        )
 
     def _contact_values(
         self,
@@ -3866,8 +4017,14 @@ class DR002JoystickEnv(DR002BaseEnv):
             int(round(self._reward_cfg.termination_fail_time_s / self._cfg.ctrl_dt)), 1
         )
         contact_fail_steps = max(int(self._reward_cfg.termination_contact_fail_steps), 1)
-        alive = (self._lingzu_fail_steps[:num_envs] < fail_steps) & (
-            self._lingzu_contact_fail_accum_steps[:num_envs] < contact_fail_steps
+        episode_steps = self.episode_steps()[:num_envs]
+        getup_grace_active = self._episode_getup_mask[:num_envs] & (
+            episode_steps < self._getup_grace_steps
+        )
+        gravity_fail_steps = np.where(getup_grace_active, self._getup_grace_steps, fail_steps)
+        alive = (self._lingzu_fail_steps[:num_envs] < gravity_fail_steps) & (
+            getup_grace_active
+            | (self._lingzu_contact_fail_accum_steps[:num_envs] < contact_fail_steps)
         )
         return np.asarray(alive, dtype=np.bool_)
 
@@ -4750,6 +4907,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             log["termination/contact_accum_steps_max"] = self._last_termination_contact_accum_max
             log["termination/contact_done_frac"] = self._last_termination_contact_done_fraction
             log["termination/gravity_done_frac"] = self._last_termination_gravity_done_fraction
+            self._log_getup_diagnostics(log, ctx.num_envs)
         return reward
 
     def _clip_lingzu_reward(
@@ -4805,9 +4963,8 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _reward_zero_cmd_stationary(self, ctx: RewardContext) -> np.ndarray:
         cmd = ctx.info["commands"]
-        gate = (
-            (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx)
-            & (np.abs(cmd[:, 1]) < self._reward_cfg.zero_cmd_stationary_gate_wz)
+        gate = (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx) & (
+            np.abs(cmd[:, 1]) < self._reward_cfg.zero_cmd_stationary_gate_wz
         )
         err = np.abs(ctx.linvel[:, 0]) + self._reward_cfg.zero_cmd_stationary_yaw_weight * np.abs(
             ctx.gyro[:, 2]

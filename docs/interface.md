@@ -43,7 +43,7 @@ IMU、gyro、关节正方向和默认位必须与 WE11 MJCF 和 Deploy 配置逐
 
 | 输入 | 形状/频率 | 来源 |
 |---|---|---|
-| actor observation | 135D，50 Hz | 本体状态、command、历史动作、翼角等策略可观测量 |
+| actor observation | 当前 145D，50 Hz | 29D 单帧 × 5，term-major；本体状态、command、历史动作、翼角/翼速等 |
 | rough critic observation | 334D，训练时使用 | actor 信息加特权物理/地形/外力信息 |
 | velocity/height command | 3D | 环境 command curriculum |
 | measured wrench | 0/1/2/3 Hz CSV | WE11 `training_data` |

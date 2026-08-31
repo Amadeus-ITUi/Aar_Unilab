@@ -7,6 +7,7 @@ from unilab.envs.locomotion.dr002.joystick import DR002JoystickEnv, RewardConfig
 
 def _bare_termination_env(num_envs: int = 1) -> DR002JoystickEnv:
     env = object.__new__(DR002JoystickEnv)
+    env._num_envs = num_envs
     env._cfg = SimpleNamespace(ctrl_dt=0.02)
     env._reward_cfg = RewardConfig(
         scales={},
@@ -17,6 +18,14 @@ def _bare_termination_env(num_envs: int = 1) -> DR002JoystickEnv:
     )
     env._lingzu_fail_steps = np.zeros(num_envs, dtype=np.int32)
     env._lingzu_contact_fail_accum_steps = np.zeros(num_envs, dtype=np.int32)
+    env._episode_getup_mask = np.zeros(num_envs, dtype=np.bool_)
+    env._getup_success_hold_steps = np.zeros(num_envs, dtype=np.int32)
+    env._getup_succeeded = np.zeros(num_envs, dtype=np.bool_)
+    env._getup_timeout_recorded = np.zeros(num_envs, dtype=np.bool_)
+    env._getup_grace_steps = 150
+    env._getup_timeout_count = 0
+    env._state = SimpleNamespace(info={"steps": np.zeros(num_envs, dtype=np.uint32)})
+    env._update_getup_success = lambda _gravity: None
     env._contact_failed_now = np.zeros(num_envs, dtype=np.bool_)
     env._has_termination_contact = lambda *_args, **_kwargs: env._contact_failed_now.copy()
     return env
@@ -88,3 +97,57 @@ def test_contact_and_tilt_counters_remain_independent() -> None:
     assert env._compute_terminated(_tilted())[0]
     assert env._lingzu_contact_fail_accum_steps[0] == 25
     assert env._lingzu_fail_steps[0] == 15
+
+
+def test_getup_contact_is_suppressed_until_three_second_grace_expires() -> None:
+    env = _bare_termination_env()
+    env._episode_getup_mask[:] = True
+    env._contact_failed_now[:] = True
+
+    for step in range(150):
+        env._state.info["steps"][:] = step
+        assert not env._compute_terminated(_upright())[0]
+
+    env._state.info["steps"][:] = 150
+    assert env._compute_terminated(_upright())[0]
+    assert env._getup_timeout_count == 1
+
+
+def test_getup_tilt_requires_150_consecutive_control_steps() -> None:
+    env = _bare_termination_env()
+    env._episode_getup_mask[:] = True
+
+    for step in range(149):
+        env._state.info["steps"][:] = step
+        assert not env._compute_terminated(_tilted())[0]
+
+    env._state.info["steps"][:] = 149
+    assert env._compute_terminated(_tilted())[0]
+
+
+def test_getup_success_requires_pose_height_and_all_nonwheel_contacts_clear() -> None:
+    env = _bare_termination_env()
+    env._episode_getup_mask[:] = True
+    env._update_getup_success = DR002JoystickEnv._update_getup_success.__get__(env)
+    env._backend = SimpleNamespace(
+        get_base_pos=lambda: np.asarray([[0.0, 0.0, 0.24]], dtype=np.float32)
+    )
+    contact_values = np.zeros((1, 9), dtype=np.float32)
+    env._undesired_contact_values = lambda _num_envs: contact_values
+    env._getup_success_count = 0
+    env._getup_success_time_sum_s = 0.0
+    env._state.info["steps"][:] = 25
+
+    contact_values[0, -1] = 0.2
+    for _ in range(30):
+        env._update_getup_success(_upright())
+        assert not env._getup_succeeded[0]
+    contact_values.fill(0.0)
+    for _ in range(24):
+        env._update_getup_success(_upright())
+        assert not env._getup_succeeded[0]
+    env._update_getup_success(_upright())
+
+    assert env._getup_succeeded[0]
+    assert env._getup_success_count == 1
+    assert env._getup_success_time_sum_s == 0.5

@@ -1,0 +1,53 @@
+<mujoco model="walking eagle we11 get-up pose alignment">
+  <!--
+    Visual alignment scene for the repeatable powered-on get-up pose shown in
+    the reference photo.  This is deliberately separate from the flat training
+    scene and is not selected by either Hydra task.
+
+    Pose interpretation:
+      * robot forward is +X;
+      * the body pitches nose-down by about 71.7 degrees;
+      * both thighs/calves are folded near their mechanical limits;
+      * the two wheels and the forward shoulder region support the body;
+      * wings remain at their current zero-angle reference for visual alignment.
+
+    qpos order:
+      base xyz, base quaternion (wxyz),
+      left thigh/calf/wheel, right thigh/calf/wheel, left/right wing.
+  -->
+  <include file="we11.xml" />
+
+  <statistic center="0 0 0.18" extent="0.8" />
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+    <rgba haze="0.15 0.25 0.35 1" />
+    <global azimuth="90" elevation="-10" />
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
+    <texture type="2d" name="getup_groundplane" builtin="checker" mark="edge" rgb1="0.28 0.22 0.16" rgb2="0.18 0.13 0.09" markrgb="0.8 0.8 0.8" width="300" height="300" />
+    <material name="getup_groundplane" texture="getup_groundplane" texuniform="true" texrepeat="5 5" reflectance="0.1" />
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true" />
+    <geom name="floor" size="0 0 0.05" type="plane" material="getup_groundplane" friction="1.0 0.005 0.0001" />
+
+    <!-- Photo-like side view: robot forward (+X) appears on the left. -->
+    <camera name="getup_side" pos="0 1.0 0.22" xyaxes="-1 0 0 0 0 1" />
+    <camera name="getup_front" pos="1.0 0 0.22" xyaxes="0 1 0 0 0 1" />
+  </worldbody>
+
+  <keyframe>
+    <!--
+      Solved against the current reviewed collision geometry so the shoulder
+      and both wheels start 0.5 mm inside the floor contact margin together.
+    -->
+    <key
+      name="getup_start_v2"
+      qpos="0 0 0.142849987476 0.810626240955 0 0.585563914083 0 -0.13 -2.60 0 -0.13 -2.60 0 0 0"
+      ctrl="0 0 0 0 0 0 0 0"
+    />
+  </keyframe>
+</mujoco>

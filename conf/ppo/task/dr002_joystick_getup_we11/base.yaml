@@ -1,0 +1,63 @@
+# @package _global_
+# Getup keeps Flat behavior except for its reset curriculum, Play pose, and
+# dedicated one-second recovery termination thresholds.
+defaults:
+  - /task/dr002_joystick_flat_we11/base
+  - _self_
+
+training:
+  play_start_pose: getup
+  play_getup_difficulty: 1.0
+
+env:
+  reset_pose:
+    mode: getup
+    getup_probability: 1.0
+    getup_keyframe: getup_start_v2
+    getup_termination_grace_seconds: 1.0
+  getup_curriculum:
+    easy_keyframe: home
+    hard_keyframe: getup_start_v2
+    initial_difficulty: 0.0
+    difficulty_step: 0.05
+    frontier_width: 0.05
+    replay_fraction: 0.20
+    component_progress_jitter: 0.025
+    hard_anchor_fraction: 0.10
+    window_episodes: 2048
+    promote_success_rate: 0.80
+    demote_success_rate: 0.50
+    # Once the original difficulty=1 frontier reaches 80%, train the offline
+    # legal-pose families in stages. Only the active family's completed
+    # episodes contribute to each stage's 2048-episode promotion window.
+    pose_bank_file: src/unilab/assets/robots/dr002/we11/getup_pose_bank_v2.npz
+    front_stage_home_fraction: 0.30
+    front_stage_hard_fraction: 0.20
+    front_stage_interpolated_fraction: 0.10
+    front_stage_front_fraction: 0.40
+    back_stage_home_fraction: 0.30
+    back_stage_hard_fraction: 0.10
+    back_stage_interpolated_fraction: 0.10
+    back_stage_front_fraction: 0.10
+    back_stage_back_fraction: 0.40
+    mixed_home_fraction: 0.30
+    mixed_hard_fraction: 0.20
+    mixed_interpolated_fraction: 0.10
+    mixed_front_fraction: 0.20
+    mixed_back_fraction: 0.20
+    back_thigh_group_edges: [-0.13, 0.0, 0.20, 0.40, 0.61]
+    ground_clearance_easy_m: 0.015
+    # Both wings are independently uniform across their full mechanical range.
+    forced_difficulty: null
+  # Preserve Getup's deterministic reset placement while inheriting Flat's
+  # non-pose domain randomization.
+  domain_rand:
+    randomize_init_yaw: false
+    init_xy_range: [0.0, 0.0]
+    init_qvel_range: [0.0, 0.0]
+
+reward:
+  # At 50 Hz, 50 consecutive control steps are one second.
+  termination_contact_fail_steps: 50
+  termination_gravity_z_threshold: 0.4
+  termination_fail_time_s: 1.0

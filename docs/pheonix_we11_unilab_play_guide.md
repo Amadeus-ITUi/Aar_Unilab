@@ -22,7 +22,7 @@ Play 验收并决定上真机时，才进入 Deploy 的 ONNX -> MNN 流程。
 UniLab 的 MuJoCo playback 没有 `interactive` 渲染模式；不要对 UniLab 使用
 `training.play_render_mode=interactive`。可见、可手柄操作的仿真只在 Play 中完成。
 
-当前策略合同必须始终一致：`obs[1,135] -> act[1,6]`，动作关节顺序为
+当前策略合同必须始终一致：`obs[1,145] -> act[1,6]`，动作关节顺序为
 `[左大腿, 左小腿, 左轮, 右大腿, 右小腿, 右轮]`。不要把不同 task、不同观测维度或不同
 关节顺序的 ONNX 直接放入 Play。
 
@@ -117,6 +117,54 @@ python -u scripts/train_rsl_rl.py \
   algo.run_name=pheonix_rough_v0
 ```
 
+Getup 任务有独立训练入口和日志目录，但与 Flat 共用 145 维观测、6 维动作和最终 Play
+策略槽位。它只替换 reset：从 XML `home` 开始，按成功率逐步推进到 `getup_start_v2`，
+并保持 reset XY/yaw/速度为零。reward、tracking commands、termination、23秒回合、push、
+动力学随机化、观测噪声和翼运动均与 Flat 相同：
+
+```bash
+python -u scripts/train_rsl_rl.py \
+  task=dr002_joystick_getup_we11/mujoco \
+  training.device=cuda:0 \
+  training.no_play=true \
+  training.play_render_mode=none \
+  training.logger=tensorboard \
+  algo.max_iterations=100 \
+  algo.save_interval=100 \
+  algo.run_name=pheonix_getup_curriculum_v0
+```
+
+训练前可用同一 Registry/环境构建路径查看任意课程姿态；`0` 是精确 `home`，`1` 是精确
+`getup_start_v2`，中间值使用与训练相同的关节/机身插值及轮子落地高度计算：
+
+```bash
+python scripts/visualize_task_env.py \
+  --task DR002JoystickGetupWE11 \
+  --getup-difficulty 1.0 \
+  --freeze-initial-pose \
+  --num_envs 1
+```
+
+`--freeze-initial-pose` 不推进物理，也不发送零策略动作，用于核对精确 reset 姿态。去掉该参数
+后，环境以 50 Hz 发送零策略动作；零动作会让腿部 PD 回到默认站立角，并不等于保持当前关节角。
+
+自动 Play 和 `play_only` 会强制使用难度 `1.0`，不会受 checkpoint 内当前课程等级影响。
+外部 Play 仍写入同一个 `Play/policy/dr002/we11/policy.onnx`，用第二个参数选择初态：
+
+```bash
+./scripts/play_we11.sh 0 flat
+./scripts/play_we11.sh 0 getup
+```
+
+发布 Getup checkpoint 时显式选择 Getup 日志目录；目标仍是上述共用策略文件：
+
+```bash
+python scripts/publish_we11_to_play.py \
+  --task DR002JoystickGetupWE11 \
+  --run <getup-run目录名> \
+  --apply
+```
+
 不要把 5-iteration smoke checkpoint 当作可用策略，也不要在训练期间修改 task 的 action
 scale、PD、command delay、观测历史长度或网络尺寸；这些都必须与 ONNX、Play 和 Deploy
 同步。
@@ -193,23 +241,15 @@ Play 固定加载：
 ~/ssd/Pheonix/Play/policy/dr002/we11/policy.onnx
 ```
 
-第一次替换时保存归档基线；之后每次只覆盖运行模型即可：
+使用发布脚本同步模型和来源记录。脚本默认 dry-run，确认输出后才执行覆盖：
 
 ```bash
-cd ~/ssd/Pheonix/Play
-cp -n policy/dr002/we11/policy.onnx \
-  policy/dr002/we11/policy.onnx.baseline
-cp <UniLab导出的policy.onnx绝对路径> \
-  policy/dr002/we11/policy.onnx
-sha256sum policy/dr002/we11/policy.onnx
+cd ~/ssd/Pheonix/UniLab
+python scripts/publish_we11_to_play.py --run <run目录名>
+python scripts/publish_we11_to_play.py --run <run目录名> --apply
 ```
 
-这是本地仿真试验，**不需要**修改 MNN 或树莓派。要恢复归档策略：
-
-```bash
-cp policy/dr002/we11/policy.onnx.baseline \
-  policy/dr002/we11/policy.onnx
-```
+这是本地仿真试验，**不需要**修改 MNN 或树莓派。旧文件会成组备份到 `~/ssd/Pheonix/artifacts/we11-policy-backups/<release-id>/Play/`；恢复时也必须成组恢复，不能只复制 ONNX。
 
 ### 5.3 运行与按键
 

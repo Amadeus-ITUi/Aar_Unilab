@@ -3,6 +3,7 @@
 training:
   play_steps: 500
   play_env_num: 1
+  play_start_pose: getup
   render_spacing: 0.0
   cam_tracking: true
   cam_tracking_env_idx: 0
@@ -59,6 +60,11 @@ env:
   max_episode_seconds: 23.0
   sim_dt: 0.0025
   ctrl_dt: 0.02
+  reset_pose:
+    mode: mixed
+    getup_probability: 0.30
+    getup_keyframe: getup_start_v2
+    getup_termination_grace_seconds: 3.0
   control_config:
     action_scale: 0.5
     wheel_action_scale: 10.0
@@ -190,25 +196,25 @@ env:
 reward:
   scales:
     alive: 0.0
-    track_lin_vel_x: 1.5
-    track_ang_vel_z: 1.0
-    track_lin_vel_x_enhance: 0.0
-    lin_vel_z: 0.0
-    ang_vel_xy: 0.0
-    orientation: -5.0
-    base_height: -1.0
-    joint_torques_l2: 0.0
-    joint_torques_wheel_l2: 0.0
-    joint_vel_l2: 0.0
-    joint_acc_l2: 0.0
+    track_lin_vel_x: 4
+    track_ang_vel_z: 2.0
+    track_lin_vel_x_enhance: 4
+    lin_vel_z: -2.0
+    ang_vel_xy: -0.05
+    orientation: -10.0
+    base_height: -2.0
+    joint_torques_l2: -1.0e-4
+    joint_torques_wheel_l2: -1.0e-4
+    joint_vel_l2: -5.0e-5
+    joint_acc_l2: -2.5e-4
     # Stronger wheel-acceleration regularization for smoother wheel commands.
-    joint_acc_wheel_l2: 0.0
-    joint_pos_limits: 0.0
-    nominal_state_lingzu: -0.5
-    action_rate_l2: 0.0
-    action_smooth_lingzu: 0.0
-    undesired_contacts: -3.0
-    zero_cmd_stationary: -1.5
+    joint_acc_wheel_l2: -2.5e-4
+    joint_pos_limits: -1.0
+    nominal_state_lingzu: -1.0
+    action_rate_l2: -0.2
+    action_smooth_lingzu: -0.03
+    undesired_contacts: -10.0
+    zero_cmd_stationary: -2
   # Keep the established yaw-tracking width unchanged.
   tracking_sigma: 0.25
   # The real-training forward-velocity curve used 0.25 directly as its

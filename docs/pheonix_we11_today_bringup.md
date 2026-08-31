@@ -43,7 +43,7 @@ smoke 训练、`SHA256SUMS` 校验、Play 的 `rl_sim_mujoco` 重建，以及 ON
 ### 成功标准
 
 1. UniLab 能加载冻结 checkpoint；小规模训练能写出 checkpoint。
-2. ONNX actor 的接口为 `obs[1,135] -> act[1,6]`。
+2. 当前 ONNX actor 的接口为 `obs[1,145] -> act[1,6]`。
 3. Play 能用该 ONNX 启动并接受手柄输入。
 4. 树莓派上的 Deploy 能构建，并加载相同来源的 MNN。
 5. 真机 1--8 号电机均可被只读状态探测；IMU、手柄、关节和翼角话题正常。
@@ -100,7 +100,7 @@ python -u scripts/train_rsl_rl.py \
   algo.load_run=models/we11/rough/model_1500.pt
 ```
 
-此步骤确认 checkpoint、环境、actor 135D 输入、6D action 与 ONNX 导出合同；可交互、可见的手柄仿真验证只在第 6 节 Play 工作区执行。
+此步骤确认 checkpoint、环境、actor 145D 输入、6D action 与 ONNX 导出合同；可交互、可见的手柄仿真验证只在第 6 节 Play 工作区执行。
 
 ## 3. 训练 smoke：只验证训练闭环
 
@@ -170,18 +170,17 @@ sha256sum models/we11/rough/policy.onnx
 > 若日志提示 native mixed-PD extension 不可用，程序会使用正确但较慢的 Python
 > fallback，因而可以完成本教程的命令验证；训练前仍应按仓库安装流程构建该扩展。
 
-## 5. 建立不可覆盖的交付暂存目录
+## 5. 建立可追溯的模型发布
 
-不要直接覆盖 Play/Deploy 的归档模型。先把选定 ONNX 放入版本化暂存目录：
+新导出会在 run 目录生成 `policy_export_manifest.json`，其中记录 checkpoint 和 ONNX 的哈希、训练 Git 状态及 145D 契约。不要再建立脱离 checkpoint 的手工暂存副本。
 
 ```bash
-mkdir -p ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0
-cp ~/ssd/Pheonix/UniLab/models/we11/rough/policy.onnx ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.onnx
-sha256sum ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.onnx
-git -C ~/ssd/Pheonix/UniLab rev-parse HEAD
+cd ~/ssd/Pheonix/UniLab
+python scripts/publish_we11_to_play.py --run <Flat run目录名>
+python scripts/publish_we11_to_play.py --run <Flat run目录名> --apply
 ```
 
-同时记录：来源 checkpoint hash、task、actor 输入/输出维度、导出命令、UniLab commit。只有确认这些信息后，才可以把模型装入 Play 或 Deploy。
+旧式导出没有 sidecar 时必须显式传 `--checkpoint model_N.pt`。脚本验证通过后才原子更新 Play，并把旧文件放入 `artifacts/we11-policy-backups/<release-id>/Play/`。
 
 ## 6. Play：加载 ONNX，并完成唯一的手柄交互仿真
 
@@ -191,17 +190,7 @@ Play 的归档模型位置为：
 ~/ssd/Pheonix/Play/policy/dr002/we11/policy.onnx
 ```
 
-在自己的 `pheonix-we11/play-bringup` 分支上，先备份再替换：
-
-```bash
-cd ~/ssd/Pheonix/Play
-cp policy/dr002/we11/policy.onnx policy/dr002/we11/policy.onnx.baseline
-cp ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.onnx \
-  policy/dr002/we11/policy.onnx
-sha256sum policy/dr002/we11/policy.onnx
-```
-
-随后更新 `policy/dr002/we11/deployment_manifest.json` 中的来源与 SHA-256；不要让新模型沿用旧模型的来源元数据。
+Play 模型只允许通过上一节的发布脚本替换；`deployment_manifest.json` 是机器可读的来源依据，脚本会拒绝覆盖未记录的手工模型改动。
 
 构建 Play。必须使用系统 C++ 依赖；若旧的 `build/` 曾在 Conda 下配置，请重新配置到系统 `yaml-cpp`：
 
@@ -228,29 +217,16 @@ conda deactivate
 
 ## 7. Deploy：先在 x86 转换 MNN，再在树莓派构建/加载
 
-不要把 ONNX 转 MNN 作为树莓派临场依赖。先在当前 x86_64 `Deploy` 工作区完成转换，
-将已验证的 `.mnn` 和 hash 一起传给树莓派。仓库内的 x64 `MNNConvert` 已实际用
-`models/we11/rough/policy.onnx` 转换成功，输入 `obs`、输出 `act`。当前归档中该
-二进制缺少可执行位，因此先恢复该文件权限：
+不要把 ONNX 转 MNN 作为树莓派临场依赖。发布入口位于开发机的 `Play` 工作区；它读取已验收的 Play ONNX，在 x86_64 开发机用固定参数转换，并用无硬件检查器验证 145D 输入、6D 输出和有限推理结果。默认只做远端预检，不修改板端：
 
 ```bash
-cd ~/ssd/Pheonix/Deploy
-chmod u+x src/inference/thirdparty/MNNConverter/x64/MNNConvert \
-  src/inference/thirdparty/MNNConverter/x64/MNNConvert.sh
-mkdir -p ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0
-src/inference/thirdparty/MNNConverter/x64/MNNConvert.sh \
-  -f ONNX \
-  --modelFile ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.onnx \
-  --MNNModel ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.mnn \
-  --bizCode MNN
-sha256sum ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.onnx \
-  ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.mnn
+cd ~/ssd/Pheonix/Play
+python scripts/publish_we11_from_play.py --prepare-only
+python scripts/publish_we11_from_play.py
+python scripts/publish_we11_from_play.py --apply
 ```
 
-`chmod` 会使 Deploy 工作区出现两个转换器文件的 mode 改动；这是归档权限缺失，不是模型
-内容改动。要长期保留此转换路径，可在 Deploy 分支单独提交该 mode 修复。若转换
-失败，不要改网络结构或在树莓派上临时安装未知版本的 `MNN` Python 包；先保留 ONNX
-并解决转换器/版本兼容问题。
+`--prepare-only` 完全不连接板端；无参数命令会连接板端执行目录、磁盘空间和控制进程预检；只有 `--apply` 才更新板端。发布只更新 `policy.onnx`、唯一运行模型 `lab_policy.mnn` 和 `lab_policy_manifest.json`，不会修改开发机的 Deploy 副本，不会停机、启动节点或使能电机。脚本默认借用相邻 `../Deploy` 中的固定 x64 转换器和运行库；若工具副本位于别处，可用 `--deploy-tools-root` 指定。
 
 以下是**树莓派 arm64 从零安装**步骤，尚不能在当前 x86_64 机器上替代验证。假设树莓派
 已安装 Ubuntu 22.04 arm64、网络可用。树莓派不需要、也不应配置 GitLab 凭据；不要使用
@@ -299,23 +275,7 @@ source install/setup.bash
 
 `env_init.sh` 会针对 `aarch64` 选择 `mnn-linux-aarch64` runtime，并构建 ROS 包。它不会自动使能电机。
 
-回到开发机，将产物传到刚刚创建好的树莓派目录（把 `<pi-user>` 和 `<pi-host>` 替换为
-真实用户名、主机名或 IP）：
-
-```bash
-rsync -avP ~/ssd/Pheonix/artifacts/pheonix-we11-today-v0/policy.mnn \
-  <pi-user>@<pi-host>:/home/<pi-user>/Pheonix/artifacts/pheonix-we11-today-v0/policy.mnn
-```
-
-在树莓派上仅安装已经转换好的 MNN；先备份归档模型，再复制：
-
-```bash
-cd ~/Pheonix/Deploy
-cp src/inference/models/lab_policy.mnn src/inference/models/lab_policy.mnn.baseline
-cp ~/Pheonix/artifacts/pheonix-we11-today-v0/policy.mnn \
-  src/inference/models/lab_policy.mnn
-sha256sum src/inference/models/lab_policy.mnn
-```
+远端同步由 Play 中的 `publish_we11_from_play.py` 完成：它先检查 SSH、磁盘、目录和控制进程，再上传到目标模型目录内的临时目录、核对 SHA-256、备份并逐文件原子替换（manifest 最后替换）。默认目标为 `esd@192.168.8.200:/home/esd/Pheonix/Deploy`，可用 `--host` 和 `--remote-root` 覆盖。
 
 重新构建/安装 inference 包，确保 install space 取得新模型：
 
@@ -325,7 +285,7 @@ colcon build --packages-select inference --symlink-install
 source install/setup.bash
 ```
 
-在进入真机前，应使用同一段 135D recorded observation 对比 ONNX 与 MNN 的 6D raw action；没有该 parity 记录时，新转换模型只允许进入 standby，不应作为运动策略使用。
+在进入真机前，应使用同一段 145D recorded observation 对比 ONNX 与 MNN 的 6D raw action；没有该 parity 记录时，新转换模型只允许进入 standby，不应作为运动策略使用。
 
 ## 8. 真机部署：按状态机逐级推进
 

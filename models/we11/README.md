@@ -39,7 +39,7 @@ Rough checkpoint 是 `Walking_Eagle-Play_final` 中
 ## 使用边界
 
 - 加载时必须选择与 checkpoint 对应的 Flat/Rough task。
-- 策略 actor 输入为 135D、action 为 6D；Rough critic 为 334D。
+- 本目录冻结的是旧归档 checkpoint：其 actor 输入为 135D、action 为 6D，Rough critic 为 334D。当前 145D 发布策略以对应训练 run 的 `policy_export_manifest.json` 为准，不与本目录旧 checkpoint 混用。
 - 关节顺序、PD、action scale/clip、command-delay 和频率合同见
   `WE11_HANDOVER.md`。
 - 观测语义、网络结构或动作维度改变后，不得把这两个 checkpoint 当作兼容模型。

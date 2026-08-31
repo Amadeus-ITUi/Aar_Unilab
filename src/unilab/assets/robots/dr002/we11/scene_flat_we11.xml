@@ -17,5 +17,6 @@
   </worldbody>
   <keyframe>
     <key name="home" qpos="0 0 0.30 1 0 0 0 0.8 -1.6 0 0.8 -1.6 0 0 0" ctrl="0 0 0 0 0 0 0 0" />
+    <key name="getup_start_v2" qpos="0 0 0.142849987476 0.810626240955 0 0.585563914083 0 -0.13 -2.60 0 -0.13 -2.60 0 0 0" ctrl="0 0 0 0 0 0 0 0" />
   </keyframe>
 </mujoco>

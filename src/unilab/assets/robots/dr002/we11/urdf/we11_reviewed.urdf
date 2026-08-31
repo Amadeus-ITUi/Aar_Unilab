@@ -23,15 +23,15 @@
       </material>
     </visual>
     <collision name="base_link_collision">
-      <origin xyz="-0.019765003 0.0 -0.024499988" rpy="0 0 0" />
+      <origin xyz="-0.019765 0 -0.0045" rpy="0 0 0" />
       <geometry>
-        <box size="0.127969998 0.118299998 0.150000024" />
+        <box size="0.12797 0.1183 0.11" />
       </geometry>
     </collision>
     <collision name="base_shoulder_collision">
-      <origin xyz="0.143 0.0 0.149" rpy="1.570796 -0.471239 0" />
+      <origin xyz="0.123 0.0 0.129" rpy="1.570796 -0.471239 0" />
       <geometry>
-        <box size="0.11 0.08 0.27" />
+        <box size="0.11 0.08 0.11" />
       </geometry>
     </collision>
   </link>
@@ -56,9 +56,9 @@
       </material>
     </visual>
     <collision name="left_thigh_collision">
-      <origin xyz="-1.2701e-05 0.057495112 0.027400002" rpy="0 0 0" />
+      <origin xyz="-0.000013 0.047495 0.0274" rpy="0 0 0" />
       <geometry>
-        <box size="0.062907916 0.1784 0.142800004" />
+        <box size="0.032908 0.1684 0.0228" />
       </geometry>
     </collision>
   </link>
@@ -68,7 +68,7 @@
     <parent link="base_link" />
     <child link="left_thigh_link" />
     <axis xyz="0.0 0.0 1.0" />
-    <limit lower="-0.43" upper="1.57" effort="5.5" velocity="21.0" />
+    <limit lower="-0.13" upper="1.57" effort="5.5" velocity="21.0" />
     <dynamics damping="6.925991655493124e-05"
               friction="0.00039277340996955734" />
   </joint>
@@ -90,9 +90,9 @@
       </material>
     </visual>
     <collision name="left_calf_shaft_collision">
-      <origin xyz="0.0 0.07836197 0.0" rpy="0 0 0" />
+      <origin xyz="0.0 0.078362 0.0" rpy="0 0 0" />
       <geometry>
-        <box size="0.06 0.197276062 0.02" />
+        <box size="0.02 0.157276 0.02" />
       </geometry>
     </collision>
   </link>
@@ -101,7 +101,7 @@
     <parent link="left_thigh_link" />
     <child link="left_calf_link" />
     <axis xyz="-0.0 -0.0 1.0" />
-    <limit lower="-2.669" upper="-0.17" effort="14.0" velocity="33.0" />
+    <limit lower="-2.60" upper="-0.17" effort="14.0" velocity="33.0" />
     <dynamics damping="0.0014802078217493464"
               friction="0.18304102565728816" />
   </joint>
@@ -159,9 +159,9 @@
       </material>
     </visual>
     <collision name="right_thigh_collision">
-      <origin xyz="-1.2701e-05 -0.057495112 0.027400002" rpy="0 0 0" />
+      <origin xyz="-0.000013 -0.047495 0.0274" rpy="0 0 0" />
       <geometry>
-        <box size="0.062907916 0.1784 0.142800004" />
+        <box size="0.032908 0.1684 0.0228" />
       </geometry>
     </collision>
   </link>
@@ -171,7 +171,7 @@
     <parent link="base_link" />
     <child link="right_thigh_link" />
     <axis xyz="-0.0 -0.0 -1.0" />
-    <limit lower="-0.43" upper="1.57" effort="5.5" velocity="21.0" />
+    <limit lower="-0.13" upper="1.57" effort="5.5" velocity="21.0" />
     <dynamics damping="6.925991655493124e-05"
               friction="0.00039277340996955734" />
   </joint>
@@ -194,9 +194,9 @@
       </material>
     </visual>
     <collision name="right_calf_shaft_collision">
-      <origin xyz="0.0 -0.07836197 0.0" rpy="0 0 0" />
+      <origin xyz="0.0 -0.078362 0.0" rpy="0 0 0" />
       <geometry>
-        <box size="0.06 0.197276062 0.02" />
+        <box size="0.02 0.157276 0.02" />
       </geometry>
     </collision>
   </link>
@@ -205,7 +205,7 @@
     <parent link="right_thigh_link" />
     <child link="right_calf_link" />
     <axis xyz="-0.0 -0.0 -1.0" />
-    <limit lower="-2.669" upper="-0.17" effort="14.0" velocity="33.0" />
+    <limit lower="-2.60" upper="-0.17" effort="14.0" velocity="33.0" />
     <dynamics damping="0.0014802078217493464"
               friction="0.18304102565728816" />
   </joint>
@@ -266,7 +266,7 @@
       </material>
     </visual>
     <collision name="left_wing_tip_collision">
-      <origin xyz="-0.18 0.66 -0.12" rpy="-0.069813 -0.401426 0.349066" />
+      <origin xyz="-0.08 0.51 -0.19" rpy="-0.174532925199433 -0.401425727958696 0.349065850398866" />
       <geometry>
         <box size="0.04 0.36 0.23" />
       </geometry>
@@ -303,7 +303,7 @@
       </material>
     </visual>
     <collision name="right_wing_tip_collision">
-      <origin xyz="-0.18 -0.66 -0.12" rpy="0.069813 -0.401426 -0.349066" />
+      <origin xyz="-0.08 -0.51 -0.19" rpy="0.174532925199433 -0.401425727958696 -0.349065850398866" />
       <geometry>
         <box size="0.04 0.36 0.23" />
       </geometry>
@@ -370,9 +370,9 @@
       </material>
     </visual>
     <collision name="U2_collision">
-      <origin xyz="-0.193 0 0.075" rpy="0 0 0" />
+      <origin xyz="0.037 0 -0.015" rpy="0 0 0" />
       <geometry>
-        <box size="0.394 0.451 0.185" />
+        <box size="0.054 0.071 0.030001" />
       </geometry>
     </collision>
   </link>

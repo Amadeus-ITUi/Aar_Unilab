@@ -21,7 +21,9 @@ does not inherit a WE9 or WE10 task.
 - Leg action scale: `0.5`
 - Wheel action scale / raw clip: `10.0 / ±3.5`
 - Shared command FIFO: reset-sampled `2..8` motor ticks (`10..40 ms`)
-- Actor / rough critic dimensions: `135 / 334`
+- Current actor dimension: `145` (29D × 5, term-major). The frozen legacy
+  `models/we11/*/model_1500.pt` checkpoints retain their historical 135D actor
+  contract; the archived rough critic is 334D.
 - Measured replay: discrete `0/1/2/3 Hz`; 4 Hz is excluded
 - Wrench amplitude: one reset-owned scale in `[0.5, 1.5]`
 - Wing-position amplitude: independent reset-owned scale in `[0.8, 1.2]`

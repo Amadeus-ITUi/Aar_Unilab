@@ -35,6 +35,7 @@ from unilab.training.experiment import (
     patch_rsl_rl_resume_state,
     patch_rsl_rl_wandb_writer,
 )
+from unilab.training.policy_export import write_policy_export_manifest
 from unilab.training.rsl_rl import RslRlVecEnvWrapper, normalize_ppo_train_cfg
 from unilab.training.sim2sim import policy_load_dim_guard, resolve_sim2sim_config
 from unilab.utils.device import get_default_device
@@ -226,6 +227,16 @@ def play_rsl_rl(cfg: DictConfig, device: str) -> str | None:
     policy = runner.get_inference_policy(device=device)
     if EXPORT_POLICY:
         runner.export_policy_to_onnx(path=str(load_path_dir))
+        if str(cfg.training.task_name) in {
+            "DR002JoystickFlatWE11",
+            "DR002JoystickGetupWE11",
+        }:
+            export_manifest = write_policy_export_manifest(
+                run_dir=load_path_dir,
+                checkpoint=load_path,
+                onnx_path=Path(load_path_dir) / "policy.onnx",
+            )
+            print(f"Policy export manifest: {export_manifest}")
         if bool(getattr(cfg.training, "export_jit", False)):
             runner.export_policy_to_jit(path=str(load_path_dir))
     num_steps = _resolve_play_num_steps(cfg)

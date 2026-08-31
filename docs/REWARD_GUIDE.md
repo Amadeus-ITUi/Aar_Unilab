@@ -436,7 +436,7 @@ tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5
 
 ### 用 Play 工程回放（`.pt` → `.onnx` → `Play/rl_sim_mujoco`）
 
-**本 UniLab 分支的内建 play 路径不保证稳定**。稳妥的看效果方式是把训练产物导出 ONNX，然后交给同层的独立 Play 工程（`/ssd/Pheonix/Play`）回放。Play 是一个已编译好的 MuJoCo + ONNX Runtime 独立闭包，接口 `obs[1,135] -> act[1,6]`。
+**本 UniLab 分支的内建 play 路径不保证稳定**。稳妥的看效果方式是把训练产物导出 ONNX，然后交给同层的独立 Play 工程（`/ssd/Pheonix/Play`）回放。Play 是一个已编译好的 MuJoCo + ONNX Runtime 独立闭包，当前接口为 `obs[1,145] -> act[1,6]`。
 
 #### 1. UniLab 侧：确认 ONNX 已导出
 
@@ -459,28 +459,25 @@ python -u scripts/train_rsl_rl.py \
 
 **不需要**设 `training.play_steps=1`——`play_render_mode=none` 已经让整个渲染循环被跳过，`play_steps` 只在渲染时才有意义。会看到打印 `Skipping playback because training.play_render_mode=none.`，那是正常的。
 
-执行完，会在 run 目录下产出 `policy.onnx`。**验证**：
+执行完，会在 run 目录下产出 `policy.onnx` 和 `policy_export_manifest.json`；后者明确记录本次实际加载的 checkpoint、Git 状态、接口和哈希。**验证**：
 
 ```bash
-ls logs/rsl_rl_ppo/DR002JoystickFlatWE11/<run目录名>/policy.onnx
+ls logs/rsl_rl_ppo/DR002JoystickFlatWE11/<run目录名>/{policy.onnx,policy_export_manifest.json}
 ```
 
-#### 2. 拷贝 ONNX 到 Play 工程
+#### 2. 发布 ONNX 到 Play 工程
 
-Play 硬编码读取 `Play/policy/dr002/we11/policy.onnx`。**先备份**当前的 baseline，再覆盖：
+不要手工复制 ONNX；发布脚本会同时校验 145D 契约、Play 配置和来源哈希，并原子更新模型、manifest、`SOURCE.md` 和 `SHA256SUMS`。默认仅检查：
 
 ```bash
-cd /ssd/Pheonix/Play
-
-# 备份当前 policy（若还没备过）
-cp -n policy/dr002/we11/policy.onnx policy/dr002/we11/policy.onnx.baseline
-
-# 用你训好的 ONNX 覆盖
-cp /ssd/Pheonix/UniLab/logs/rsl_rl_ppo/DR002JoystickFlatWE11/<run目录名>/policy.onnx \
-   policy/dr002/we11/policy.onnx
+cd /ssd/Pheonix/UniLab
+python scripts/publish_we11_to_play.py --run <run目录名>
+python scripts/publish_we11_to_play.py --run <run目录名> --apply
 ```
 
-**注意**：接口必须是 `obs[1,135] -> act[1,6]`。如果改了观测（history 长度、privileged 通道、wing_angle_obs 开关等），维度会变，`rl_sim_mujoco` 直接报错。当前 `base.yaml` 的观测契约与 Play 的 `config.yaml` 是匹配的，别乱动。
+旧式 run 没有 sidecar 时，必须显式加 `--checkpoint model_N.pt`；成功收编后会补写 sidecar。被替换文件保存在工作区 `artifacts/we11-policy-backups/<release-id>/Play/`。
+
+**注意**：接口必须是 `obs[1,145] -> act[1,6]`，即 29D 单帧、5 帧 term-major 历史。如果改了观测（history 长度、privileged 通道、wing_angle_obs 开关等），维度会变，发布脚本和 `rl_sim_mujoco` 都会拒绝加载。当前 `base.yaml` 的观测契约与 Play 的 `config.yaml` 是匹配的。
 
 #### 3. 用 Play 回放
 
@@ -509,18 +506,15 @@ cd /ssd/Pheonix/Play
 
 启动后会打开 MuJoCo GUI 窗口。默认**暂停**状态，按空格开始；或者事先 `export RL_SAR_PLAY_AUTOSTART=1` 自动开跑。
 
-#### 4. 恢复 baseline（对比时用）
+#### 4. 恢复旧版本（对比时用）
 
-```bash
-cd /ssd/Pheonix/Play
-cp policy/dr002/we11/policy.onnx.baseline policy/dr002/we11/policy.onnx
-```
+从 `artifacts/we11-policy-backups/<release-id>/Play/` 成组恢复 ONNX、manifest、`SOURCE.md` 和 `SHA256SUMS`，不要只替换 ONNX，否则来源记录会故意报漂移。
 
 #### 5. 常见坑
 
 - **`obs shape mismatch`**：你改动了观测维度（`_HISTORY_LENGTH`、`_TERM_DIMS`、`wing_angle_obs.enabled` 等）。要么改回来，要么同步更新 Play 里的 `config.yaml`（不推荐，容易忘记同步）。
 - **`policy.onnx` 太小 / 加载失败**：说明 UniLab 那边 export 步骤没跑完。回到 §1 确认 run 目录里 `policy.onnx` 大小正常（几百 KB 到 MB 级）。
-- **动作看起来不像训好的**：检查你 cp 过来的是不是**最新** checkpoint 的 onnx。UniLab 的 `EXPORT_POLICY` 是在 play_only 触发时导出的，如果你之前对同一个 run 跑过多次 play_only，用的都会是最新那次的 checkpoint。
+- **动作看起来不像训好的**：检查 `policy_export_manifest.json` 和 Play `deployment_manifest.json` 记录的 checkpoint 是否就是目标 checkpoint；发布流程不再通过文件时间猜测来源。
 
 ### Resume 中断的训练
 
@@ -535,4 +529,3 @@ python -u scripts/train_rsl_rl.py \
   algo.load_run=<run目录名> \
   algo.checkpoint=-1
 ```
-

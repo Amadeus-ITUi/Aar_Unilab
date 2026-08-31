@@ -164,8 +164,10 @@ class DR002BaseEnv(LocomotionBaseEnv):
     def _init_buffers(self) -> None:
         super()._init_buffers()
         self.default_angles = np.asarray(DEFAULT_DR002_ANGLES, dtype=self.default_angles.dtype)
-        if self._init_qpos.shape[0] >= 7 + NUM_DR002_ACTIONS:
-            self._init_qpos[-NUM_DR002_ACTIONS:] = self.default_angles
+        # ``LocomotionBaseEnv`` loads the complete ``home`` keyframe above.
+        # Keep that qpos intact: WE11 has two passive wing joints after its six
+        # leg joints, so writing the last six qpos entries would corrupt one
+        # wheel, the right leg, and the left wing at every upright reset.
         if self._init_qvel.shape[0] >= 6 + NUM_DR002_ACTIONS:
             self._init_qvel[-NUM_DR002_ACTIONS:] = 0.0
 

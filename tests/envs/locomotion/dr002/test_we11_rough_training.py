@@ -89,7 +89,7 @@ def test_we11_rough_hydra_and_registry_preserve_flat_policy_contract() -> None:
     assert "left_calf_shaft_touch" not in cfg.sensor.termination_contacts
     assert "right_calf_shaft_touch" not in cfg.sensor.termination_contacts
     assert "base_link_touch" in cfg.sensor.termination_contacts
-    assert hydra_cfg.reward.scales.undesired_contacts == -3.0
+    assert hydra_cfg.reward.scales.undesired_contacts == -10.0
     assert not cfg.control_config.use_native_batched_pd
     assert cfg.control_config.use_native_command_delay_pd
     assert list(hydra_cfg.algo.actor.history_term_dims) == [3, 3, 4, 6, 6, 2, 2, 3]

@@ -5,13 +5,15 @@ then steps it with zero actions so you can verify spawn distribution,
 procedural terrain, sensor placements, asset materials, and domain
 randomization look right before kicking off a real training run.
 
-The script is self-contained: it does NOT read any Hydra training config.
+The script composes the selected task's Hydra config so reset, commands,
+randomization, control, and reward settings match training.
 
 MuJoCo stitches all `--num_envs` robot replicas into the same scene
 and drives every replica's qpos/qvel each frame from `env.get_physics_state_snapshot()`.
 
 Usage:
     python scripts/visualize_task_env.py --task DR002JoystickFlatWE11
+    python scripts/visualize_task_env.py --task DR002JoystickGetupWE11 --getup-difficulty 1 --freeze-initial-pose
     python scripts/visualize_task_env.py --task DR002JoystickRoughWE11 --num_envs 16
 """
 
@@ -20,23 +22,24 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+from hydra import compose, initialize_config_dir
 
 ROOT_DIR = Path(__file__).parent.parent
+CONFIG_DIR = ROOT_DIR / "conf" / "ppo"
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from unilab.training import ensure_registries
+from unilab.training import BackendAdapter, ensure_registries
 
 ensure_registries()
 
@@ -44,45 +47,6 @@ from unilab.base import registry
 
 if TYPE_CHECKING:
     from unilab.base.scene import SceneCfg
-
-
-def _build_reward_stub(env_cfg_cls: type) -> dict[str, Any] | None:
-    """Generate a minimal reward_config dict for the given env cfg class."""
-    try:
-        type_hints = get_type_hints(env_cfg_cls)
-    except Exception:
-        return None
-    reward_type = type_hints.get("reward_config")
-    if reward_type is None:
-        return None
-    if get_origin(reward_type) is not None:
-        non_none = [a for a in get_args(reward_type) if a is not type(None)]
-        if not non_none:
-            return None
-        reward_type = non_none[0]
-    if not dataclasses.is_dataclass(reward_type):
-        return None
-
-    stub: dict[str, Any] = {}
-    for f in dataclasses.fields(reward_type):
-        if f.default is not dataclasses.MISSING:
-            continue
-        if f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
-            continue
-        type_str = str(f.type)
-        if "dict" in type_str:
-            stub[f.name] = {}
-        elif "list" in type_str or "tuple" in type_str or "Sequence" in type_str:
-            stub[f.name] = []
-        elif "bool" in type_str:
-            stub[f.name] = False
-        elif "float" in type_str or "int" in type_str:
-            stub[f.name] = 0.0
-        elif "str" in type_str:
-            stub[f.name] = ""
-        else:
-            stub[f.name] = None
-    return stub
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -93,8 +57,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--task",
         type=str,
         default="DR002JoystickRoughWE11",
-        choices=["DR002JoystickFlatWE11", "DR002JoystickRoughWE11"],
+        choices=[
+            "DR002JoystickFlatWE11",
+            "DR002JoystickGetupWE11",
+            "DR002JoystickRoughWE11",
+        ],
         help="WE11 task to visualize.",
+    )
+    parser.add_argument(
+        "--start-pose",
+        type=str,
+        choices=["upright", "getup", "mixed"],
+        default=None,
+        help=(
+            "Override reset_pose.mode for this viewer only. Use 'getup' to inspect "
+            "the mechanical-limit fallen start pose."
+        ),
     )
     parser.add_argument(
         "--backend",
@@ -104,12 +82,31 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Physics backend to construct the env with (default: mujoco).",
     )
     parser.add_argument(
+        "--getup-difficulty",
+        type=float,
+        default=None,
+        help="Force a deterministic Getup curriculum pose in [0, 1].",
+    )
+    parser.add_argument(
         "--num_envs",
         type=int,
         default=4,
         help="Number of envs to construct and visualize (default: 4).",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--freeze-initial-pose",
+        action="store_true",
+        help=(
+            "Display the exact reset state without advancing physics or applying "
+            "zero policy actions."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.getup_difficulty is not None and not 0.0 <= args.getup_difficulty <= 1.0:
+        parser.error("--getup-difficulty must be in [0, 1]")
+    if args.getup_difficulty is not None and args.task != "DR002JoystickGetupWE11":
+        parser.error("--getup-difficulty is only valid for DR002JoystickGetupWE11")
+    return args
 
 
 def _stitch_replicas(parent_scene_xml: Path, robot_base_xml: Path, env_origins: np.ndarray):
@@ -164,7 +161,7 @@ def _mujoco_visual_xml_paths(env) -> tuple[Path, Path]:
     return Path(parent_xml), Path(robot_xml)
 
 
-def _run_mujoco(env, num_envs: int) -> None:
+def _run_mujoco(env, num_envs: int, *, freeze_initial_pose: bool = False) -> None:
     import mujoco
     import mujoco.viewer
 
@@ -198,12 +195,18 @@ def _run_mujoco(env, num_envs: int) -> None:
         f"[visualize_task_env] viz_model: {viz_model.ngeom} geoms, "
         f"{viz_model.nbody} bodies, nq={viz_model.nq} (per-env nq={nq_per})."
     )
+    if freeze_initial_pose:
+        print(
+            "[visualize_task_env] Initial pose is frozen: physics and policy control "
+            "are not being advanced."
+        )
     print("[visualize_task_env] Opening MuJoCo viewer — close the window or press Esc to quit.")
 
     with mujoco.viewer.launch_passive(viz_model, viz_data) as viewer:
         while viewer.is_running():
             t0 = time.perf_counter()
-            env.step(actions)
+            if not freeze_initial_pose:
+                env.step(actions)
             phys = env.get_physics_state_snapshot()
             for i in range(num_envs):
                 mujoco.mj_setState(
@@ -218,17 +221,29 @@ def _run_mujoco(env, num_envs: int) -> None:
                 time.sleep(sleep)
 
 
-def _build_env_cfg_override(task_name: str) -> dict[str, Any]:
-    """Build the env_cfg_override dict from CLI args alone — no Hydra."""
+def _build_env_cfg_override(
+    task_name: str,
+    start_pose: str | None = None,
+    getup_difficulty: float | None = None,
+) -> dict[str, Any]:
+    """Compose the training task config, then apply viewer-only pose overrides."""
     if task_name not in registry._envs:
         raise SystemExit(
             f"Task '{task_name}' is not registered. Available: {sorted(registry._envs.keys())}"
         )
-    env_cfg_cls = registry._envs[task_name].env_cfg_cls
-    override: dict[str, Any] = {}
-    reward_stub = _build_reward_stub(env_cfg_cls)
-    if reward_stub is not None:
-        override["reward_config"] = reward_stub
+    selectors = {
+        "DR002JoystickFlatWE11": "dr002_joystick_flat_we11/mujoco",
+        "DR002JoystickGetupWE11": "dr002_joystick_getup_we11/mujoco",
+        "DR002JoystickRoughWE11": "dr002_joystick_rough_we11/mujoco",
+    }
+    with initialize_config_dir(version_base="1.3", config_dir=str(CONFIG_DIR)):
+        cfg = compose(config_name="config", overrides=[f"task={selectors[task_name]}"])
+    override = BackendAdapter(cfg, root_dir=ROOT_DIR, algo_name="ppo").build_task_env_cfg_override()
+    if start_pose is not None:
+        override["reset_pose"] = {"mode": start_pose}
+    if getup_difficulty is not None:
+        override["reset_pose"] = {"mode": "getup"}
+        override["getup_curriculum"] = {"forced_difficulty": getup_difficulty}
     return override
 
 
@@ -254,9 +269,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.num_envs < 1:
         raise SystemExit(f"--num_envs must be >= 1, got {args.num_envs}")
 
-    print(f"[visualize_task_env] task={args.task} backend={args.backend} num_envs={args.num_envs}")
+    print(
+        f"[visualize_task_env] task={args.task} backend={args.backend} "
+        f"num_envs={args.num_envs} start_pose={args.start_pose or 'task-default'} "
+        f"getup_difficulty={args.getup_difficulty if args.getup_difficulty is not None else 'task-default'} "
+        f"freeze_initial_pose={args.freeze_initial_pose}"
+    )
 
-    env_cfg_override = _build_env_cfg_override(args.task)
+    env_cfg_override = _build_env_cfg_override(args.task, args.start_pose, args.getup_difficulty)
     env = registry.make(
         args.task,
         num_envs=args.num_envs,
@@ -267,7 +287,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     _print_backend_scene(env)
 
     try:
-        _run_mujoco(env, args.num_envs)
+        _run_mujoco(
+            env,
+            args.num_envs,
+            freeze_initial_pose=args.freeze_initial_pose,
+        )
     finally:
         close = getattr(env, "close", None)
         if callable(close):
