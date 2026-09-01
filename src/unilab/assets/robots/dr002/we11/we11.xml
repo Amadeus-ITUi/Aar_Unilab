@@ -52,7 +52,7 @@
         <site type="box" pos="-0.000013 0.047495 0.0274" rgba="1 0 0 0.15" size="0.016454 0.0842 0.0114" name="left_thigh_touch_site" />
         <body name="left_calf_link" pos="0 0.135800809094126 0.0199999999999967">
           <inertial pos="-2.777e-05 0.12275622 0.01133502" mass="0.30875" fullinertia="0.00078788 5.504e-05 0.00077188 3.9e-07 -1e-07 -9.686e-05" />
-          <joint name="left_calf_joint" type="hinge" axis="0.0 0.0 1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.60 -0.17" />
+          <joint name="left_calf_joint" type="hinge" axis="0.0 0.0 1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.522524368 -1.285784060" />
           <geom name="left_calf_link_visual" type="mesh" mesh="left_calf_link" material="left_calf_link_material" group="1" contype="0" conaffinity="0" />
           <geom name="left_calf_shaft_collision" type="box" pos="0.0 0.078362 0.0" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.01 0.078638 0.01" />
           <site type="box" pos="0.0 0.078362 0.0" rgba="1 0 0 0.15" size="0.01 0.078638 0.01" name="left_calf_shaft_touch_site" />
@@ -74,7 +74,7 @@
         <site type="box" pos="-0.000013 -0.047495 0.0274" rgba="1 0 0 0.15" size="0.016454 0.0842 0.0114" name="right_thigh_touch_site" />
         <body name="right_calf_link" pos="0 -0.13580080909413 0.02">
           <inertial pos="-2.7769999988399782e-05 -0.12275621999999943 0.011335019999994296" mass="0.30875" fullinertia="0.00078788 5.504e-05 0.00077188 -3.9e-07 -1e-07 9.686e-05" />
-          <joint name="right_calf_joint" type="hinge" axis="0.0 0.0 -1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.60 -0.17" />
+          <joint name="right_calf_joint" type="hinge" axis="0.0 0.0 -1.0" damping="1.7025403002922656e-05" frictionloss="0.20614840564125578" armature="0.0056654868268008396" limited="true" range="-2.522524368 -1.285784060" />
           <geom name="right_calf_link_visual" type="mesh" mesh="right_calf_link" material="right_calf_link_material" group="1" contype="0" conaffinity="0" />
           <geom name="right_calf_shaft_collision" type="box" pos="0.0 -0.078362 0.0" rgba="0.9373 0.2667 0.2667 0.25" group="3" contype="1" conaffinity="1" size="0.01 0.078638 0.01" />
           <site type="box" pos="0.0 -0.078362 0.0" rgba="1 0 0 0.15" size="0.01 0.078638 0.01" name="right_calf_shaft_touch_site" />

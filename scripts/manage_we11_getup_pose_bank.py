@@ -18,9 +18,16 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_SCENE = (
     ROOT_DIR / "src" / "unilab" / "assets" / "robots" / "dr002" / "we11" / "scene_flat_we11.xml"
 )
-DEFAULT_OUTPUT = DEFAULT_SCENE.with_name("getup_pose_bank_v2.npz")
+DEFAULT_OUTPUT = DEFAULT_SCENE.with_name("getup_pose_bank_v3.npz")
 
-FAMILY_NAMES = {0: "front", 1: "back"}
+FAMILY_NAMES = {
+    0: "front",
+    1: "back",
+    2: "home",
+    3: "getup",
+    4: "getup_to_front",
+    5: "home_to_getup",
+}
 FAMILY_IDS = {name: family_id for family_id, name in FAMILY_NAMES.items()}
 REVIEW_STATUSES = ("unreviewed", "approved", "rejected")
 ROW_FIELDS = {
@@ -30,6 +37,7 @@ ROW_FIELDS = {
     "calf",
     "base_pitch",
     "minimum_clearance",
+    "progress",
     # Kept for non-destructive compatibility when reviewing a v1 bank.
     "wing_mode",
     "sampling_weight",
@@ -203,10 +211,13 @@ def export_approved_bank(
 def _describe_pose(bank: dict[str, np.ndarray], review: dict[str, Any], index: int) -> str:
     family = FAMILY_NAMES[int(bank["family"][index])]
     status = review_status(review, bank["qpos"][index])
+    progress = ""
+    if "progress" in bank and np.isfinite(bank["progress"][index]):
+        progress = f" progress={bank['progress'][index]:.3f}"
     return (
         f"index={index} family={family} status={status} "
         f"thigh={bank['thigh'][index]:.4f} calf={bank['calf'][index]:.4f} "
-        f"pitch={bank['base_pitch'][index]:.4f}"
+        f"pitch={bank['base_pitch'][index]:.4f}{progress}"
     )
 
 
@@ -219,6 +230,7 @@ def run_viewer(
     *,
     start_index: int | None,
     seed: int,
+    simulate_passive: bool,
 ) -> None:
     if indices.size == 0:
         raise ValueError("the selected family/status filters contain no poses")
@@ -242,6 +254,8 @@ def run_viewer(
     wing_qpos_indices = np.asarray([model.jnt_qposadr[joint_id] for joint_id in wing_joint_ids])
     wing_limits = np.asarray(model.jnt_range[wing_joint_ids], dtype=np.float64)
     displayed_wings = rng.uniform(wing_limits[:, 0], wing_limits[:, 1])
+    passive_running = simulate_passive
+    last_step_time = time.monotonic()
 
     def on_key(keycode: int) -> None:
         mapping = {
@@ -252,6 +266,7 @@ def run_viewer(
             ord("U"): "unreviewed",
             ord("R"): "random",
             ord("V"): "rerandomize_wings",
+            ord("S"): "toggle_passive",
             262: "next",  # GLFW_KEY_RIGHT
             263: "previous",  # GLFW_KEY_LEFT
         }
@@ -260,21 +275,30 @@ def run_viewer(
             pending.append(action)
 
     def load_current(*, rerandomize_wings: bool) -> None:
-        nonlocal displayed_wings
+        nonlocal displayed_wings, last_step_time
         index = int(indices[cursor])
         data.qpos[:] = bank["qpos"][index]
         if rerandomize_wings:
             displayed_wings = rng.uniform(wing_limits[:, 0], wing_limits[:, 1])
         data.qpos[wing_qpos_indices] = displayed_wings
         data.qvel[:] = 0.0
+        data.ctrl[:] = 0.0
         mujoco.mj_forward(model, data)
+        last_step_time = time.monotonic()
         print(
             f"[pose-bank] {_describe_pose(bank, review, index)} "
             f"wings=[{displayed_wings[0]:.4f}, {displayed_wings[1]:.4f}]"
         )
 
-    print("[pose-bank] controls: N/Right next, P/Left previous, R random, V new wing angles")
+    print(
+        "[pose-bank] controls: N/Right next, P/Left previous, R random, "
+        "V new wing angles, S toggle passive physics"
+    )
     print("[pose-bank] review: A approve, X reject, U clear review; close viewer to exit")
+    print(
+        "[pose-bank] passive physics "
+        f"{'ON' if passive_running else 'OFF'} (zero actuator command; damping/friction only)"
+    )
     load_current(rerandomize_wings=True)
     with mujoco.viewer.launch_passive(model=model, data=data, key_callback=on_key) as viewer:
         viewer.sync()
@@ -298,6 +322,10 @@ def run_viewer(
                 elif action == "rerandomize_wings":
                     changed = True
                     rerandomize_wings = True
+                elif action == "toggle_passive":
+                    passive_running = not passive_running
+                    last_step_time = time.monotonic()
+                    print(f"[pose-bank] passive physics {'ON' if passive_running else 'OFF'}")
                 else:
                     index = int(indices[cursor])
                     set_review_status(review, bank["qpos"][index], action, index=index)
@@ -307,6 +335,14 @@ def run_viewer(
             if changed:
                 load_current(rerandomize_wings=rerandomize_wings)
                 viewer.sync()
+            if passive_running:
+                now = time.monotonic()
+                num_steps = min(int((now - last_step_time) / model.opt.timestep), 100)
+                for _ in range(num_steps):
+                    mujoco.mj_step(model, data)
+                if num_steps:
+                    last_step_time += num_steps * model.opt.timestep
+                    viewer.sync()
             time.sleep(0.02)
 
 
@@ -325,10 +361,30 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--bank", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--scene", type=Path, default=DEFAULT_SCENE)
     parser.add_argument("--review-file", type=Path)
-    parser.add_argument("--family", choices=("all", "front", "back"), default="all")
+    parser.add_argument(
+        "--pose-type",
+        "--family",
+        dest="family",
+        choices=(
+            "all",
+            "home",
+            "home_to_getup",
+            "getup",
+            "getup_to_front",
+            "front",
+            "back",
+        ),
+        default="all",
+        help="Filter by reset-pose type; --family is retained as a compatibility alias.",
+    )
     parser.add_argument("--status", choices=("all", *REVIEW_STATUSES), default="all")
     parser.add_argument("--start-index", type=int)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument(
+        "--simulate-passive",
+        action="store_true",
+        help="Advance zero-control MuJoCo dynamics to inspect passive damping/friction stability.",
+    )
     parser.add_argument("--stats-only", action="store_true")
     parser.add_argument("--set-status", choices=REVIEW_STATUSES)
     parser.add_argument("--indices", type=_parse_indices)
@@ -385,6 +441,7 @@ def main() -> None:
         indices,
         start_index=args.start_index,
         seed=args.seed,
+        simulate_passive=args.simulate_passive,
     )
 
 

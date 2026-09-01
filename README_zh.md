@@ -60,22 +60,21 @@ python -u scripts/train_rsl_rl.py \
   training.play_render_mode=none
 ```
 
-WE11 rough 完整训练命令：
+WE11 Getup 完整训练命令：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
 UNILAB_MUJOCO_NTHREADS=16 \
 python -u scripts/train_rsl_rl.py \
-  task=dr002_joystick_rough_we11/mujoco \
+  task=dr002_joystick_getup_we11/mujoco \
   training.device=cuda:0 \
   training.no_play=true \
   training.play_render_mode=none \
   training.logger=tensorboard \
-  algo.num_envs=4096 \
+  algo.num_envs=2048 \
   algo.num_steps_per_env=24 \
-  algo.max_iterations=99999 \
-  algo.save_interval=500 \
-  algo.algorithm.enable_compile=false
+  algo.max_iterations=10000 \
+  algo.save_interval=100 \
 ```
 
 ## 续训与回放
@@ -104,6 +103,12 @@ eval --algo ppo \
 python scripts/visualize_task_env.py \
   --task DR002JoystickRoughWE11 \
   --num_envs 16
+
+# Getup 动态平衡恢复：difficulty=1 使用最大 ±25° / ±1.2 rad/s 扰动
+python scripts/visualize_task_env.py \
+  --task DR002JoystickGetupWE11 \
+  --balance-difficulty 1.0 \
+  --num_envs 2
 
 # TensorBoard，5 秒自动刷新
 tensorboard --logdir logs/rsl_rl_ppo --port 6006 --reload_interval 5

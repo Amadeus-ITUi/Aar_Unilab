@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import mujoco
@@ -32,6 +33,7 @@ KD = [0.080, 0.682, 0.05, 0.080, 0.682, 0.05]
 ARMATURE = [0.0045092746608505355, 0.0056654868268008396, 0.0008] * 2
 DAMPING = [2.3658001235049574e-06, 1.7025403002922656e-05, 0.0] * 2
 FRICTIONLOSS = [9.003633786813792e-06, 0.20614840564125578, 0.0] * 2
+CALF_RANGE = [-2.522524368, -1.285784060]
 
 
 def _compose_task(selector: str) -> DictConfig:
@@ -99,6 +101,20 @@ def test_we11_registry_scene_and_compiled_pace_are_exact() -> None:
     np.testing.assert_allclose(we11.dof_armature[6:12], ARMATURE, rtol=0, atol=1e-15)
     np.testing.assert_allclose(we11.dof_damping[6:12], DAMPING, rtol=0, atol=1e-15)
     np.testing.assert_allclose(we11.dof_frictionloss[6:12], FRICTIONLOSS, rtol=0, atol=1e-15)
+    for joint_name in ("left_calf_joint", "right_calf_joint"):
+        joint_id = mujoco.mj_name2id(we11, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        np.testing.assert_allclose(we11.jnt_range[joint_id], CALF_RANGE, rtol=0, atol=1e-12)
+
+    urdf = ET.parse(WE11_ROOT / "urdf/we11_reviewed.urdf")
+    for joint_name in ("left_calf_joint", "right_calf_joint"):
+        limit = urdf.find(f".//joint[@name='{joint_name}']/limit")
+        assert limit is not None
+        np.testing.assert_allclose(
+            [float(limit.attrib["lower"]), float(limit.attrib["upper"])],
+            CALF_RANGE,
+            rtol=0,
+            atol=1e-12,
+        )
 
     pace = json.loads(WE11_PACE.read_text())
     assert pace["armature"] == ARMATURE
@@ -123,6 +139,10 @@ def test_flat_and_alignment_scenes_share_exact_getup_keyframe() -> None:
     np.testing.assert_allclose(
         flat.key_qpos[flat_key], alignment.key_qpos[alignment_key], rtol=0, atol=0
     )
+    for joint_name in ("left_calf_joint", "right_calf_joint"):
+        joint_id = mujoco.mj_name2id(flat, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        qpos_index = int(flat.jnt_qposadr[joint_id])
+        assert flat.key_qpos[flat_key, qpos_index] == CALF_RANGE[0]
 
 
 def test_forced_getup_reset_uses_keyframe() -> None:

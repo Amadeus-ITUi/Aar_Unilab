@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import struct
-import subprocess
-import sys
-import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,23 +11,38 @@ import numpy as np
 from unilab.base import registry
 from unilab.base.np_env import NpEnvState
 from unilab.dtype_config import get_global_dtype
+from unilab.envs.common.rotation import np_quat_apply_batched, np_quat_from_euler_xyz, np_quat_mul
+from unilab.envs.locomotion.common.rewards import RewardContext
 from unilab.envs.locomotion.dr002.joystick import (
     DR002JoystickEnv,
     DR002JoystickFlatWE11Cfg,
     ResetPoseConfig,
 )
 
-_DEFAULT_POSE_BANK = Path(__file__).parents[3] / "assets/robots/dr002/we11/getup_pose_bank_v2.npz"
+_DEFAULT_POSE_BANK = Path(__file__).parents[3] / "assets/robots/dr002/we11/getup_pose_bank_v3.npz"
 
-_STAGE_ORIGINAL = 0
-_STAGE_FRONT = 1
-_STAGE_BACK = 2
-_STAGE_MIXED = 3
-_STAGE_NAMES = ("original", "front", "back", "mixed")
+_STAGE_BALANCE_RECOVERY = 0
+_STAGE_HOME_TO_GETUP = 1
+_STAGE_GETUP_TO_FRONT = 2
+_STAGE_FRONT = 3
+_STAGE_BACK = 4
+_STAGE_MIXED = 5
+_STAGE_NAMES = (
+    "balance_recovery",
+    "home_to_getup",
+    "getup_to_front",
+    "front",
+    "back",
+    "mixed",
+)
 
-_RESET_ORIGINAL = 0
+_RESET_HOME_TO_GETUP = 0
 _RESET_FRONT = 1
 _RESET_BACK = 2
+_RESET_GETUP_TO_FRONT = 3
+_RESET_BALANCE_RECOVERY = 4
+# Compatibility name retained for tests and checkpoint-era terminology.
+_RESET_ORIGINAL = _RESET_HOME_TO_GETUP
 
 
 @dataclass
@@ -42,7 +53,6 @@ class GetupPoseCurriculumConfig:
     difficulty_step: float = 0.05
     frontier_width: float = 0.05
     replay_fraction: float = 0.20
-    component_progress_jitter: float = 0.025
     hard_anchor_fraction: float = 0.10
     window_episodes: int = 2048
     promote_success_rate: float = 0.80
@@ -62,55 +72,17 @@ class GetupPoseCurriculumConfig:
     mixed_interpolated_fraction: float = 0.10
     mixed_front_fraction: float = 0.20
     mixed_back_fraction: float = 0.20
-    back_thigh_group_edges: tuple[float, ...] = (-0.13, 0.0, 0.20, 0.40, 0.61)
-    ground_clearance_easy_m: float = 0.015
+    back_thigh_group_edges: tuple[float, ...] = (0.0, 0.15, 0.30, 0.45, 0.61)
+    balance_max_pitch_deg: float = 25.0
+    balance_max_pitch_rate_rad_s: float = 0.2
+    # Midpoint of the two wheel bodies relative to base_link in the home keyframe.
+    balance_wheel_pivot_offset_body: tuple[float, float, float] = (
+        0.02543588,
+        0.0,
+        -0.24231853,
+    )
     forced_difficulty: float | None = None
-
-
-class _GroundHeightWorker:
-    def __init__(self, model_file: str) -> None:
-        self._process = subprocess.Popen(
-            [
-                sys.executable,
-                str(Path(__file__).with_name("getup_ground_worker.py")),
-                model_file,
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-        )
-        self._finalizer = weakref.finalize(self, self._close_process, self._process)
-
-    @staticmethod
-    def _close_process(process: subprocess.Popen) -> None:
-        if process.stdin is not None:
-            try:
-                process.stdin.close()
-            except BrokenPipeError:
-                pass
-        if process.poll() is None:
-            try:
-                process.wait(timeout=1.0)
-            except subprocess.TimeoutExpired:
-                process.terminate()
-                process.wait(timeout=1.0)
-
-    def query(self, qpos: np.ndarray, shared: np.ndarray, clearance: float) -> np.ndarray:
-        process = self._process
-        if process.stdin is None or process.stdout is None:
-            raise RuntimeError("get-up ground-height worker has no communication pipes")
-        poses = np.ascontiguousarray(qpos, dtype="<f8")
-        phases = np.ascontiguousarray(shared, dtype="<f8")
-        process.stdin.write(struct.pack("<IId", poses.shape[0], poses.shape[1], clearance))
-        process.stdin.write(poses.tobytes())
-        process.stdin.write(phases.tobytes())
-        process.stdin.flush()
-        size = poses.shape[0] * 8
-        payload = process.stdout.read(size)
-        if len(payload) != size:
-            raise RuntimeError(
-                f"get-up ground-height worker stopped early with code {process.poll()}"
-            )
-        return np.frombuffer(payload, dtype="<f8").copy()
+    forced_stage: str | None = None
 
 
 @registry.envcfg("DR002JoystickGetupWE11")
@@ -127,36 +99,26 @@ class DR002JoystickGetupWE11Cfg(DR002JoystickFlatWE11Cfg):
     getup_curriculum: GetupPoseCurriculumConfig = field(default_factory=GetupPoseCurriculumConfig)
 
 
-def _quat_slerp(q0: np.ndarray, q1: np.ndarray, phase: np.ndarray) -> np.ndarray:
-    """Shortest-path quaternion slerp for MuJoCo's wxyz convention."""
-    qa = np.asarray(q0, dtype=np.float64)
-    qb = np.asarray(q1, dtype=np.float64).copy()
-    dot = float(np.dot(qa, qb))
-    if dot < 0.0:
-        qb *= -1.0
-        dot = -dot
-    dot = float(np.clip(dot, -1.0, 1.0))
-    t = np.asarray(phase, dtype=np.float64).reshape(-1, 1)
-    if dot > 0.9995:
-        result = (1.0 - t) * qa + t * qb
-    else:
-        theta = float(np.arccos(dot))
-        denom = float(np.sin(theta))
-        result = np.sin((1.0 - t) * theta) / denom * qa + np.sin(t * theta) / denom * qb
-    return result / np.linalg.norm(result, axis=1, keepdims=True)
-
-
 @registry.env("DR002JoystickGetupWE11", sim_backend="mujoco")
 class DR002JoystickGetupEnv(DR002JoystickEnv):
     """Flat behavior with a dedicated balance-to-get-up reset curriculum."""
 
     _cfg: DR002JoystickGetupWE11Cfg
 
+    def _init_reward_functions(self) -> None:
+        super()._init_reward_functions()
+        self._reward_fns["getup_workspace"] = self._reward_getup_workspace
+
+    def _compute_truncated(self, state: NpEnvState) -> np.ndarray:
+        truncated = super()._compute_truncated(state)
+        balance_succeeded = (
+            self._episode_reset_category == _RESET_BALANCE_RECOVERY
+        ) & self._getup_succeeded
+        np.logical_or(truncated, balance_succeeded, out=truncated)
+        return truncated
+
     def __init__(self, cfg: DR002JoystickGetupWE11Cfg, num_envs=1, backend_type="mujoco"):
         self._validate_getup_cfg(cfg)
-        # A second MjData in this process slows MuJoCo 3.8 native batched
-        # stepping by roughly 4x. Keep reset-only kinematics isolated.
-        self._ground_height_worker = _GroundHeightWorker(str(cfg.scene.model_file))
         super().__init__(cfg, num_envs=num_envs, backend_type=backend_type)
 
         dtype = get_global_dtype()
@@ -189,20 +151,37 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self._getup_curriculum_promotions = 0
         self._getup_curriculum_demotions = 0
         self._getup_curriculum_mastered = False
-        self._getup_curriculum_stage = _STAGE_ORIGINAL
+        self._getup_curriculum_stage = _STAGE_BALANCE_RECOVERY
         self._getup_curriculum_window_completed = 0
         self._getup_curriculum_window_successes = 0
         self._getup_curriculum_last_success_rate = np.nan
+        self._balance_window_completed = np.zeros((2,), dtype=np.int64)
+        self._balance_window_successes = np.zeros((2,), dtype=np.int64)
+        self._balance_last_window_success_rates = np.full((2,), np.nan, dtype=np.float64)
+        self._balance_episode_counts = np.zeros((2,), dtype=np.int64)
+        self._balance_success_counts = np.zeros((2,), dtype=np.int64)
         self._pending_reset_difficulty = np.empty((0,), dtype=dtype)
         self._pending_reset_frontier = np.empty((0,), dtype=np.bool_)
         self._pending_reset_category = np.empty((0,), dtype=np.int8)
+        self._pending_balance_direction = np.empty((0,), dtype=np.int8)
+        self._pending_balance_pitch_rad = np.empty((0,), dtype=dtype)
+        self._pending_balance_pitch_rate = np.empty((0,), dtype=dtype)
         self._episode_reset_difficulty = np.zeros((num_envs,), dtype=dtype)
         self._episode_frontier = np.zeros((num_envs,), dtype=np.bool_)
         self._episode_reset_category = np.full((num_envs,), _RESET_ORIGINAL, dtype=np.int8)
+        self._episode_balance_direction = np.zeros((num_envs,), dtype=np.int8)
+        self._episode_balance_pitch_rad = np.zeros((num_envs,), dtype=dtype)
+        self._episode_balance_pitch_rate = np.zeros((num_envs,), dtype=dtype)
+        self._episode_reset_xy = np.zeros((num_envs, 2), dtype=dtype)
+        self._episode_max_abs_xy_displacement = np.zeros((num_envs,), dtype=dtype)
+        self._episode_workspace_violated = np.zeros((num_envs,), dtype=np.bool_)
         self._episode_initialized = np.zeros((num_envs,), dtype=np.bool_)
         self._family_episode_counts = np.zeros((2,), dtype=np.int64)
         self._family_success_counts = np.zeros((2,), dtype=np.int64)
         self._family_last_window_success_rates = np.full((2,), np.nan, dtype=np.float64)
+        self._workspace_completed_episodes = 0
+        self._workspace_violation_episodes = 0
+        self._workspace_max_displacement_sum = 0.0
 
     def _load_pose_bank(self, bank_file: Path) -> None:
         """Load and index the offline-generated reset library on the cold path."""
@@ -214,11 +193,16 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             qpos = np.asarray(bank["qpos"], dtype=get_global_dtype())
             family = np.asarray(bank["family"], dtype=np.int8)
             thigh = np.asarray(bank["thigh"], dtype=np.float64)
+            progress = np.asarray(bank["progress"], dtype=np.float64)
         if qpos.ndim != 2 or qpos.shape[1] != self._easy_qpos.size:
             raise ValueError(
                 f"get-up pose bank qpos must have shape (N, {self._easy_qpos.size}), got {qpos.shape}"
             )
-        if family.shape != (qpos.shape[0],) or thigh.shape != (qpos.shape[0],):
+        if (
+            family.shape != (qpos.shape[0],)
+            or thigh.shape != (qpos.shape[0],)
+            or progress.shape != (qpos.shape[0],)
+        ):
             raise ValueError("get-up pose bank metadata does not match qpos rows")
         if not np.all(np.isfinite(qpos)) or not np.all(np.isfinite(thigh)):
             raise ValueError("get-up pose bank contains non-finite values")
@@ -241,6 +225,51 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         if any(indices.size == 0 for indices in self._back_pose_groups):
             raise ValueError("every configured back thigh group must contain at least one pose")
 
+        home_to_getup = np.flatnonzero(family == 5).astype(np.int32)
+        getup_to_front = np.flatnonzero(family == 4).astype(np.int32)
+        if home_to_getup.size == 0 or getup_to_front.size == 0:
+            raise ValueError("get-up pose bank must contain both transition families")
+
+        def build_path(
+            indices: np.ndarray,
+            start_qpos: np.ndarray,
+            end_qpos: np.ndarray,
+        ) -> tuple[np.ndarray, np.ndarray]:
+            order = np.argsort(progress[indices])
+            path_progress = progress[indices[order]]
+            if (
+                np.any(~np.isfinite(path_progress))
+                or np.any(path_progress <= 0.0)
+                or np.any(path_progress >= 1.0)
+                or np.any(np.diff(path_progress) <= 0.0)
+            ):
+                raise ValueError("transition pose progress must be finite and strictly increasing")
+            path_qpos = np.concatenate(
+                [start_qpos[None, :], qpos[indices[order]], end_qpos[None, :]], axis=0
+            )
+            return (
+                np.concatenate([[0.0], path_progress, [1.0]]),
+                np.asarray(path_qpos, dtype=get_global_dtype()),
+            )
+
+        self._home_to_getup_progress, self._home_to_getup_qpos = build_path(
+            home_to_getup, self._easy_qpos, self._hard_qpos
+        )
+        front_endpoint_candidates = self._front_pose_indices[
+            np.isclose(thigh[self._front_pose_indices], 1.57)
+            & np.isclose(
+                qpos[self._front_pose_indices, self._leg_qpos_indices[1]],
+                self._hard_qpos[self._leg_qpos_indices[1]],
+            )
+        ]
+        if front_endpoint_candidates.size != 1:
+            raise ValueError("pose bank must contain one exact getup_to_front endpoint")
+        self._getup_to_front_progress, self._getup_to_front_qpos = build_path(
+            getup_to_front,
+            self._hard_qpos,
+            qpos[int(front_endpoint_candidates[0])],
+        )
+
     @staticmethod
     def _validate_getup_cfg(cfg: DR002JoystickGetupWE11Cfg) -> None:
         c = cfg.getup_curriculum
@@ -249,7 +278,6 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             c.difficulty_step,
             c.frontier_width,
             c.replay_fraction,
-            c.component_progress_jitter,
             c.hard_anchor_fraction,
             c.promote_success_rate,
             c.demote_success_rate,
@@ -267,6 +295,8 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             c.mixed_interpolated_fraction,
             c.mixed_front_fraction,
             c.mixed_back_fraction,
+            c.balance_max_pitch_deg,
+            c.balance_max_pitch_rate_rad_s,
         )
         if not all(np.isfinite(float(value)) for value in values):
             raise ValueError("getup curriculum values must be finite")
@@ -280,6 +310,15 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             raise ValueError("getup replay and hard-anchor fractions must be in [0, 1]")
         if c.window_episodes <= 0:
             raise ValueError("getup window_episodes must be positive")
+        if c.window_episodes % 2 != 0:
+            raise ValueError("getup window_episodes must be even for balanced direction windows")
+        if c.balance_max_pitch_deg <= 0.0 or c.balance_max_pitch_rate_rad_s <= 0.0:
+            raise ValueError("balance pitch and pitch-rate limits must be positive")
+        pivot = np.asarray(c.balance_wheel_pivot_offset_body, dtype=np.float64)
+        if pivot.shape != (3,) or not np.all(np.isfinite(pivot)):
+            raise ValueError("balance_wheel_pivot_offset_body must contain three finite values")
+        if c.forced_stage not in {None, "balance_recovery", "home_to_getup"}:
+            raise ValueError("getup forced_stage must be one of: balance_recovery, home_to_getup")
         fraction_sets = (
             (
                 c.front_stage_home_fraction,
@@ -368,9 +407,30 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self, num_reset: int
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         c = self._cfg.getup_curriculum
-        if c.forced_difficulty is not None or self._getup_curriculum_stage == _STAGE_ORIGINAL:
+        if c.forced_difficulty is not None:
             shared, frontier, exact_hard = self._sample_original_progress(num_reset)
-            category = np.full((num_reset,), _RESET_ORIGINAL, dtype=np.int8)
+            forced_stage = c.forced_stage or "home_to_getup"
+            reset_category = (
+                _RESET_BALANCE_RECOVERY
+                if forced_stage == "balance_recovery"
+                else _RESET_HOME_TO_GETUP
+            )
+            category = np.full((num_reset,), reset_category, dtype=np.int8)
+            return shared, frontier, exact_hard, category
+
+        if self._getup_curriculum_stage in (
+            _STAGE_BALANCE_RECOVERY,
+            _STAGE_HOME_TO_GETUP,
+            _STAGE_GETUP_TO_FRONT,
+        ):
+            shared, frontier, exact_hard = self._sample_original_progress(num_reset)
+            if self._getup_curriculum_stage == _STAGE_BALANCE_RECOVERY:
+                reset_category = _RESET_BALANCE_RECOVERY
+            elif self._getup_curriculum_stage == _STAGE_GETUP_TO_FRONT:
+                reset_category = _RESET_GETUP_TO_FRONT
+            else:
+                reset_category = _RESET_HOME_TO_GETUP
+            category = np.full((num_reset,), reset_category, dtype=np.int8)
             return shared, frontier, exact_hard, category
 
         if self._getup_curriculum_stage == _STAGE_FRONT:
@@ -430,54 +490,70 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         return selected
 
     def sample_getup_reset_qpos(self, num_reset: int) -> np.ndarray:
-        shared, frontier, exact_hard, category = self._sample_reset_plan(num_reset)
-        c = self._cfg.getup_curriculum
-        forced = c.forced_difficulty is not None
+        shared, frontier, _exact_hard, category = self._sample_reset_plan(num_reset)
         qpos = np.broadcast_to(self._easy_qpos, (num_reset, self._easy_qpos.size)).copy()
-        original = category == _RESET_ORIGINAL
-        original_rows = np.flatnonzero(original)
-        if original_rows.size:
-            original_shared = shared[original]
-            if forced:
-                base_phase = thigh_phase = calf_phase = original_shared
+        balance_direction = np.zeros((num_reset,), dtype=np.int8)
+        balance_pitch = np.zeros((num_reset,), dtype=np.float64)
+        balance_pitch_rate = np.zeros((num_reset,), dtype=np.float64)
+        balance_rows = np.flatnonzero(category == _RESET_BALANCE_RECOVERY)
+        if balance_rows.size:
+            # Exact 50/50 direction balance for even batches; odd batches get
+            # one independently sampled extra direction.
+            directions = np.ones((balance_rows.size,), dtype=np.int8)
+            directions[: balance_rows.size // 2] = -1
+            if balance_rows.size % 2:
+                directions[-1] = np.random.choice(np.asarray([-1, 1], dtype=np.int8))
+            np.random.shuffle(directions)
+            max_pitch = np.deg2rad(self._cfg.getup_curriculum.balance_max_pitch_deg)
+            max_rate = self._cfg.getup_curriculum.balance_max_pitch_rate_rad_s
+            sampled_progress = shared[balance_rows]
+            disturbance_low = np.maximum(
+                0.0,
+                sampled_progress - self._cfg.getup_curriculum.frontier_width,
+            )
+            pitch_progress = np.random.uniform(disturbance_low, sampled_progress)
+            rate_progress = np.random.uniform(disturbance_low, sampled_progress)
+            pitch_magnitude = max_pitch * pitch_progress
+            rate_magnitude = max_rate * rate_progress
+            signed_pitch = directions * pitch_magnitude
+            signed_rate = directions * rate_magnitude
+            pitch_quat = np_quat_from_euler_xyz(
+                np.zeros_like(signed_pitch),
+                signed_pitch,
+                np.zeros_like(signed_pitch),
+            )
+            qpos[balance_rows, 3:7] = np_quat_mul(
+                pitch_quat,
+                qpos[balance_rows, 3:7],
+            )
+            pivot_offset = np.asarray(
+                self._cfg.getup_curriculum.balance_wheel_pivot_offset_body,
+                dtype=np.float64,
+            )
+            root_from_pivot = np.broadcast_to(-pivot_offset, (balance_rows.size, 3))
+            rotated_root = np_quat_apply_batched(pitch_quat, root_from_pivot)
+            qpos[balance_rows, :3] += pivot_offset + rotated_root
+            balance_direction[balance_rows] = directions
+            balance_pitch[balance_rows] = signed_pitch
+            balance_pitch_rate[balance_rows] = signed_rate
+        for reset_category in (_RESET_HOME_TO_GETUP, _RESET_GETUP_TO_FRONT):
+            rows = np.flatnonzero(category == reset_category)
+            if not rows.size:
+                continue
+            if reset_category == _RESET_GETUP_TO_FRONT:
+                path_progress = self._getup_to_front_progress
+                path_qpos = self._getup_to_front_qpos
             else:
-                jitter = float(c.component_progress_jitter)
-                upper = max(self._getup_curriculum_difficulty, float(np.max(original_shared)))
-                base_phase = np.clip(
-                    original_shared + np.random.uniform(-jitter, jitter, original_rows.size),
-                    0.0,
-                    upper,
-                )
-                thigh_phase = np.clip(
-                    original_shared + np.random.uniform(-jitter, jitter, original_rows.size),
-                    0.0,
-                    upper,
-                )
-                calf_phase = np.clip(
-                    original_shared + np.random.uniform(-jitter, jitter, original_rows.size),
-                    0.0,
-                    upper,
-                )
-            original_qpos = qpos[original].copy()
-            original_qpos[:, 3:7] = _quat_slerp(
-                self._easy_qpos[3:7], self._hard_qpos[3:7], base_phase
+                path_progress = self._home_to_getup_progress
+                path_qpos = self._home_to_getup_qpos
+            insertion = np.searchsorted(path_progress, shared[rows], side="left")
+            insertion = np.clip(insertion, 1, path_progress.size - 1)
+            left = insertion - 1
+            choose_right = np.abs(path_progress[insertion] - shared[rows]) < np.abs(
+                shared[rows] - path_progress[left]
             )
-            lt, lc, rt, rc = self._leg_qpos_indices
-            original_qpos[:, [lt, rt]] = self._easy_qpos[lt] + thigh_phase[:, None] * (
-                self._hard_qpos[lt] - self._easy_qpos[lt]
-            )
-            original_qpos[:, [lc, rc]] = self._easy_qpos[lc] + calf_phase[:, None] * (
-                self._hard_qpos[lc] - self._easy_qpos[lc]
-            )
-            exact_easy = original_shared <= 1.0e-12
-            grounded = ~exact_easy
-            if np.any(grounded):
-                original_qpos[grounded, 2] = self._grounded_root_height(
-                    original_qpos[grounded], original_shared[grounded]
-                )
-            original_qpos[exact_easy] = self._easy_qpos
-            original_qpos[exact_hard[original]] = self._hard_qpos
-            qpos[original] = original_qpos
+            selected = np.where(choose_right, insertion, left)
+            qpos[rows] = path_qpos[selected]
 
         for reset_category in (_RESET_FRONT, _RESET_BACK):
             rows = np.flatnonzero(category == reset_category)
@@ -490,14 +566,18 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self._pending_reset_difficulty = np.asarray(shared, dtype=get_global_dtype())
         self._pending_reset_frontier = frontier
         self._pending_reset_category = category
+        self._pending_balance_direction = balance_direction
+        self._pending_balance_pitch_rad = np.asarray(balance_pitch, dtype=get_global_dtype())
+        self._pending_balance_pitch_rate = np.asarray(balance_pitch_rate, dtype=get_global_dtype())
         return np.asarray(qpos, dtype=get_global_dtype())
 
-    def _grounded_root_height(self, qpos: np.ndarray, shared: np.ndarray) -> np.ndarray:
-        return self._ground_height_worker.query(
-            qpos,
-            shared,
-            self._cfg.getup_curriculum.ground_clearance_easy_m,
-        )
+    def sample_getup_reset_qvel(self, qvel: np.ndarray) -> np.ndarray:
+        values = np.asarray(qvel, dtype=get_global_dtype()).copy()
+        if self._pending_balance_pitch_rate.shape != (values.shape[0],):
+            raise RuntimeError("getup reset velocity metadata does not match reset batch")
+        balance = self._pending_reset_category == _RESET_BALANCE_RECOVERY
+        values[balance, 4] = self._pending_balance_pitch_rate[balance]
+        return values
 
     def record_getup_reset(self, env_ids: np.ndarray, _reset_xy: np.ndarray) -> None:
         rows = np.asarray(env_ids, dtype=np.int32)
@@ -505,10 +585,61 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             raise RuntimeError("getup reset metadata does not match reset batch")
         if self._pending_reset_category.shape != (rows.size,):
             raise RuntimeError("getup reset category metadata does not match reset batch")
+        if self._pending_balance_direction.shape != (rows.size,):
+            raise RuntimeError("balance reset metadata does not match reset batch")
         self._episode_reset_difficulty[rows] = self._pending_reset_difficulty
         self._episode_frontier[rows] = self._pending_reset_frontier
         self._episode_reset_category[rows] = self._pending_reset_category
+        self._episode_balance_direction[rows] = self._pending_balance_direction
+        self._episode_balance_pitch_rad[rows] = self._pending_balance_pitch_rad
+        self._episode_balance_pitch_rate[rows] = self._pending_balance_pitch_rate
+        self._episode_reset_xy[rows] = np.asarray(_reset_xy, dtype=get_global_dtype())
+        self._episode_max_abs_xy_displacement[rows] = 0.0
+        self._episode_workspace_violated[rows] = False
         self._episode_initialized[rows] = True
+
+    def sample_commands(
+        self,
+        num_samples: int,
+        *,
+        env_ids: np.ndarray | None = None,
+        resample_standing: bool = False,
+    ) -> np.ndarray:
+        commands = super().sample_commands(
+            num_samples,
+            env_ids=env_ids,
+            resample_standing=resample_standing,
+        )
+        if env_ids is None:
+            return commands
+        rows = np.asarray(env_ids, dtype=np.int32)
+        balance = self._episode_reset_category[rows] == _RESET_BALANCE_RECOVERY
+        if np.any(balance):
+            commands[balance] = self.startup_commands(int(np.count_nonzero(balance)))
+        return commands
+
+    def _reward_getup_workspace(self, ctx: RewardContext) -> np.ndarray:
+        half_extent = self._reward_cfg.getup_workspace_half_extent
+        if half_extent is None:
+            return np.zeros((ctx.num_envs,), dtype=get_global_dtype())
+        base_xy = np.asarray(self._backend.get_base_pos(), dtype=get_global_dtype())[
+            : ctx.num_envs, :2
+        ]
+        displacement = base_xy - self._episode_reset_xy[: ctx.num_envs]
+        abs_displacement = np.abs(displacement)
+        per_env_max = np.max(abs_displacement, axis=1)
+        self._episode_max_abs_xy_displacement[: ctx.num_envs] = np.maximum(
+            self._episode_max_abs_xy_displacement[: ctx.num_envs],
+            per_env_max,
+        )
+        violated = np.any(abs_displacement > float(half_extent), axis=1)
+        self._episode_workspace_violated[: ctx.num_envs] |= violated
+        excess = np.maximum(abs_displacement - float(half_extent), 0.0) / float(half_extent)
+        reward = np.sum(np.square(excess), axis=1)
+        penalty_clip = self._reward_cfg.getup_workspace_penalty_clip
+        if penalty_clip is not None:
+            reward = np.minimum(reward, float(penalty_clip))
+        return np.asarray(reward, dtype=get_global_dtype())
 
     def reset(self, env_indices: np.ndarray) -> tuple[dict[str, np.ndarray], dict]:
         rows = np.asarray(env_indices, dtype=np.int32)
@@ -527,6 +658,19 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
     def _record_curriculum_outcomes(self, rows: np.ndarray) -> None:
         categories = self._episode_reset_category[rows]
         outcomes = np.asarray(self._getup_succeeded[rows], dtype=np.bool_)
+        self._workspace_completed_episodes += int(rows.size)
+        self._workspace_violation_episodes += int(
+            np.count_nonzero(self._episode_workspace_violated[rows])
+        )
+        self._workspace_max_displacement_sum += float(
+            np.sum(self._episode_max_abs_xy_displacement[rows])
+        )
+
+        balance_mask = categories == _RESET_BALANCE_RECOVERY
+        for index, direction in enumerate((-1, 1)):
+            direction_mask = balance_mask & (self._episode_balance_direction[rows] == direction)
+            self._balance_episode_counts[index] += int(np.count_nonzero(direction_mask))
+            self._balance_success_counts[index] += int(np.count_nonzero(outcomes[direction_mask]))
         for category in (_RESET_FRONT, _RESET_BACK):
             family = category - _RESET_FRONT
             family_mask = categories == category
@@ -536,7 +680,13 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         c = self._cfg.getup_curriculum
         if c.forced_difficulty is not None or self._getup_curriculum_stage == _STAGE_MIXED:
             return
-        if self._getup_curriculum_stage == _STAGE_ORIGINAL:
+        if self._getup_curriculum_stage == _STAGE_BALANCE_RECOVERY:
+            self._record_balance_curriculum_outcomes(rows, outcomes)
+            return
+        if self._getup_curriculum_stage in (
+            _STAGE_HOME_TO_GETUP,
+            _STAGE_GETUP_TO_FRONT,
+        ):
             eligible = self._episode_frontier[rows]
         elif self._getup_curriculum_stage == _STAGE_FRONT:
             eligible = categories == _RESET_FRONT
@@ -563,10 +713,14 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             old_stage = self._getup_curriculum_stage
             if old_stage in (_STAGE_FRONT, _STAGE_BACK):
                 self._family_last_window_success_rates[old_stage - _STAGE_FRONT] = rate
-            if old_stage == _STAGE_ORIGINAL:
+            if old_stage in (_STAGE_HOME_TO_GETUP, _STAGE_GETUP_TO_FRONT):
                 if old_difficulty >= 1.0 and rate >= c.promote_success_rate:
-                    self._getup_curriculum_mastered = True
-                    self._getup_curriculum_stage = _STAGE_FRONT
+                    if old_stage == _STAGE_HOME_TO_GETUP:
+                        self._getup_curriculum_mastered = True
+                        self._getup_curriculum_stage = _STAGE_GETUP_TO_FRONT
+                        self._getup_curriculum_difficulty = 0.0
+                    else:
+                        self._getup_curriculum_stage = _STAGE_FRONT
                 elif rate >= c.promote_success_rate:
                     self._getup_curriculum_difficulty = min(1.0, old_difficulty + c.difficulty_step)
                     if self._getup_curriculum_difficulty > old_difficulty:
@@ -585,6 +739,46 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             # credited to a newly promoted/demoted level.
             if self._getup_curriculum_difficulty != old_difficulty:
                 break
+
+    def _record_balance_curriculum_outcomes(self, rows: np.ndarray, outcomes: np.ndarray) -> None:
+        c = self._cfg.getup_curriculum
+        per_direction_target = c.window_episodes // 2
+        for index, direction in enumerate((-1, 1)):
+            eligible = (
+                self._episode_frontier[rows]
+                & (self._episode_reset_category[rows] == _RESET_BALANCE_RECOVERY)
+                & (self._episode_balance_direction[rows] == direction)
+            )
+            values = outcomes[eligible]
+            capacity = per_direction_target - int(self._balance_window_completed[index])
+            take = min(capacity, int(values.size))
+            if take > 0:
+                self._balance_window_completed[index] += take
+                self._balance_window_successes[index] += int(np.count_nonzero(values[:take]))
+
+        if np.any(self._balance_window_completed < per_direction_target):
+            return
+
+        rates = self._balance_window_successes / self._balance_window_completed
+        self._balance_last_window_success_rates[:] = rates
+        self._getup_curriculum_last_success_rate = float(np.min(rates))
+        old_difficulty = self._getup_curriculum_difficulty
+        if np.all(rates >= c.promote_success_rate):
+            if old_difficulty >= 1.0:
+                self._getup_curriculum_stage = _STAGE_HOME_TO_GETUP
+                self._getup_curriculum_difficulty = 0.0
+            else:
+                self._getup_curriculum_difficulty = min(1.0, old_difficulty + c.difficulty_step)
+                self._getup_curriculum_promotions += int(
+                    self._getup_curriculum_difficulty > old_difficulty
+                )
+        elif np.any(rates < c.demote_success_rate):
+            self._getup_curriculum_difficulty = max(0.0, old_difficulty - c.difficulty_step)
+            self._getup_curriculum_demotions += int(
+                self._getup_curriculum_difficulty < old_difficulty
+            )
+        self._balance_window_completed.fill(0)
+        self._balance_window_successes.fill(0)
 
     def _log_getup_diagnostics(self, log: dict[str, Any], num_envs: int) -> None:
         super()._log_getup_diagnostics(log, num_envs)
@@ -613,6 +807,48 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         categories = self._episode_reset_category[:num_envs]
         log["getup_curriculum/front_reset_fraction"] = float(np.mean(categories == _RESET_FRONT))
         log["getup_curriculum/back_reset_fraction"] = float(np.mean(categories == _RESET_BACK))
+        log["getup_curriculum/home_to_getup_reset_fraction"] = float(
+            np.mean(categories == _RESET_HOME_TO_GETUP)
+        )
+        log["getup_curriculum/getup_to_front_reset_fraction"] = float(
+            np.mean(categories == _RESET_GETUP_TO_FRONT)
+        )
+        balance = categories == _RESET_BALANCE_RECOVERY
+        log["getup_curriculum/balance_reset_fraction"] = float(np.mean(balance))
+        log["getup_curriculum/balance_pitch_abs_mean_deg"] = float(
+            np.rad2deg(np.mean(np.abs(self._episode_balance_pitch_rad[:num_envs][balance])))
+            if np.any(balance)
+            else 0.0
+        )
+        log["getup_curriculum/balance_pitch_rate_abs_mean"] = float(
+            np.mean(np.abs(self._episode_balance_pitch_rate[:num_envs][balance]))
+            if np.any(balance)
+            else 0.0
+        )
+        log["getup_curriculum/balance_window_completed"] = float(
+            np.sum(self._balance_window_completed)
+        )
+        for index, name in enumerate(("backward", "forward")):
+            episodes = int(self._balance_episode_counts[index])
+            successes = int(self._balance_success_counts[index])
+            rate = self._balance_last_window_success_rates[index]
+            log[f"getup_curriculum/balance_{name}_episodes"] = float(episodes)
+            log[f"getup_curriculum/balance_{name}_success_rate"] = float(
+                successes / max(episodes, 1)
+            )
+            log[f"getup_curriculum/balance_{name}_window_success_rate"] = (
+                float(rate) if np.isfinite(rate) else 0.0
+            )
+        completed = max(self._workspace_completed_episodes, 1)
+        log["getup_workspace/violation_rate"] = float(
+            self._workspace_violation_episodes / completed
+        )
+        log["getup_workspace/mean_episode_max_displacement"] = float(
+            self._workspace_max_displacement_sum / completed
+        )
+        base_height = self._reward_base_height_values(num_envs)
+        log["getup_base_height/below_range_fraction"] = float(np.mean(base_height < 0.20))
+        log["getup_base_height/above_range_fraction"] = float(np.mean(base_height > 0.30))
         for family, name in enumerate(("front", "back")):
             episodes = int(self._family_episode_counts[family])
             successes = int(self._family_success_counts[family])
@@ -627,6 +863,7 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
     def training_state_dict(self) -> dict[str, Any]:
         state = super().training_state_dict()
         state["getup_pose_curriculum"] = {
+            "layout_version": 3,
             "difficulty": float(self._getup_curriculum_difficulty),
             "promotions": int(self._getup_curriculum_promotions),
             "demotions": int(self._getup_curriculum_demotions),
@@ -638,6 +875,11 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             "family_episode_counts": self._family_episode_counts.tolist(),
             "family_success_counts": self._family_success_counts.tolist(),
             "family_last_window_success_rates": self._family_last_window_success_rates.tolist(),
+            "balance_window_completed": self._balance_window_completed.tolist(),
+            "balance_window_successes": self._balance_window_successes.tolist(),
+            "balance_last_window_success_rates": (self._balance_last_window_success_rates.tolist()),
+            "balance_episode_counts": self._balance_episode_counts.tolist(),
+            "balance_success_counts": self._balance_success_counts.tolist(),
         }
         return state
 
@@ -653,13 +895,29 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self._getup_curriculum_promotions = max(int(payload["promotions"]), 0)
         self._getup_curriculum_demotions = max(int(payload["demotions"]), 0)
         self._getup_curriculum_mastered = bool(payload.get("mastered", False))
-        default_stage = _STAGE_FRONT if self._getup_curriculum_mastered else _STAGE_ORIGINAL
-        stage = int(payload.get("stage", default_stage))
-        if not _STAGE_ORIGINAL <= stage <= _STAGE_MIXED:
+        layout_version = int(payload.get("layout_version", 1))
+        saved_stage = int(
+            payload.get(
+                "stage",
+                1 if self._getup_curriculum_mastered else 0,
+            )
+        )
+        if layout_version < 3:
+            # Every pre-balance checkpoint keeps its policy/optimizer and
+            # historical family counters, but must learn the newly inserted
+            # dynamic recovery stage before continuing the pose curriculum.
+            stage = _STAGE_BALANCE_RECOVERY
+            self._getup_curriculum_difficulty = 0.0
+            self._getup_curriculum_window_completed = 0
+            self._getup_curriculum_window_successes = 0
+        else:
+            stage = saved_stage
+        if not _STAGE_BALANCE_RECOVERY <= stage <= _STAGE_MIXED:
             raise ValueError(f"saved getup curriculum stage is invalid: {stage}")
         self._getup_curriculum_stage = stage
-        self._getup_curriculum_window_completed = max(int(payload["window_completed"]), 0)
-        self._getup_curriculum_window_successes = max(int(payload["window_successes"]), 0)
+        if layout_version >= 3:
+            self._getup_curriculum_window_completed = max(int(payload["window_completed"]), 0)
+            self._getup_curriculum_window_successes = max(int(payload["window_successes"]), 0)
         self._getup_curriculum_last_success_rate = float(payload["last_success_rate"])
         episode_counts = np.asarray(payload.get("family_episode_counts", [0, 0]), dtype=np.int64)
         success_counts = np.asarray(payload.get("family_success_counts", [0, 0]), dtype=np.int64)
@@ -680,3 +938,32 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         ):
             raise ValueError("saved getup family window rates must be NaN or in [0, 1]")
         self._family_last_window_success_rates[:] = window_rates
+        if layout_version >= 3:
+            self._load_pair_counter(
+                payload, "balance_window_completed", self._balance_window_completed
+            )
+            self._load_pair_counter(
+                payload, "balance_window_successes", self._balance_window_successes
+            )
+            self._load_pair_counter(payload, "balance_episode_counts", self._balance_episode_counts)
+            self._load_pair_counter(payload, "balance_success_counts", self._balance_success_counts)
+            if np.any(self._balance_window_successes > self._balance_window_completed):
+                raise ValueError("saved balance window successes cannot exceed completions")
+            if np.any(self._balance_success_counts > self._balance_episode_counts):
+                raise ValueError("saved balance successes cannot exceed episodes")
+            balance_rates = np.asarray(
+                payload.get("balance_last_window_success_rates", [np.nan, np.nan]),
+                dtype=np.float64,
+            )
+            if balance_rates.shape != (2,) or np.any(
+                np.isfinite(balance_rates) & ((balance_rates < 0.0) | (balance_rates > 1.0))
+            ):
+                raise ValueError("saved balance window rates must be NaN or in [0, 1]")
+            self._balance_last_window_success_rates[:] = balance_rates
+
+    @staticmethod
+    def _load_pair_counter(payload: dict[str, Any], name: str, target: np.ndarray) -> None:
+        values = np.asarray(payload.get(name, [0, 0]), dtype=np.int64)
+        if values.shape != (2,) or np.any(values < 0):
+            raise ValueError(f"saved {name} must contain two nonnegative values")
+        target[:] = values

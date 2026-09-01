@@ -22,15 +22,15 @@ env:
     difficulty_step: 0.05
     frontier_width: 0.05
     replay_fraction: 0.20
-    component_progress_jitter: 0.025
     hard_anchor_fraction: 0.10
     window_episodes: 2048
     promote_success_rate: 0.80
     demote_success_rate: 0.50
-    # Once the original difficulty=1 frontier reaches 80%, train the offline
-    # legal-pose families in stages. Only the active family's completed
-    # episodes contribute to each stage's 2048-episode promotion window.
-    pose_bank_file: src/unilab/assets/robots/dr002/we11/getup_pose_bank_v2.npz
+    # Canonical reset poses are read from the offline bank without per-component
+    # pose jitter. Training progresses through balance_recovery, home_to_getup,
+    # getup_to_front, front, back, then mixed; only the active stage's target
+    # episodes qualify its 2048-episode promotion window.
+    pose_bank_file: src/unilab/assets/robots/dr002/we11/getup_pose_bank_v3.npz
     front_stage_home_fraction: 0.30
     front_stage_hard_fraction: 0.20
     front_stage_interpolated_fraction: 0.10
@@ -45,10 +45,17 @@ env:
     mixed_interpolated_fraction: 0.10
     mixed_front_fraction: 0.20
     mixed_back_fraction: 0.20
-    back_thigh_group_edges: [-0.13, 0.0, 0.20, 0.40, 0.61]
-    ground_clearance_easy_m: 0.015
+    # With the measured calf limits, collision-valid U2-supported back poses
+    # occupy thigh ~= 0.01..0.60 rad. Split that feasible interval into four
+    # groups so reset sampling remains balanced across the surviving geometry.
+    back_thigh_group_edges: [0.0, 0.15, 0.30, 0.45, 0.61]
     # Both wings are independently uniform across their full mechanical range.
+    balance_max_pitch_deg: 25.0
+    balance_max_pitch_rate_rad_s: 0.2
+    # Wheel-axis midpoint relative to base_link in the exact home keyframe.
+    balance_wheel_pivot_offset_body: [0.02543588, 0.0, -0.24231853]
     forced_difficulty: null
+    forced_stage: null
   # Preserve Getup's deterministic reset placement while inheriting Flat's
   # non-pose domain randomization.
   domain_rand:
@@ -57,6 +64,20 @@ env:
     init_qvel_range: [0.0, 0.0]
 
 reward:
+  scales:
+    getup_workspace: -0.5
+  # Getup permits any stable leg configuration in this base-link Z band.
+  base_height_range: [0.20, 0.30]
+  getup_success_gravity_z_threshold: 0.95
+  getup_success_base_height_range: [0.20, 0.30]
+  getup_success_max_abs_lin_vel_xy: 0.10
+  getup_success_max_abs_ang_vel_xyz: 0.20
+  # Workspace is reward shaping only; leaving it does not invalidate success.
+  getup_workspace_half_extent: 0.10
+  getup_success_workspace_half_extent: null
+  # Cap the unweighted quadratic workspace penalty before applying its scale.
+  getup_workspace_penalty_clip: 0.5
+  getup_success_hold_time_s: 1.0
   # At 50 Hz, 50 consecutive control steps are one second.
   termination_contact_fail_steps: 50
   termination_gravity_z_threshold: 0.4

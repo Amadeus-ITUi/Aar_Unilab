@@ -1,8 +1,9 @@
-"""Generate collision-checked WE11 forward/backward get-up reset poses offline.
+"""Generate a typed WE11 get-up reset-pose library offline.
 
-The generated bank is deliberately a cold-path artifact. Training reset only
-needs to sample and copy a saved qpos; no MuJoCo kinematics or contact solve is
-required in the reset hot loop.
+The library contains the canonical ``home`` and ``getup_start_v2`` keyframe
+anchors plus collision-checked forward/backward support poses.  It is
+deliberately a cold-path artifact: training reset only samples and copies a
+saved qpos; no MuJoCo kinematics or contact solve is required in the hot loop.
 """
 
 from __future__ import annotations
@@ -21,11 +22,22 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_SCENE = (
     ROOT_DIR / "src" / "unilab" / "assets" / "robots" / "dr002" / "we11" / "scene_flat_we11.xml"
 )
-DEFAULT_OUTPUT = DEFAULT_SCENE.with_name("getup_pose_bank_v2.npz")
+DEFAULT_OUTPUT = DEFAULT_SCENE.with_name("getup_pose_bank_v3.npz")
 
 FAMILY_FRONT = 0
 FAMILY_BACK = 1
-FAMILY_NAMES = {FAMILY_FRONT: "front", FAMILY_BACK: "back"}
+FAMILY_HOME = 2
+FAMILY_GETUP = 3
+FAMILY_GETUP_TO_FRONT = 4
+FAMILY_HOME_TO_GETUP = 5
+FAMILY_NAMES = {
+    FAMILY_FRONT: "front",
+    FAMILY_BACK: "back",
+    FAMILY_HOME: "home",
+    FAMILY_GETUP: "getup",
+    FAMILY_GETUP_TO_FRONT: "getup_to_front",
+    FAMILY_HOME_TO_GETUP: "home_to_getup",
+}
 
 
 @dataclass(frozen=True)
@@ -48,6 +60,12 @@ FAMILY_SPECS = {
         target_geom="U2_collision",
         thigh_range=(-0.13, 0.60),
         pitch_range=(-1.56, -0.02),
+    ),
+    "getup_to_front": FamilySpec(
+        family_id=FAMILY_GETUP_TO_FRONT,
+        target_geom="base_shoulder_collision",
+        thigh_range=(-0.13, 1.57),
+        pitch_range=(0.02, 1.56),
     ),
 }
 
@@ -102,6 +120,31 @@ def _geom_bottom(model: mujoco.MjModel, data: mujoco.MjData, geom_id: int) -> fl
 def _set_base_pitch(qpos: np.ndarray, pitch: float) -> None:
     half = 0.5 * pitch
     qpos[3:7] = [np.cos(half), 0.0, np.sin(half), 0.0]
+
+
+def _base_pitch(qpos: np.ndarray) -> float:
+    """Return pitch from a MuJoCo wxyz root quaternion."""
+    w, x, y, z = (float(value) for value in qpos[3:7])
+    return float(np.arcsin(np.clip(2.0 * (w * y - z * x), -1.0, 1.0)))
+
+
+def _quat_slerp_pair(q0: np.ndarray, q1: np.ndarray, progress: float) -> np.ndarray:
+    qa = np.asarray(q0, dtype=np.float64)
+    qb = np.asarray(q1, dtype=np.float64).copy()
+    dot = float(np.dot(qa, qb))
+    if dot < 0.0:
+        qb *= -1.0
+        dot = -dot
+    dot = float(np.clip(dot, -1.0, 1.0))
+    if dot > 0.9995:
+        result = (1.0 - progress) * qa + progress * qb
+    else:
+        theta = float(np.arccos(dot))
+        result = (
+            np.sin((1.0 - progress) * theta) / np.sin(theta) * qa
+            + np.sin(progress * theta) / np.sin(theta) * qb
+        )
+    return result / np.linalg.norm(result)
 
 
 def _find_pitch_roots(
@@ -200,6 +243,8 @@ def generate_pose_bank(args: argparse.Namespace) -> tuple[dict[str, np.ndarray],
     data = mujoco.MjData(model)
     home_key = _object_id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
     home_qpos = np.asarray(model.key_qpos[home_key], dtype=np.float64).copy()
+    getup_key = _object_id(model, mujoco.mjtObj.mjOBJ_KEY, "getup_start_v2")
+    getup_qpos = np.asarray(model.key_qpos[getup_key], dtype=np.float64).copy()
 
     joint_names = (
         "left_thigh_joint",
@@ -242,17 +287,105 @@ def generate_pose_bank(args: argparse.Namespace) -> tuple[dict[str, np.ndarray],
     calves: list[float] = []
     pitches: list[float] = []
     minimum_clearances: list[float] = []
+    progresses: list[float] = []
     rejected: Counter[str] = Counter()
     attempted_leg_configs = 0
     attempted_wing_checks = 0
 
-    family_names = tuple(FAMILY_SPECS) if args.family == "both" else (args.family,)
+    # Keyframe anchors make the reset taxonomy inspectable in one artifact.
+    # Wings use the same canonical midpoint as generated rows and remain a
+    # runtime-randomized degree of freedom rather than part of pose identity.
+    for anchor_qpos, family_id in (
+        (home_qpos, FAMILY_HOME),
+        (getup_qpos, FAMILY_GETUP),
+    ):
+        pose = anchor_qpos.copy()
+        pose[joint_qpos["left_wing_joint"]] = canonical_wing_qpos[0]
+        pose[joint_qpos["right_wing_joint"]] = canonical_wing_qpos[1]
+        data.qpos[:] = pose
+        mujoco.mj_forward(model, data)
+        rows.append(pose)
+        family_ids.append(family_id)
+        thighs.append(float(pose[joint_qpos["left_thigh_joint"]]))
+        calves.append(float(pose[joint_qpos["left_calf_joint"]]))
+        pitches.append(_base_pitch(pose))
+        minimum_clearances.append(
+            min(_geom_bottom(model, data, geom_id) for geom_id in collision_geom_ids)
+        )
+        progresses.append(np.nan)
+
+    if not 0.0 < args.home_to_getup_step < 1.0:
+        raise ValueError("home_to_getup_step must be in (0, 1)")
+    home_to_getup_progress = np.arange(
+        args.home_to_getup_step, 1.0, args.home_to_getup_step, dtype=np.float64
+    )
+    for progress in home_to_getup_progress:
+        attempted_leg_configs += 1
+        candidate = (1.0 - progress) * home_qpos + progress * getup_qpos
+        candidate[3:7] = _quat_slerp_pair(home_qpos[3:7], getup_qpos[3:7], float(progress))
+        candidate[joint_qpos["left_wing_joint"]] = canonical_wing_qpos[0]
+        candidate[joint_qpos["right_wing_joint"]] = canonical_wing_qpos[1]
+        candidate[2] = 0.0
+        data.qpos[:] = candidate
+        mujoco.mj_kinematics(model, data)
+        wheel_bottom = min(_geom_bottom(model, data, geom_id) for geom_id in wheel_geom_ids)
+        candidate[2] = -wheel_bottom + float(args.home_ground_clearance) * (1.0 - float(progress))
+
+        minimum = np.inf
+        invalid_reason: str | None = None
+        for left_wing in wing_validation_values[0]:
+            for right_wing in wing_validation_values[1]:
+                attempted_wing_checks += 1
+                pose = candidate.copy()
+                pose[joint_qpos["left_wing_joint"]] = left_wing
+                pose[joint_qpos["right_wing_joint"]] = right_wing
+                data.qpos[:] = pose
+                mujoco.mj_forward(model, data)
+                pose_minimum = min(
+                    _geom_bottom(model, data, geom_id) for geom_id in collision_geom_ids
+                )
+                minimum = min(minimum, pose_minimum)
+                if pose_minimum < -args.max_penetration:
+                    invalid_reason = "other_geom_penetration"
+                    break
+                if not np.all(np.isfinite(data.qpos)) or not np.all(np.isfinite(data.qacc)):
+                    invalid_reason = "nonfinite_state"
+                    break
+            if invalid_reason is not None:
+                break
+        if invalid_reason is not None:
+            rejected[f"home_to_getup_wing_sweep_{invalid_reason}"] += 1
+            continue
+
+        rows.append(candidate)
+        family_ids.append(FAMILY_HOME_TO_GETUP)
+        thighs.append(float(candidate[joint_qpos["left_thigh_joint"]]))
+        calves.append(float(candidate[joint_qpos["left_calf_joint"]]))
+        pitches.append(_base_pitch(candidate))
+        minimum_clearances.append(float(minimum))
+        progresses.append(float(progress))
+
+    if args.family == "all":
+        family_names = ("front", "back", "getup_to_front")
+    elif args.family == "both":
+        # Backward-compatible spelling for the original front/back-only bank.
+        family_names = ("front", "back")
+    else:
+        family_names = (args.family,)
     for family_name in family_names:
         spec = FAMILY_SPECS[family_name]
         target_geom_id = _object_id(model, mujoco.mjtObj.mjOBJ_GEOM, spec.target_geom)
         thigh_values = _inclusive_grid(*spec.thigh_range, args.thigh_step)
+        family_calf_values = calf_values
+        if family_name == "getup_to_front":
+            # Anchors own both endpoints. Only save the strictly intermediate
+            # lower-body states, with calf fixed to the getup/front value.
+            thigh_values = thigh_values[1:-1]
+            family_calf_values = np.asarray(
+                [getup_qpos[joint_qpos["left_calf_joint"]]], dtype=np.float64
+            )
         for thigh in thigh_values:
-            for calf in calf_values:
+            for calf in family_calf_values:
                 attempted_leg_configs += 1
                 candidate = home_qpos.copy()
                 candidate[0:2] = 0.0
@@ -320,6 +453,11 @@ def generate_pose_bank(args: argparse.Namespace) -> tuple[dict[str, np.ndarray],
                 calves.append(float(calf))
                 pitches.append(float(pitch))
                 minimum_clearances.append(float(minimum))
+                progresses.append(
+                    float((thigh - spec.thigh_range[0]) / np.ptp(spec.thigh_range))
+                    if family_name == "getup_to_front"
+                    else np.nan
+                )
 
     qpos = np.asarray(rows, dtype=np.float64).reshape(-1, model.nq)
     arrays = {
@@ -329,6 +467,7 @@ def generate_pose_bank(args: argparse.Namespace) -> tuple[dict[str, np.ndarray],
         "calf": np.asarray(calves, dtype=np.float64),
         "base_pitch": np.asarray(pitches, dtype=np.float64),
         "minimum_clearance": np.asarray(minimum_clearances, dtype=np.float64),
+        "progress": np.asarray(progresses, dtype=np.float64),
         "wing_joint_lower": np.asarray(wing_limits[:, 0], dtype=np.float64),
         "wing_joint_upper": np.asarray(wing_limits[:, 1], dtype=np.float64),
     }
@@ -337,18 +476,24 @@ def generate_pose_bank(args: argparse.Namespace) -> tuple[dict[str, np.ndarray],
         for family_id, name in FAMILY_NAMES.items()
     }
     summary = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "pose_types": {str(family_id): name for family_id, name in FAMILY_NAMES.items()},
+        "anchor_keyframes": {"home": "home", "getup": "getup_start_v2"},
         "scene": str(scene_path),
         "scene_sha256": hashlib.sha256(scene_path.read_bytes()).hexdigest(),
         "nq": int(model.nq),
         "angle_grid": {
             "thigh_step": float(args.thigh_step),
             "calf_step": float(args.calf_step),
+            "home_to_getup_progress_step": float(args.home_to_getup_step),
         },
+        "calf_joint_range_rad": [calf_low, calf_high],
+        "measured_knee_internal_angle_range_deg": [35.47, 106.33],
         "contact": {
             "depth": float(args.contact_depth),
             "tolerance": float(args.contact_tolerance),
             "max_penetration": float(args.max_penetration),
+            "home_ground_clearance": float(args.home_ground_clearance),
         },
         "attempted_leg_configs": attempted_leg_configs,
         "attempted_wing_checks": attempted_wing_checks,
@@ -370,9 +515,15 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, default=DEFAULT_SCENE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--family", choices=("front", "back", "both"), default="both")
+    parser.add_argument(
+        "--family",
+        choices=("front", "back", "getup_to_front", "both", "all"),
+        default="all",
+    )
     parser.add_argument("--thigh-step", type=float, default=0.02)
     parser.add_argument("--calf-step", type=float, default=0.02)
+    parser.add_argument("--home-to-getup-step", type=float, default=0.01)
+    parser.add_argument("--home-ground-clearance", type=float, default=0.015)
     parser.add_argument("--pitch-samples", type=int, default=321)
     parser.add_argument("--wing-validation-samples", type=int, default=9)
     parser.add_argument("--contact-depth", type=float, default=0.0005)

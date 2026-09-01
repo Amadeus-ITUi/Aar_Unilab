@@ -90,6 +90,9 @@ class BackendAdapter:
                 raise ValueError("training.play_getup_difficulty must be in [0, 1]")
             curriculum = dict(env_cfg_override.get("getup_curriculum", {}))
             curriculum["forced_difficulty"] = difficulty
+            # The established Play difficulty means the canonical
+            # home-to-getup pose path, not the training-only balance stage.
+            curriculum["forced_stage"] = "home_to_getup"
             env_cfg_override["getup_curriculum"] = curriculum
         return env_cfg_override
 

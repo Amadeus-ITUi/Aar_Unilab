@@ -12,7 +12,9 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
   - 两翼 axis 互反：同 joint 值 → 翼面镜像对称
 - **尾翼**：U1_link/U2_link 保留新版 mesh 几何，固定连接 base_link
 - **base_link**：inertial 抄新版 CAD (mass=1.7974)，collision 抄旧版简化 box + 新增 shoulder box
-- **腿部**：全抄旧版 reviewed 值（惯量、限位、armature、damping、frictionloss）
+- **腿部**：惯量、armature、damping、frictionloss 沿用旧版 reviewed 值；calf
+  限位按实机膝关节内夹角 `35.47°–106.33°` 标定为
+  `[-2.522524368, -1.285784060] rad`
 
 ## 关节顺序
 
@@ -45,6 +47,10 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
 - `we11.xml`: 独立 WE11 MuJoCo 运行模型（nq=15, nu=8）
 - `scene_flat_we11.xml`: 平地场景，含 keyframe `home`
 - `scene_getup_alignment_we11.xml`: 独立的起立初始姿态对齐场景，不被 Flat/Rough 训练任务引用
+- `getup_pose_bank_v3.npz`: 统一的 typed reset 姿态库，包含 `home`、`getup` 锚点，
+  `home_to_getup`、`getup_to_front` 过渡，以及 `front`、`back` 离线碰撞验证姿态；
+  机翼角不参与姿态身份，使用时独立随机
+- `getup_pose_bank_v3.json`: v3 姿态库的场景哈希、类型数量和生成参数
 - `rough_locomotion_task.xml`: rough 环境注入片段
 - `meshes_lod/`: WE11 自包含 visual 网格（新版 STL + 旧版 base_link 5 分片 LOD）
 - `urdf/we11_reviewed.urdf`: 与运行模型物理属性对应的审核版 URDF
@@ -52,3 +58,29 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
 - `we11_pace_params.json`: PACE 辨识参数（腿部 6 关节，与旧版完全一致）
 - `training_data/measured_wrench_20260728_skin/`: 六维力数据（同旧版）
 - `training_data/wing_angle_20260713/`: 翼角观测数据（同旧版）
+
+姿态库可通过统一管理器按类型查看：
+
+```bash
+python scripts/manage_we11_getup_pose_bank.py --pose-type home
+python scripts/manage_we11_getup_pose_bank.py --pose-type home_to_getup
+python scripts/manage_we11_getup_pose_bank.py --pose-type getup
+python scripts/manage_we11_getup_pose_bank.py --pose-type getup_to_front
+python scripts/manage_we11_getup_pose_bank.py --pose-type front
+python scripts/manage_we11_getup_pose_bank.py --pose-type back
+```
+
+旧参数 `--family` 仍可使用，但新命令统一推荐 `--pose-type`。
+增加 `--simulate-passive` 可让 MuJoCo 以零 actuator command 推进，用于观察仅靠
+MJCF damping/friction 的保持能力；窗口内按 `S` 可随时切换冻结/被动物理。
+
+Getup 训练在姿态库课程前先运行 `balance_recovery`。该阶段始终从精确 `home`
+开始，pitch 与 pitch-rate 是 reset 时独立施加的训练扰动，不会写入或改动 v3
+姿态库。可使用以下命令查看最大难度：
+
+```bash
+python scripts/visualize_task_env.py \
+  --task DR002JoystickGetupWE11 \
+  --balance-difficulty 1.0 \
+  --num_envs 2
+```

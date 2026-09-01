@@ -296,12 +296,27 @@ class RewardConfig:
     zero_cmd_stationary_yaw_weight: float = 0.5
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
+    # None preserves the historical exact command-height objective. Tasks may
+    # instead configure a dead-band [low, high] in world-frame base-link Z.
+    base_height_range: tuple[float, float] | None = None
     only_positive_rewards: bool = False
     undesired_contact_threshold: float = 0.1
     termination_contact_threshold: float = 0.1
     termination_contact_fail_steps: int = 1
     termination_gravity_z_threshold: float = 0.7
     termination_fail_time_s: float = 0.001
+    getup_success_gravity_z_threshold: float = 0.9
+    getup_success_base_height_range: tuple[float, float] = (0.20, float("inf"))
+    getup_success_max_abs_lin_vel_xy: float = float("inf")
+    getup_success_max_abs_ang_vel_xyz: float = float("inf")
+    # Workspace boundary used by the reward term. Keep this independent from
+    # the optional success gate so the policy is not judged by a hidden rule.
+    getup_workspace_half_extent: float | None = None
+    getup_success_workspace_half_extent: float | None = None
+    # Maximum unweighted workspace penalty per control step. The reward scale
+    # is applied after this cap; None keeps the historical unbounded penalty.
+    getup_workspace_penalty_clip: float | None = None
+    getup_success_hold_time_s: float = 0.5
 
 
 @dataclass
@@ -1716,6 +1731,8 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 np.random.uniform(qvel_low, qvel_high, size=(num_reset, 6)),
                 dtype=get_global_dtype(),
             )
+        if np.any(getup_mask):
+            qvel[getup_mask] = env.sample_getup_reset_qvel(qvel[getup_mask])
 
         motor_kp, motor_kd = env.sample_reset_motor_gains(num_reset)
         env.set_motor_gains(env_ids, motor_kp, motor_kd)
@@ -1826,6 +1843,34 @@ class DR002JoystickEnv(DR002BaseEnv):
         super().__init__(cfg, backend, num_envs)
         self._np_dtype = get_global_dtype()
         self._reward_cfg = cfg.reward_config
+        for name, configured_range in (
+            ("base_height_range", self._reward_cfg.base_height_range),
+            (
+                "getup_success_base_height_range",
+                self._reward_cfg.getup_success_base_height_range,
+            ),
+        ):
+            if configured_range is None:
+                continue
+            values = np.asarray(configured_range, dtype=np.float64)
+            if values.shape != (2,) or np.isnan(values).any() or values[0] >= values[1]:
+                raise ValueError(f"reward.{name} must contain an increasing [low, high] pair")
+        if self._reward_cfg.getup_success_hold_time_s <= 0.0:
+            raise ValueError("reward.getup_success_hold_time_s must be positive")
+        for name, half_extent in (
+            ("getup_workspace_half_extent", self._reward_cfg.getup_workspace_half_extent),
+            (
+                "getup_success_workspace_half_extent",
+                self._reward_cfg.getup_success_workspace_half_extent,
+            ),
+        ):
+            if half_extent is not None and (not np.isfinite(half_extent) or half_extent <= 0.0):
+                raise ValueError(f"reward.{name} must be finite and positive")
+        workspace_clip = self._reward_cfg.getup_workspace_penalty_clip
+        if workspace_clip is not None and (
+            not np.isfinite(workspace_clip) or workspace_clip <= 0.0
+        ):
+            raise ValueError("reward.getup_workspace_penalty_clip must be finite and positive")
         reset_mode = str(cfg.reset_pose.mode).strip().lower()
         if reset_mode not in {"upright", "getup", "mixed"}:
             raise ValueError(
@@ -3100,6 +3145,10 @@ class DR002JoystickEnv(DR002BaseEnv):
             raise RuntimeError("get-up qpos requested without a loaded get-up keyframe")
         return np.broadcast_to(self._getup_qpos, (num_reset, self._getup_qpos.size)).copy()
 
+    def sample_getup_reset_qvel(self, qvel: np.ndarray) -> np.ndarray:
+        """Allow a dedicated get-up task to add reset velocity disturbances."""
+        return np.asarray(qvel, dtype=get_global_dtype()).copy()
+
     def set_episode_getup_mask(self, env_ids: np.ndarray, getup_mask: np.ndarray) -> None:
         rows = np.asarray(env_ids, dtype=np.int32)
         mask = np.asarray(getup_mask, dtype=np.bool_).reshape(-1)
@@ -3817,11 +3866,35 @@ class DR002JoystickEnv(DR002BaseEnv):
             if undesired_contacts.shape[1] > 0
             else np.ones((num_envs,), dtype=np.bool_)
         )
+        linvel = self.get_local_linvel()
+        gyro = self.get_gyro()
+        height_low, height_high = self._reward_cfg.getup_success_base_height_range
+        velocity_clear = np.all(
+            np.abs(linvel[:, :2]) < self._reward_cfg.getup_success_max_abs_lin_vel_xy,
+            axis=1,
+        ) & np.all(
+            np.abs(gyro[:, :3]) < self._reward_cfg.getup_success_max_abs_ang_vel_xyz,
+            axis=1,
+        )
+        workspace_clear = np.ones((num_envs,), dtype=np.bool_)
+        workspace_half_extent = self._reward_cfg.getup_success_workspace_half_extent
+        reset_xy = getattr(self, "_episode_reset_xy", None)
+        if workspace_half_extent is not None and isinstance(reset_xy, np.ndarray):
+            base_xy = np.asarray(self._backend.get_base_pos(), dtype=get_global_dtype())[
+                :num_envs, :2
+            ]
+            workspace_clear = np.all(
+                np.abs(base_xy - reset_xy[:num_envs]) <= float(workspace_half_extent),
+                axis=1,
+            )
         success_now = (
             self._episode_getup_mask[:num_envs]
             & (~self._getup_succeeded[:num_envs])
-            & (gravity[:, 2] > 0.9)
-            & (base_height > 0.20)
+            & (gravity[:, 2] > self._reward_cfg.getup_success_gravity_z_threshold)
+            & (base_height >= float(height_low))
+            & (base_height <= float(height_high))
+            & velocity_clear
+            & workspace_clear
             & contacts_clear
         )
         self._getup_success_hold_steps[:num_envs] = np.where(
@@ -3829,7 +3902,9 @@ class DR002JoystickEnv(DR002BaseEnv):
             self._getup_success_hold_steps[:num_envs] + 1,
             0,
         )
-        required_steps = max(int(round(0.5 / self._cfg.ctrl_dt)), 1)
+        required_steps = max(
+            int(round(self._reward_cfg.getup_success_hold_time_s / self._cfg.ctrl_dt)), 1
+        )
         newly_succeeded = (~self._getup_succeeded[:num_envs]) & (
             self._getup_success_hold_steps[:num_envs] >= required_steps
         )
@@ -4895,13 +4970,24 @@ class DR002JoystickEnv(DR002BaseEnv):
             and int(step_count[0]) % 4 == 0
             and base_height.shape[0] == ctx.num_envs
         ):
-            target = np.asarray(info["commands"], dtype=get_global_dtype())[:, 2]
-            height_error = base_height - target
             log = info.setdefault("log", {})
             log["base_height/mean"] = float(np.mean(base_height))
-            log["base_height/target_mean"] = float(np.mean(target))
-            log["base_height/error_mean"] = float(np.mean(height_error))
-            log["base_height/abs_error_mean"] = float(np.mean(np.abs(height_error)))
+            configured_range = self._reward_cfg.base_height_range
+            if configured_range is None:
+                target = np.asarray(info["commands"], dtype=get_global_dtype())[:, 2]
+                height_error = base_height - target
+                log["base_height/target_mean"] = float(np.mean(target))
+                log["base_height/error_mean"] = float(np.mean(height_error))
+                log["base_height/abs_error_mean"] = float(np.mean(np.abs(height_error)))
+            else:
+                low, high = (float(value) for value in configured_range)
+                outside_error = np.maximum(low - base_height, 0.0) + np.minimum(
+                    high - base_height, 0.0
+                )
+                log["base_height/range_low"] = low
+                log["base_height/range_high"] = high
+                log["base_height/outside_error_mean"] = float(np.mean(outside_error))
+                log["base_height/outside_abs_error_mean"] = float(np.mean(np.abs(outside_error)))
             log["termination/contact_now_frac"] = self._last_termination_contact_now_fraction
             log["termination/contact_accum_steps_mean"] = self._last_termination_contact_accum_mean
             log["termination/contact_accum_steps_max"] = self._last_termination_contact_accum_max
@@ -4988,11 +5074,15 @@ class DR002JoystickEnv(DR002BaseEnv):
         return self._clip_lingzu_reward("orientation", reward)
 
     def _reward_base_height_cmd(self, ctx: RewardContext) -> np.ndarray:
-        target = ctx.info["commands"][:, 2]
         std = max(float(self._reward_cfg.base_height_std), 1.0e-6)
-        reward = np.asarray(
-            np.square(ctx.base_height - target) / (std * std), dtype=get_global_dtype()
-        )
+        configured_range = self._reward_cfg.base_height_range
+        if configured_range is None:
+            target = ctx.info["commands"][:, 2]
+            error = ctx.base_height - target
+        else:
+            low, high = (float(value) for value in configured_range)
+            error = np.maximum(low - ctx.base_height, 0.0) + np.minimum(high - ctx.base_height, 0.0)
+        reward = np.asarray(np.square(error) / (std * std), dtype=get_global_dtype())
         return self._clip_lingzu_reward(
             "base_height",
             reward,

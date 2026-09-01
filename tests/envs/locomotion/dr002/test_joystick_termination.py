@@ -132,6 +132,8 @@ def test_getup_success_requires_pose_height_and_all_nonwheel_contacts_clear() ->
     env._backend = SimpleNamespace(
         get_base_pos=lambda: np.asarray([[0.0, 0.0, 0.24]], dtype=np.float32)
     )
+    env.get_local_linvel = lambda: np.zeros((1, 3), dtype=np.float32)
+    env.get_gyro = lambda: np.zeros((1, 3), dtype=np.float32)
     contact_values = np.zeros((1, 9), dtype=np.float32)
     env._undesired_contact_values = lambda _num_envs: contact_values
     env._getup_success_count = 0
@@ -151,3 +153,37 @@ def test_getup_success_requires_pose_height_and_all_nonwheel_contacts_clear() ->
     assert env._getup_succeeded[0]
     assert env._getup_success_count == 1
     assert env._getup_success_time_sum_s == 0.5
+
+
+def test_getup_success_requires_velocity_but_not_reward_workspace_and_one_second_hold() -> None:
+    env = _bare_termination_env()
+    env._episode_getup_mask[:] = True
+    env._update_getup_success = DR002JoystickEnv._update_getup_success.__get__(env)
+    env._reward_cfg.getup_success_gravity_z_threshold = 0.95
+    env._reward_cfg.getup_success_base_height_range = (0.20, 0.30)
+    env._reward_cfg.getup_success_max_abs_lin_vel_xy = 0.10
+    env._reward_cfg.getup_success_max_abs_ang_vel_xyz = 0.20
+    env._reward_cfg.getup_workspace_half_extent = 0.10
+    env._reward_cfg.getup_success_workspace_half_extent = None
+    env._reward_cfg.getup_success_hold_time_s = 1.0
+    base_pos = np.asarray([[0.0, 0.0, 0.24]], dtype=np.float32)
+    linvel = np.zeros((1, 3), dtype=np.float32)
+    gyro = np.zeros((1, 3), dtype=np.float32)
+    env._backend = SimpleNamespace(get_base_pos=lambda: base_pos)
+    env.get_local_linvel = lambda: linvel
+    env.get_gyro = lambda: gyro
+    env._episode_reset_xy = np.zeros((1, 2), dtype=np.float32)
+    env._undesired_contact_values = lambda _num_envs: np.zeros((1, 9), dtype=np.float32)
+    env._getup_success_count = 0
+    env._getup_success_time_sum_s = 0.0
+
+    linvel[0, 0] = 0.11
+    env._update_getup_success(_upright())
+    assert env._getup_success_hold_steps[0] == 0
+    linvel.fill(0.0)
+    base_pos[0, 0] = 0.11
+    for _ in range(49):
+        env._update_getup_success(_upright())
+    assert not env._getup_succeeded[0]
+    env._update_getup_success(_upright())
+    assert env._getup_succeeded[0]

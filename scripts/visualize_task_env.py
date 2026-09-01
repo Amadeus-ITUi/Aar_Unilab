@@ -88,6 +88,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Force a deterministic Getup curriculum pose in [0, 1].",
     )
     parser.add_argument(
+        "--balance-difficulty",
+        type=float,
+        default=None,
+        help="Force the Getup balance-recovery reset difficulty in [0, 1].",
+    )
+    parser.add_argument(
         "--num_envs",
         type=int,
         default=4,
@@ -106,6 +112,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--getup-difficulty must be in [0, 1]")
     if args.getup_difficulty is not None and args.task != "DR002JoystickGetupWE11":
         parser.error("--getup-difficulty is only valid for DR002JoystickGetupWE11")
+    if args.balance_difficulty is not None and not 0.0 <= args.balance_difficulty <= 1.0:
+        parser.error("--balance-difficulty must be in [0, 1]")
+    if args.balance_difficulty is not None and args.task != "DR002JoystickGetupWE11":
+        parser.error("--balance-difficulty is only valid for DR002JoystickGetupWE11")
+    if args.getup_difficulty is not None and args.balance_difficulty is not None:
+        parser.error("choose only one of --getup-difficulty and --balance-difficulty")
     return args
 
 
@@ -189,6 +201,16 @@ def _run_mujoco(env, num_envs: int, *, freeze_initial_pose: bool = False) -> Non
 
     actions = np.zeros((num_envs, env.action_space.shape[0]), dtype=np.float32)
     env.init_state()
+    balance_direction = getattr(env, "_episode_balance_direction", None)
+    if isinstance(balance_direction, np.ndarray) and np.any(balance_direction[:num_envs]):
+        pitch = np.rad2deg(np.asarray(env._episode_balance_pitch_rad[:num_envs]))
+        pitch_rate = np.asarray(env._episode_balance_pitch_rate[:num_envs])
+        for index in range(num_envs):
+            direction = "forward" if balance_direction[index] > 0 else "backward"
+            print(
+                f"[visualize_task_env] env={index} balance_direction={direction} "
+                f"pitch={pitch[index]:.3f}deg pitch_rate={pitch_rate[index]:.3f}rad/s"
+            )
     ctrl_dt = float(env.cfg.ctrl_dt)
 
     print(
@@ -225,6 +247,7 @@ def _build_env_cfg_override(
     task_name: str,
     start_pose: str | None = None,
     getup_difficulty: float | None = None,
+    balance_difficulty: float | None = None,
 ) -> dict[str, Any]:
     """Compose the training task config, then apply viewer-only pose overrides."""
     if task_name not in registry._envs:
@@ -243,7 +266,16 @@ def _build_env_cfg_override(
         override["reset_pose"] = {"mode": start_pose}
     if getup_difficulty is not None:
         override["reset_pose"] = {"mode": "getup"}
-        override["getup_curriculum"] = {"forced_difficulty": getup_difficulty}
+        override["getup_curriculum"] = {
+            "forced_difficulty": getup_difficulty,
+            "forced_stage": "home_to_getup",
+        }
+    if balance_difficulty is not None:
+        override["reset_pose"] = {"mode": "getup"}
+        override["getup_curriculum"] = {
+            "forced_difficulty": balance_difficulty,
+            "forced_stage": "balance_recovery",
+        }
     return override
 
 
@@ -273,10 +305,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"[visualize_task_env] task={args.task} backend={args.backend} "
         f"num_envs={args.num_envs} start_pose={args.start_pose or 'task-default'} "
         f"getup_difficulty={args.getup_difficulty if args.getup_difficulty is not None else 'task-default'} "
+        f"balance_difficulty={args.balance_difficulty if args.balance_difficulty is not None else 'task-default'} "
         f"freeze_initial_pose={args.freeze_initial_pose}"
     )
 
-    env_cfg_override = _build_env_cfg_override(args.task, args.start_pose, args.getup_difficulty)
+    env_cfg_override = _build_env_cfg_override(
+        args.task,
+        args.start_pose,
+        args.getup_difficulty,
+        args.balance_difficulty,
+    )
     env = registry.make(
         args.task,
         num_envs=args.num_envs,
