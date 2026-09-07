@@ -9,15 +9,14 @@ from scripts.visualize_task_env import _build_env_cfg_override, _parse_args
 
 from unilab.base import registry
 from unilab.envs.locomotion.dr002.getup import (
-    _RESET_BACK,
-    _RESET_BALANCE_RECOVERY,
-    _RESET_FRONT,
-    _RESET_GETUP_TO_FRONT,
-    _RESET_ORIGINAL,
-    _STAGE_BACK,
-    _STAGE_BALANCE_RECOVERY,
-    _STAGE_FRONT,
-    _STAGE_GETUP_TO_FRONT,
+    _RESET_BALANCE,
+    _RESET_EXACT_GETUP,
+    _RESET_HOME,
+    _RESET_HOME_TO_GETUP,
+    _STAGE_BALANCE,
+    _STAGE_ENHANCE,
+    _STAGE_EXACT_GETUP,
+    _STAGE_GETUP_WITH_HOME,
     _STAGE_HOME_TO_GETUP,
     _STAGE_MIXED,
     DR002JoystickGetupEnv,
@@ -41,84 +40,6 @@ def _compose_task(selector: str) -> DictConfig:
         return compose(config_name="config", overrides=[f"task={selector}"])
 
 
-def test_we11_getup_is_registered_as_an_isolated_flat_compatible_task() -> None:
-    ensure_registries()
-
-    assert DR002JoystickGetupWE11Cfg.__bases__ == (DR002JoystickFlatWE11Cfg,)
-    assert DR002JoystickGetupEnv.__bases__ == (DR002JoystickEnv,)
-    assert registry.list_registered_envs()[TASK_NAME] == {
-        "config_class": "DR002JoystickGetupWE11Cfg",
-        "available_backends": ["mujoco"],
-    }
-    assert (
-        DR002JoystickGetupEnv._init_reward_functions is not DR002JoystickEnv._init_reward_functions
-    )
-    assert DR002JoystickGetupEnv._compute_terminated is DR002JoystickEnv._compute_terminated
-    assert DR002JoystickGetupEnv._compute_truncated is not DR002JoystickEnv._compute_truncated
-    assert DR002JoystickGetupEnv._update_getup_success is DR002JoystickEnv._update_getup_success
-
-
-def test_we11_getup_matches_flat_except_for_reset_contract() -> None:
-    flat = OmegaConf.to_container(_compose_task(FLAT_SELECTOR), resolve=True)
-    getup = OmegaConf.to_container(_compose_task(GETUP_SELECTOR), resolve=True)
-    assert isinstance(flat, dict)
-    assert isinstance(getup, dict)
-    assert flat["training"]["task_name"] == "DR002JoystickFlatWE11"
-    assert getup["training"]["task_name"] == TASK_NAME
-
-    assert getup["algo"] == flat["algo"]
-    getup_reward = dict(getup["reward"])
-    flat_reward = dict(flat["reward"])
-    getup_reward_overrides = {
-        "termination_contact_fail_steps": 50,
-        "termination_gravity_z_threshold": 0.4,
-        "termination_fail_time_s": 1.0,
-        "base_height_range": [0.20, 0.30],
-        "getup_success_gravity_z_threshold": 0.95,
-        "getup_success_base_height_range": [0.20, 0.30],
-        "getup_success_max_abs_lin_vel_xy": 0.10,
-        "getup_success_max_abs_ang_vel_xyz": 0.20,
-        "getup_workspace_half_extent": 0.10,
-        "getup_success_workspace_half_extent": None,
-        "getup_workspace_penalty_clip": 0.5,
-        "getup_success_hold_time_s": 1.0,
-    }
-    for key, expected in getup_reward_overrides.items():
-        assert getup_reward.pop(key) == expected
-        flat_reward.pop(key, None)
-    getup_scales = dict(getup_reward["scales"])
-    assert getup_scales.pop("getup_workspace") == -0.5
-    getup_reward["scales"] = getup_scales
-    assert getup_reward == flat_reward
-    getup_env = dict(getup["env"])
-    flat_env = dict(flat["env"])
-    getup_reset = getup_env.pop("reset_pose")
-    flat_env.pop("reset_pose")
-    getup_curriculum = getup_env.pop("getup_curriculum")
-    getup_domain_rand = dict(getup_env["domain_rand"])
-    flat_domain_rand = dict(flat_env["domain_rand"])
-    for reset_key in ("randomize_init_yaw", "init_xy_range", "init_qvel_range"):
-        getup_domain_rand.pop(reset_key, None)
-        flat_domain_rand.pop(reset_key, None)
-    getup_env["domain_rand"] = getup_domain_rand
-    flat_env["domain_rand"] = flat_domain_rand
-    assert getup_env == flat_env
-    assert getup_reset["mode"] == "getup"
-    assert getup_reset["getup_probability"] == 1.0
-    assert getup_reset["getup_termination_grace_seconds"] == 1.0
-    assert getup_curriculum["initial_difficulty"] == 0.0
-    assert getup_curriculum["balance_max_pitch_deg"] == 25.0
-    assert getup_curriculum["balance_max_pitch_rate_rad_s"] == 0.2
-    assert getup_curriculum["front_stage_front_fraction"] == 0.40
-    assert getup_curriculum["back_stage_back_fraction"] == 0.40
-    assert getup_curriculum["mixed_home_fraction"] == 0.30
-    assert getup_curriculum["mixed_front_fraction"] == 0.20
-    assert getup_curriculum["mixed_back_fraction"] == 0.20
-    assert getup["env"]["domain_rand"]["randomize_init_yaw"] is False
-    assert getup["env"]["domain_rand"]["init_xy_range"] == [0.0, 0.0]
-    assert getup["env"]["getup_curriculum"]["initial_difficulty"] == 0.0
-
-
 def _make_getup_env(
     *,
     num_envs: int = 2,
@@ -139,508 +60,373 @@ def _make_getup_env(
 
 
 def _current_qpos(env) -> np.ndarray:
-    state = env.get_physics_state_snapshot()
+    snapshot = env.get_physics_state_snapshot()
     nq = int(env._backend.model.nq)
-    return np.asarray(state[:, 1 : 1 + nq])
+    return np.asarray(snapshot[:, 1 : 1 + nq])
 
 
-def _current_qvel(env) -> np.ndarray:
-    state = env.get_physics_state_snapshot()
-    nq = int(env._backend.model.nq)
-    nv = int(env._backend.model.nv)
-    return np.asarray(state[:, 1 + nq : 1 + nq + nv])
+def test_getup_registration_and_configuration_contract() -> None:
+    ensure_registries()
+    assert DR002JoystickGetupWE11Cfg.__bases__ == (DR002JoystickFlatWE11Cfg,)
+    assert DR002JoystickGetupEnv.__bases__ == (DR002JoystickEnv,)
+    assert registry.list_registered_envs()[TASK_NAME]["available_backends"] == ["mujoco"]
+
+    cfg = _compose_task(GETUP_SELECTOR)
+    assert cfg.env.commands.lin_vel_x == [-1.0, 1.0]
+    assert cfg.env.commands.ang_vel_z == [-1.0, 1.0]
+    assert cfg.env.commands.rel_standing_envs == 0.30
+    assert cfg.env.commands.startup_stand_seconds == 0.0
+    assert cfg.env.commands.standing_envs_episode_persistent is True
+    assert cfg.env.commands.curriculum is False
+    assert cfg.reward.getup_success_gravity_z_threshold == 0.90
+    assert cfg.reward.getup_success_base_height_range[0] == 0.20
+    assert np.isinf(cfg.reward.getup_success_base_height_range[1])
+    assert cfg.reward.getup_tracking_gate_min_height == 0.14285
+    assert cfg.reward.getup_tracking_gate_full_height == 0.20
+    assert cfg.reward.getup_lin_vel_z_min_multiplier == 0.10
+    assert cfg.reward.getup_leg_regularization_min_multiplier == 0.20
+    assert cfg.reward.scales.getup_success_bonus == 5.0
+    assert cfg.reward.track_ang_vel_z_term_clip == 2.0
+    assert cfg.reward.orientation_term_clip == 3.0
+    assert cfg.reward.zero_cmd_stationary_lateral_weight == 0.5
 
 
-def test_getup_forced_curriculum_endpoints_match_xml_except_randomized_wings() -> None:
+def test_getup_keeps_domain_randomization_unchanged() -> None:
+    cfg = _compose_task(GETUP_SELECTOR)
+    assert cfg.env.domain_rand.randomize_base_mass is True
+    assert cfg.env.domain_rand.body_mass_multiplier_range == [0.9, 1.2]
+    assert cfg.env.domain_rand.com_offset_x == [-0.04, 0.04]
+    assert cfg.env.domain_rand.ground_friction_multiplier_range == [0.8, 1.2]
+    assert cfg.env.domain_rand.kp_multiplier_range == [0.8, 1.2]
+    assert cfg.env.domain_rand.kd_multiplier_range == [0.8, 1.2]
+    assert cfg.env.domain_rand.push_force_limit == [10.0, 10.0, 0.0]
+
+
+def test_home_to_getup_endpoints_match_xml_except_randomized_wings() -> None:
     for difficulty, keyframe in ((0.0, "home"), (1.0, "getup_start_v2")):
-        env = _make_getup_env(difficulty=difficulty)
+        env = _make_getup_env(num_envs=8, difficulty=difficulty)
         try:
-            state = env.init_state()
-            expected = env._backend.get_keyframe_qpos(keyframe)
+            env.init_state()
             actual = _current_qpos(env)
-            non_wing = np.ones((expected.size,), dtype=np.bool_)
-            non_wing[env._wing_qpos_indices] = False
+            expected = env._backend.get_keyframe_qpos(keyframe)
+            non_wing = np.setdiff1d(np.arange(actual.shape[1]), env._wing_qpos_indices)
             np.testing.assert_allclose(
                 actual[:, non_wing],
-                np.broadcast_to(expected[non_wing], (2, int(np.count_nonzero(non_wing)))),
+                np.broadcast_to(expected[non_wing], actual[:, non_wing].shape),
                 atol=1.0e-7,
             )
-            lower = env._wing_joint_limits[:, 0]
-            upper = env._wing_joint_limits[:, 1]
-            assert np.all(actual[:, env._wing_qpos_indices] >= lower)
-            assert np.all(actual[:, env._wing_qpos_indices] <= upper)
-            np.testing.assert_array_equal(state.info["steps"], np.zeros(2, dtype=np.uint32))
-            np.testing.assert_allclose(state.info["commands"], [[0.0, 0.0, 0.24]] * 2)
+            assert np.all(env._episode_reset_category == _RESET_HOME_TO_GETUP)
         finally:
             env.close()
 
 
-def test_balance_recovery_reset_keeps_home_legs_and_applies_bounded_dynamic_tilt() -> None:
-    zero = _make_getup_env(
-        num_envs=4,
-        difficulty=0.0,
-        forced_stage="balance_recovery",
-    )
-    hard = _make_getup_env(
-        num_envs=100,
-        difficulty=1.0,
-        forced_stage="balance_recovery",
-    )
-    try:
-        zero.init_state()
-        home = zero._backend.get_keyframe_qpos("home")
-        zero_qpos = _current_qpos(zero)
-        non_wing = np.ones((home.size,), dtype=np.bool_)
-        non_wing[zero._wing_qpos_indices] = False
-        np.testing.assert_allclose(
-            zero_qpos[:, non_wing],
-            np.broadcast_to(home[non_wing], zero_qpos[:, non_wing].shape),
-            atol=1.0e-7,
-        )
-        np.testing.assert_allclose(_current_qvel(zero)[:, :6], 0.0, atol=1.0e-7)
-
-        hard.init_state()
-        assert np.count_nonzero(hard._episode_balance_direction == -1) == 50
-        assert np.count_nonzero(hard._episode_balance_direction == 1) == 50
-        assert np.min(np.abs(np.rad2deg(hard._episode_balance_pitch_rad))) >= 23.75
-        assert np.max(np.abs(np.rad2deg(hard._episode_balance_pitch_rad))) <= 25.0
-        assert np.min(np.abs(hard._episode_balance_pitch_rate)) >= 0.19
-        assert np.max(np.abs(hard._episode_balance_pitch_rate)) <= 0.2
-        np.testing.assert_allclose(
-            _current_qvel(hard)[:, 4], hard._episode_balance_pitch_rate, atol=1.0e-7
-        )
-        hard_qpos = _current_qpos(hard)
-        np.testing.assert_allclose(
-            hard_qpos[:, 7:13],
-            np.broadcast_to(home[7:13], hard_qpos[:, 7:13].shape),
-            atol=1.0e-7,
-        )
-        assert not np.any(hard._undesired_contact_values(100) > 0.1)
-        commands = hard.sample_commands(100, env_ids=np.arange(100, dtype=np.int32))
-        np.testing.assert_allclose(commands[:, :2], 0.0)
-    finally:
-        zero.close()
-        hard.close()
-
-
-def test_getup_midpoint_is_symmetric_and_inside_joint_limits() -> None:
-    env = _make_getup_env(difficulty=0.5)
+def test_balance_reset_uses_home_with_bounded_pitch_and_rate() -> None:
+    env = _make_getup_env(num_envs=100, difficulty=1.0, forced_stage="balance")
     try:
         env.init_state()
-        qpos = _current_qpos(env)
-        np.testing.assert_allclose(qpos[:, 7], qpos[:, 10])
-        np.testing.assert_allclose(qpos[:, 8], qpos[:, 11])
-        np.testing.assert_allclose(qpos[:, 9], qpos[:, 12])
-        assert np.all((qpos[:, 7] >= -0.13) & (qpos[:, 7] <= 0.8))
-        calf_endpoints = [env._easy_qpos[8], env._hard_qpos[8]]
-        assert np.all((qpos[:, 8] >= min(calf_endpoints)) & (qpos[:, 8] <= max(calf_endpoints)))
-        height_endpoints = [env._easy_qpos[2], env._hard_qpos[2]]
-        assert np.all((qpos[:, 2] > min(height_endpoints)) & (qpos[:, 2] < max(height_endpoints)))
-        non_wing = np.ones((qpos.shape[1],), dtype=np.bool_)
-        non_wing[env._wing_qpos_indices] = False
-        canonical = env._home_to_getup_qpos[:, non_wing]
-        for row in qpos[:, non_wing]:
-            assert np.any(np.all(np.isclose(canonical, row, atol=1.0e-7), axis=1))
-    finally:
-        env.close()
-
-
-def test_getup_wing_reset_is_independently_uniform_within_mechanical_limits() -> None:
-    env = _make_getup_env(num_envs=1, difficulty=1.0)
-    try:
-        np.random.seed(23)
-        values = env._sample_getup_wing_qpos(20000)
-
-        lower = env._wing_joint_limits[:, 0]
-        upper = env._wing_joint_limits[:, 1]
-        assert np.all(values >= lower)
-        assert np.all(values <= upper)
-        np.testing.assert_allclose(np.mean(values, axis=0), (lower + upper) / 2.0, atol=0.015)
-        assert np.any(np.abs(values[:, 0] - values[:, 1]) > 1.0e-3)
-        np.testing.assert_allclose(upper, [0.0, 0.0], atol=1.0e-7)
-        np.testing.assert_allclose(lower, [-1.5708, -1.5708], atol=1.0e-7)
-    finally:
-        env.close()
-
-
-def test_getup_height_deadband_and_workspace_boundary_are_zero_inside() -> None:
-    env = _make_getup_env(num_envs=5)
-    try:
-        height_ctx = type(
-            "HeightContext",
-            (),
-            {
-                "base_height": np.asarray([0.19, 0.20, 0.30, 0.31, 0.24], dtype=np.float32),
-                "info": {"commands": np.asarray([[0.0, 0.0, 0.24]] * 5)},
-            },
-        )()
-        height_penalty = env._reward_base_height_cmd(height_ctx)
-        np.testing.assert_allclose(height_penalty, [0.04, 0.0, 0.0, 0.04, 0.0], atol=1.0e-6)
-
-        env._episode_reset_xy[:] = 0.0
-        original_get_base_pos = env._backend.get_base_pos
-        env._backend.get_base_pos = lambda: np.asarray(
-            [
-                [0.0, 0.0, 0.24],
-                [0.10, -0.10, 0.24],
-                [0.11, 0.0, 0.24],
-                [0.0, -0.12, 0.24],
-                [0.30, -0.30, 0.24],
-            ],
-            dtype=np.float32,
+        home = env._backend.get_keyframe_qpos("home")
+        leg_qpos = _current_qpos(env)[:, [7, 8, 10, 11]]
+        np.testing.assert_allclose(
+            leg_qpos,
+            np.broadcast_to(home[[7, 8, 10, 11]], leg_qpos.shape),
         )
-        workspace_ctx = type("WorkspaceContext", (), {"num_envs": 5})()
-        workspace_penalty = env._reward_getup_workspace(workspace_ctx)
-        np.testing.assert_allclose(workspace_penalty, [0.0, 0.0, 0.01, 0.04, 0.5], atol=1.0e-6)
-        assert not env._episode_workspace_violated[0]
-        assert not env._episode_workspace_violated[1]
-        assert env._episode_workspace_violated[2]
-        assert env._episode_workspace_violated[3]
-        assert env._episode_workspace_violated[4]
-        env._backend.get_base_pos = original_get_base_pos
+        assert np.count_nonzero(env._episode_balance_direction == -1) == 50
+        assert np.count_nonzero(env._episode_balance_direction == 1) == 50
+        assert np.max(np.abs(np.rad2deg(env._episode_balance_pitch_rad))) <= 16.25
+        assert np.max(np.abs(env._episode_balance_pitch_rate)) <= 0.13
+        assert np.all(env._episode_reset_category == _RESET_BALANCE)
     finally:
         env.close()
 
 
-def test_getup_sampling_uses_frontier_replay_mixture_and_hard_anchors() -> None:
-    env = _make_getup_env(num_envs=1)
+def test_command_sampling_is_thirty_percent_standing_and_deployment_vx_range() -> None:
+    env = _make_getup_env(num_envs=20_000)
     try:
-        np.random.seed(7)
-        env._getup_curriculum_difficulty = 0.5
-        shared, frontier, exact = env._sample_episode_progress(20000)
-        assert 0.78 < float(np.mean(frontier)) < 0.82
-        assert np.all((shared >= 0.0) & (shared <= 0.5))
-        assert np.all(shared[frontier] >= 0.45)
-        assert not np.any(exact)
-
-        env._getup_curriculum_difficulty = 1.0
-        shared, frontier, exact = env._sample_episode_progress(20000)
-        assert 0.09 < float(np.mean(exact)) < 0.11
-        assert np.all(shared[exact] == 1.0)
-        assert np.all(frontier[exact])
+        env.init_state()
+        standing = env._episode_standing_mask
+        commands = np.asarray(env.state.info["commands"])
+        assert 0.29 < float(np.mean(standing)) < 0.31
+        np.testing.assert_allclose(commands[standing, :2], 0.0)
+        moving = commands[~standing]
+        assert np.all((-1.0 <= moving[:, 0]) & (moving[:, 0] <= 1.0))
+        assert np.all((-1.0 <= moving[:, 1]) & (moving[:, 1] <= 1.0))
+        assert np.std(moving[:, 0]) > 0.50
+        assert np.std(moving[:, 1]) > 0.50
     finally:
         env.close()
 
 
-def test_getup_staged_sampling_uses_configured_front_back_and_mixed_mixtures() -> None:
+def test_enhance_starts_stationary_then_resamples_hardware_safe_commands() -> None:
+    env = _make_getup_env(num_envs=2_000, difficulty=1.0, forced_stage="enhance")
+    try:
+        state = env.init_state()
+        assert env._getup_curriculum_stage == _STAGE_ENHANCE
+        np.testing.assert_allclose(state.info["commands"][:, :2], 0.0)
+
+        startup_steps = int(
+            round(env._cfg.getup_curriculum.enhance_startup_stand_seconds / env._cfg.ctrl_dt)
+        )
+        state.info["steps"].fill(startup_steps)
+        env._update_commands(state.info)
+        commands = np.asarray(state.info["commands"])
+        moving = commands[~env._episode_standing_mask]
+        assert moving.size > 0
+        assert np.all((-1.0 <= moving[:, 0]) & (moving[:, 0] <= 1.0))
+        assert np.std(moving[:, 0]) > 0.50
+    finally:
+        env.close()
+
+
+def test_enhance_push_sampling_is_bounded_and_multi_step() -> None:
     env = _make_getup_env(num_envs=1)
     try:
-        np.random.seed(17)
-        env._getup_curriculum_difficulty = 1.0
+        env._getup_curriculum_stage = _STAGE_ENHANCE
+        scales = env.sample_interval_push_force_scale(10_000)
+        durations = env.sample_interval_push_duration_steps(10_000)
+        assert np.all((0.5 <= scales) & (scales <= 1.0))
+        assert np.all((2 <= durations) & (durations <= 5))
+        assert np.any(durations > 1)
+    finally:
+        env.close()
+
+
+def test_enhance_interval_push_persists_across_control_steps() -> None:
+    env = _make_getup_env(num_envs=1, difficulty=1.0, forced_stage="enhance")
+    try:
+        state = env.init_state()
+        env._episode_enhance_push_mask[:] = True
+        env._cfg.domain_rand.push_interval = 100
+        env._cfg.domain_rand.push_randomize_within_interval = False
+        startup = env.interval_push_startup_steps()
+        provider = env._dr_manager._provider
+
+        state.info["steps"][:] = startup + 100
+        first = provider.build_interval_randomization_plan(env, step_counter=0)
+        assert first is not None and first.body_force is not None
+        assert np.linalg.norm(first.body_force[0, 0, :3]) > 0.0
+
+        state.info["steps"][:] = startup + 101
+        second = provider.build_interval_randomization_plan(env, step_counter=1)
+        assert second is not None and second.body_force is not None
+        np.testing.assert_allclose(second.body_force, first.body_force)
+    finally:
+        env.close()
+
+
+def test_stage_reset_mixtures_exclude_front_and_back() -> None:
+    env = _make_getup_env(num_envs=1)
+    try:
         expected = {
-            _STAGE_FRONT: [0.30, 0.20, 0.10, 0.40, 0.0],
-            _STAGE_BACK: [0.30, 0.10, 0.10, 0.10, 0.40],
-            _STAGE_MIXED: [0.30, 0.20, 0.10, 0.20, 0.20],
+            _STAGE_EXACT_GETUP: [0.20, 0.80, 0.0, 0.0],
+            _STAGE_GETUP_WITH_HOME: [0.10, 0.60, 0.30, 0.0],
+            _STAGE_BALANCE: [0.10, 0.40, 0.20, 0.30],
+            _STAGE_MIXED: [0.10, 0.50, 0.20, 0.20],
+            _STAGE_ENHANCE: [0.10, 0.20, 0.30, 0.40],
         }
         for stage, fractions in expected.items():
             env._getup_curriculum_stage = stage
-            shared, frontier, exact_hard, category = env._sample_reset_plan(50_000)
-            home = (category == _RESET_ORIGINAL) & (shared == 0.0)
-            hard = (category == _RESET_ORIGINAL) & exact_hard
-            interpolated = (category == _RESET_ORIGINAL) & ~(home | hard)
-            actual = [
-                np.mean(home),
-                np.mean(hard),
-                np.mean(interpolated),
-                np.mean(category == _RESET_FRONT),
-                np.mean(category == _RESET_BACK),
-            ]
+            _, frontier, _, category = env._sample_reset_plan(50_000)
+            actual = [np.mean(category == family) for family in range(4)]
             np.testing.assert_allclose(actual, fractions, atol=0.01)
             assert not np.any(frontier)
+            assert np.all((category >= _RESET_HOME_TO_GETUP) & (category <= _RESET_BALANCE))
+        assert env._front_pose_indices.size > 0
+        assert env._back_pose_indices.size > 0
     finally:
         env.close()
 
 
-def test_getup_curriculum_state_round_trips() -> None:
-    env = _make_getup_env(num_envs=1)
-    restored = _make_getup_env(num_envs=1)
-    try:
-        env._getup_curriculum_difficulty = 0.35
-        env._getup_curriculum_promotions = 7
-        env._getup_curriculum_demotions = 2
-        env._getup_curriculum_mastered = True
-        env._getup_curriculum_stage = _STAGE_BACK
-        env._getup_curriculum_window_completed = 123
-        env._getup_curriculum_window_successes = 101
-        env._family_episode_counts[:] = [456, 321]
-        env._family_success_counts[:] = [400, 250]
-        env._balance_episode_counts[:] = [40, 42]
-        env._balance_success_counts[:] = [35, 36]
-        env._balance_window_completed[:] = [10, 11]
-        env._balance_window_successes[:] = [8, 9]
-        state = env.training_state_dict()
-        restored.load_training_state_dict(state)
-        assert restored._getup_curriculum_difficulty == 0.35
-        assert restored._getup_curriculum_promotions == 7
-        assert restored._getup_curriculum_demotions == 2
-        assert restored._getup_curriculum_mastered is True
-        assert restored._getup_curriculum_stage == _STAGE_BACK
-        assert restored._getup_curriculum_window_completed == 123
-        assert restored._getup_curriculum_window_successes == 101
-        np.testing.assert_array_equal(restored._family_episode_counts, [456, 321])
-        np.testing.assert_array_equal(restored._family_success_counts, [400, 250])
-        np.testing.assert_array_equal(restored._balance_episode_counts, [40, 42])
-        np.testing.assert_array_equal(restored._balance_success_counts, [35, 36])
-        np.testing.assert_array_equal(restored._balance_window_completed, [10, 11])
-        np.testing.assert_array_equal(restored._balance_window_successes, [8, 9])
-    finally:
-        env.close()
-        restored.close()
-
-
-def test_pre_balance_checkpoint_restarts_at_balance_recovery_easy_endpoint() -> None:
-    env = _make_getup_env(num_envs=1)
-    restored = _make_getup_env(num_envs=1)
-    try:
-        state = env.training_state_dict()
-        payload = state["getup_pose_curriculum"]
-        payload.pop("layout_version")
-        payload.update(
-            {
-                "difficulty": 1.0,
-                "mastered": True,
-                "stage": 1,
-                "window_completed": 777,
-                "window_successes": 0,
-            }
-        )
-        restored.load_training_state_dict(state)
-        assert restored._getup_curriculum_stage == _STAGE_BALANCE_RECOVERY
-        assert restored._getup_curriculum_difficulty == 0.0
-        assert restored._getup_curriculum_window_completed == 0
-        assert restored._getup_curriculum_window_successes == 0
-    finally:
-        env.close()
-        restored.close()
-
-
-def test_getup_curriculum_promotes_and_demotes_on_frontier_window() -> None:
+def test_curriculum_stage_progression_and_no_fixed_stage_demotion() -> None:
     env = _make_getup_env(num_envs=4)
     try:
+        env.init_state()
+        c = env._cfg.getup_curriculum
+        c.window_episodes = 4
         rows = np.arange(4, dtype=np.int32)
-        env._cfg.getup_curriculum.window_episodes = 4
-        env._getup_curriculum_stage = _STAGE_HOME_TO_GETUP
         env._episode_frontier[:] = True
+        env._episode_reset_category[:] = _RESET_HOME_TO_GETUP
+        env._getup_curriculum_difficulty = 1.0
+        env._getup_succeeded[:] = True
+        env._record_curriculum_outcomes(rows)
+        assert env._getup_curriculum_stage == _STAGE_EXACT_GETUP
+
+        env._episode_reset_category[:] = _RESET_EXACT_GETUP
+        env._getup_succeeded[:] = [True, True, True, True]
+        env._record_curriculum_outcomes(rows)
+        assert env._getup_curriculum_stage == _STAGE_GETUP_WITH_HOME
+
+        env._episode_reset_category[:] = [_RESET_EXACT_GETUP] * 2 + [_RESET_HOME] * 2
+        env._getup_succeeded[:] = True
+        env._record_curriculum_outcomes(rows)
+        assert env._getup_curriculum_stage == _STAGE_BALANCE
+
+        env._episode_reset_category[:] = _RESET_BALANCE
+        env._episode_balance_direction[:] = [-1, -1, 1, 1]
+        env._getup_success_hold_steps[:] = 50
+        env._record_curriculum_outcomes(rows)
+        assert env._getup_curriculum_stage == _STAGE_MIXED
+
+        env._episode_reset_category[:] = [
+            _RESET_EXACT_GETUP,
+            _RESET_HOME,
+            _RESET_BALANCE,
+            _RESET_HOME_TO_GETUP,
+        ]
+        env._getup_success_hold_steps[:] = 50
+        env._record_curriculum_outcomes(rows)
+        assert env._getup_curriculum_stage == _STAGE_ENHANCE
+        assert env._getup_curriculum_mastered
+    finally:
+        env.close()
+
+
+def test_home_to_getup_does_not_credit_old_batch_to_new_difficulty() -> None:
+    env = _make_getup_env(num_envs=8)
+    try:
+        env.init_state()
+        env._cfg.getup_curriculum.window_episodes = 4
+        rows = np.arange(8, dtype=np.int32)
+        env._episode_frontier[:] = True
+        env._episode_reset_category[:] = _RESET_HOME_TO_GETUP
         env._getup_succeeded[:] = True
         env._record_curriculum_outcomes(rows)
         assert env._getup_curriculum_difficulty == 0.05
-        assert env._getup_curriculum_promotions == 1
-
-        env._getup_curriculum_difficulty = 0.5
-        env._getup_succeeded[:] = False
-        env._record_curriculum_outcomes(rows)
-        assert env._getup_curriculum_difficulty == 0.45
-        assert env._getup_curriculum_demotions == 1
-    finally:
-        env.close()
-
-
-def test_balance_recovery_requires_both_directions_before_promotion() -> None:
-    env = _make_getup_env(num_envs=4)
-    try:
-        rows = np.arange(4, dtype=np.int32)
-        env._cfg.getup_curriculum.window_episodes = 4
-        env._getup_curriculum_stage = _STAGE_BALANCE_RECOVERY
-        env._getup_curriculum_difficulty = 1.0
-        env._episode_frontier[:] = True
-        env._episode_reset_category[:] = _RESET_BALANCE_RECOVERY
-        env._episode_balance_direction[:] = [-1, -1, 1, 1]
-        env._getup_succeeded[:] = [True, True, True, False]
-
-        env._record_curriculum_outcomes(rows)
-
-        assert env._getup_curriculum_stage == _STAGE_BALANCE_RECOVERY
-        np.testing.assert_allclose(env._balance_last_window_success_rates, [1.0, 0.5])
-
-        env._getup_succeeded[:] = True
-        env._record_curriculum_outcomes(rows)
-
-        assert env._getup_curriculum_stage == _STAGE_HOME_TO_GETUP
-        assert env._getup_curriculum_difficulty == 0.0
-    finally:
-        env.close()
-
-
-def test_home_to_getup_enters_getup_to_front_after_hard_window() -> None:
-    env = _make_getup_env(num_envs=4)
-    try:
-        rows = np.arange(4, dtype=np.int32)
-        env._cfg.getup_curriculum.window_episodes = 4
-        env._getup_curriculum_stage = _STAGE_HOME_TO_GETUP
-        env._getup_curriculum_difficulty = 1.0
-        env._episode_frontier[:] = True
-        env._getup_succeeded[:] = [True, True, True, False]
-
-        env._record_curriculum_outcomes(rows)
-
-        assert env._getup_curriculum_mastered is False
-        assert env._getup_curriculum_difficulty == 1.0
-
-        env._episode_frontier[:] = True
-        env._getup_succeeded[:] = [True, True, True, True]
-        env._record_curriculum_outcomes(rows)
-
-        assert env._getup_curriculum_mastered is True
-        assert env._getup_curriculum_stage == _STAGE_GETUP_TO_FRONT
-        assert env._getup_curriculum_difficulty == 0.0
-        assert env._getup_curriculum_last_success_rate == 1.0
-    finally:
-        env.close()
-
-
-def test_getup_front_and_back_stages_advance_on_their_own_success_windows() -> None:
-    env = _make_getup_env(num_envs=4)
-    try:
-        rows = np.arange(4, dtype=np.int32)
-        env._cfg.getup_curriculum.window_episodes = 4
-        env._getup_curriculum_mastered = True
-        env._getup_curriculum_stage = _STAGE_FRONT
-        env._episode_reset_category[:] = _RESET_FRONT
-        env._getup_succeeded[:] = [True, True, True, False]
-        env._record_curriculum_outcomes(rows)
-        assert env._getup_curriculum_stage == _STAGE_FRONT
-        assert env._getup_curriculum_last_success_rate == 0.75
-
-        env._getup_succeeded[:] = True
-        env._record_curriculum_outcomes(rows)
-        assert env._getup_curriculum_stage == _STAGE_BACK
-
-        # Front replay in the back stage is logged, but cannot qualify back.
-        env._episode_reset_category[:] = _RESET_FRONT
-        env._record_curriculum_outcomes(rows)
         assert env._getup_curriculum_window_completed == 0
-        env._episode_reset_category[:] = _RESET_BACK
-        env._record_curriculum_outcomes(rows)
-        assert env._getup_curriculum_stage == _STAGE_MIXED
-        np.testing.assert_array_equal(env._family_episode_counts, [12, 4])
-        np.testing.assert_array_equal(env._family_success_counts, [11, 4])
     finally:
         env.close()
 
 
-def test_getup_to_front_is_a_separate_progressive_stage_before_front() -> None:
-    env = _make_getup_env(num_envs=4)
+def test_unified_success_ignores_tracking_and_uses_physical_state_only() -> None:
+    env = _make_getup_env(num_envs=5)
     try:
-        np.random.seed(37)
-        env._getup_curriculum_stage = _STAGE_GETUP_TO_FRONT
-        env._getup_curriculum_difficulty = 0.5
-        shared, frontier, exact_hard, category = env._sample_reset_plan(20_000)
-        assert np.all(category == _RESET_GETUP_TO_FRONT)
-        assert 0.78 < float(np.mean(frontier)) < 0.82
-        assert np.all(shared[frontier] >= 0.45)
-        assert not np.any(exact_hard)
-
-        qpos = env.sample_getup_reset_qpos(1000)
-        non_wing = np.ones((qpos.shape[1],), dtype=np.bool_)
-        non_wing[env._wing_qpos_indices] = False
-        canonical = env._getup_to_front_qpos[:, non_wing]
-        for row in qpos[:, non_wing]:
-            assert np.any(np.all(np.isclose(canonical, row, atol=1.0e-7), axis=1))
-
-        env._cfg.getup_curriculum.window_episodes = 4
-        env._getup_curriculum_difficulty = 1.0
-        env._episode_frontier[:] = True
-        env._episode_reset_category[:] = _RESET_GETUP_TO_FRONT
-        env._getup_succeeded[:] = True
-        env._record_curriculum_outcomes(np.arange(4, dtype=np.int32))
-        assert env._getup_curriculum_stage == _STAGE_FRONT
+        env.init_state()
+        env._getup_current_commands[:] = [[0.5, 1.0, 0.24]] * 5
+        gravity = np.zeros((5, 3), dtype=np.float32)
+        gravity[:, 2] = [0.91, 0.90, 0.91, 0.91, 0.91]
+        height = np.asarray([0.21, 0.21, 0.20, 0.21, 0.21], dtype=np.float32)
+        linvel = np.full((5, 3), 100.0, dtype=np.float32)
+        gyro = np.full((5, 3), -100.0, dtype=np.float32)
+        result = env._getup_success_kinematics_clear(gravity, height, linvel, gyro)
+        np.testing.assert_array_equal(result, [True, False, False, True, True])
     finally:
         env.close()
 
 
-def test_getup_back_pose_sampling_balances_thigh_groups() -> None:
-    env = _make_getup_env(num_envs=1)
-    try:
-        np.random.seed(29)
-        selected = env._sample_pose_bank_indices(_RESET_BACK, 40_000)
-        counts = np.asarray(
-            [np.count_nonzero(np.isin(selected, group)) for group in env._back_pose_groups]
-        )
-        np.testing.assert_allclose(counts / counts.sum(), np.full((4,), 0.25), atol=0.01)
-    finally:
-        env.close()
-
-
-def test_getup_staged_reset_draws_legal_front_and_back_bank_poses() -> None:
-    env = _make_getup_env(num_envs=1)
-    try:
-        np.random.seed(31)
-        env._getup_curriculum_stage = _STAGE_MIXED
-        qpos = env.sample_getup_reset_qpos(2000)
-        category = env._pending_reset_category
-        front = category == _RESET_FRONT
-        back = category == _RESET_BACK
-        assert np.count_nonzero(front) > 300
-        assert np.count_nonzero(back) > 300
-        np.testing.assert_allclose(qpos[front, 7], 1.57, atol=1.0e-7)
-        np.testing.assert_allclose(qpos[front, 10], 1.57, atol=1.0e-7)
-        assert np.all((qpos[back, 7] >= -0.13) & (qpos[back, 7] <= 0.60))
-        np.testing.assert_allclose(qpos[back, 7], qpos[back, 10], atol=1.0e-7)
-        lower = env._wing_joint_limits[:, 0]
-        upper = env._wing_joint_limits[:, 1]
-        assert np.all(qpos[:, env._wing_qpos_indices] >= lower)
-        assert np.all(qpos[:, env._wing_qpos_indices] <= upper)
-    finally:
-        env.close()
-
-
-def test_getup_reset_records_completed_episode_after_np_env_clears_steps() -> None:
-    env = _make_getup_env(num_envs=1)
+def test_success_truncation_and_balance_time_limit_are_stage_specific() -> None:
+    env = _make_getup_env(num_envs=2)
     try:
         state = env.init_state()
-        state.info["steps"][0] = 0
-        env._episode_alive_steps[0] = 12
-        env._episode_initialized[0] = True
-        env._getup_curriculum_stage = _STAGE_HOME_TO_GETUP
-        env._episode_reset_category[0] = _RESET_ORIGINAL
-        env._episode_frontier[0] = True
-        env._getup_succeeded[0] = True
+        env._getup_succeeded[:] = [True, False]
+        for stage in (_STAGE_HOME_TO_GETUP, _STAGE_EXACT_GETUP, _STAGE_GETUP_WITH_HOME):
+            env._getup_curriculum_stage = stage
+            np.testing.assert_array_equal(env._compute_truncated(state), [True, False])
 
-        env.reset(np.asarray([0], dtype=np.int32))
-
-        assert env._getup_curriculum_window_completed == 1
-        assert env._getup_curriculum_window_successes == 1
+        env._getup_curriculum_stage = _STAGE_BALANCE
+        state.info["steps"][:] = [249, 250]
+        np.testing.assert_array_equal(env._compute_truncated(state), [False, True])
+        env._getup_curriculum_stage = _STAGE_MIXED
+        np.testing.assert_array_equal(env._compute_truncated(state), [False, False])
+        env._getup_curriculum_stage = _STAGE_ENHANCE
+        np.testing.assert_array_equal(env._compute_truncated(state), [False, False])
     finally:
         env.close()
 
 
-def test_balance_success_truncates_immediately_without_affecting_other_stages() -> None:
+def test_first_success_latches_but_live_hold_streak_can_fail_again() -> None:
+    env = _make_getup_env(num_envs=1)
+    try:
+        env.init_state()
+        env._episode_getup_mask[:] = True
+        env._getup_current_commands[:] = 0.0
+        env._reward_base_height_values = lambda _n: np.asarray([0.21], dtype=np.float32)
+        env._undesired_contact_values = lambda _n: np.zeros((1, 1), dtype=np.float32)
+        env.get_local_linvel = lambda: np.zeros((1, 3), dtype=np.float32)
+        env.get_gyro = lambda: np.zeros((1, 3), dtype=np.float32)
+        gravity = np.asarray([[0.0, 0.0, 1.0]], dtype=np.float32)
+
+        for step in range(50):
+            env._state.info["steps"][:] = step
+            env._update_getup_success(gravity)
+        assert env._getup_succeeded[0]
+        assert env._getup_just_succeeded[0]
+        assert env._getup_success_hold_steps[0] == 50
+        assert env._getup_success_time_sum_s == 1.0
+
+        env._update_getup_success(np.asarray([[0.0, 0.0, 0.0]], dtype=np.float32))
+        assert env._getup_succeeded[0]
+        assert not env._getup_just_succeeded[0]
+        assert env._getup_success_hold_steps[0] == 0
+    finally:
+        env.close()
+
+
+def test_reward_gate_and_dynamic_regularizers_follow_height_and_contact() -> None:
     env = _make_getup_env(num_envs=3)
     try:
         state = env.init_state()
-        state.info["steps"][:] = 1
-        env._episode_reset_category[:] = [
-            _RESET_BALANCE_RECOVERY,
-            _RESET_BALANCE_RECOVERY,
-            _RESET_ORIGINAL,
-        ]
-        env._getup_succeeded[:] = [True, False, True]
-
-        truncated = env._compute_truncated(state)
-
-        np.testing.assert_array_equal(truncated, [True, False, False])
+        env._reward_base_height_values = lambda _n: np.asarray(
+            [0.14285, (0.14285 + 0.20) / 2.0, 0.20], dtype=np.float32
+        )
+        contacts = np.zeros((3, 9), dtype=np.float32)
+        contacts[2, 0] = 0.2
+        env._undesired_contact_values = lambda _n: contacts
+        linvel = np.zeros((3, 3), dtype=np.float32)
+        gyro = np.zeros((3, 3), dtype=np.float32)
+        dof_pos = env.get_dof_pos()
+        dof_vel = env.get_dof_vel()
+        env._compute_reward(state.info, linvel, gyro, np.zeros((3, 3)), dof_pos, dof_vel)
+        np.testing.assert_allclose(env._getup_tracking_gate, [0.0, 0.5, 0.0], atol=1.0e-6)
+        np.testing.assert_allclose(env._getup_lin_vel_z_multiplier, [0.1, 0.55, 0.1], atol=1.0e-6)
+        np.testing.assert_allclose(
+            env._getup_leg_regularization_multiplier, [0.2, 0.6, 0.2], atol=1.0e-6
+        )
     finally:
         env.close()
 
 
-def test_we11_getup_constructs_resets_and_steps() -> None:
-    cfg = _compose_task(GETUP_SELECTOR)
-    override = BackendAdapter(
-        cfg,
-        root_dir=REPO_ROOT,
-        algo_name="ppo",
-    ).build_task_env_cfg_override()
-    env = create_env(cfg, num_envs=2, env_cfg_override=override)
+def test_curriculum_state_v6_round_trip_and_old_layout_restart() -> None:
+    env = _make_getup_env(num_envs=1)
+    restored = _make_getup_env(num_envs=1)
+    old = _make_getup_env(num_envs=1)
+    try:
+        env._getup_curriculum_stage = _STAGE_BALANCE
+        env._getup_curriculum_difficulty = 1.0
+        env._family_episode_counts[:] = [1, 2, 3, 4]
+        env._balance_window_completed[:] = [10, 11]
+        env._post_success_evaluation_count = 7
+        env._success_then_failure_count = 2
+        state = env.training_state_dict()
+        restored.load_training_state_dict(state)
+        assert restored._getup_curriculum_stage == _STAGE_BALANCE
+        np.testing.assert_array_equal(restored._family_episode_counts, [1, 2, 3, 4])
+        np.testing.assert_array_equal(restored._balance_window_completed, [10, 11])
+        assert restored._post_success_evaluation_count == 7
+        assert restored._success_then_failure_count == 2
 
+        state["getup_pose_curriculum"]["layout_version"] = 5
+        state["getup_pose_curriculum"]["stage"] = _STAGE_MIXED
+        restored.load_training_state_dict(state)
+        assert restored._getup_curriculum_stage == _STAGE_MIXED
+
+        state["getup_pose_curriculum"]["layout_version"] = 4
+        state["getup_pose_curriculum"]["stage"] = 5
+        old.load_training_state_dict(state)
+        assert old._getup_curriculum_stage == _STAGE_HOME_TO_GETUP
+        assert old._getup_curriculum_difficulty == 0.0
+    finally:
+        env.close()
+        restored.close()
+        old.close()
+
+
+def test_getup_constructs_resets_and_steps_with_finite_values() -> None:
+    env = _make_getup_env(num_envs=2)
     try:
         state = env.init_state()
         assert state.obs["obs"].shape == (2, 145)
         assert state.obs["critic"].shape == (2, 141)
-        assert state.obs["privileged_target"].shape == (2, 3)
-
         reset_obs, _ = env.reset(np.asarray([0, 1], dtype=np.int32))
         assert all(np.isfinite(value).all() for value in reset_obs.values())
-
         state = env.step(np.zeros((2, 6), dtype=np.float32))
         assert all(np.isfinite(value).all() for value in state.obs.values())
         assert np.isfinite(state.reward).all()
@@ -648,41 +434,27 @@ def test_we11_getup_constructs_resets_and_steps() -> None:
         env.close()
 
 
-def test_getup_play_override_forces_exact_full_difficulty() -> None:
+def test_getup_play_and_visualizer_force_verified_pose_paths() -> None:
     cfg = _compose_task(GETUP_SELECTOR)
     cfg.training.play_only = True
     override = BackendAdapter(
         cfg, root_dir=REPO_ROOT, algo_name="ppo"
     ).build_play_env_cfg_override()
-    assert override["reset_pose"]["mode"] == "getup"
     assert override["getup_curriculum"]["forced_difficulty"] == 1.0
     assert override["getup_curriculum"]["forced_stage"] == "home_to_getup"
 
+    viz = _build_env_cfg_override(TASK_NAME, getup_difficulty=0.0)
+    assert viz["getup_curriculum"]["forced_stage"] == "home_to_getup"
+    balance = _build_env_cfg_override(TASK_NAME, balance_difficulty=0.8)
+    assert balance["getup_curriculum"]["forced_stage"] == "balance_recovery"
+    args = _parse_args(["--task", TASK_NAME, "--balance-difficulty", "1.0"])
+    assert args.balance_difficulty == 1.0
 
-def test_getup_visualizer_uses_flat_behavior_with_deterministic_reset_placement() -> None:
-    override = _build_env_cfg_override(TASK_NAME, getup_difficulty=0.0)
-    assert override["domain_rand"]["init_xy_range"] == [0.0, 0.0]
-    assert override["domain_rand"]["randomize_init_yaw"] is False
-    assert override["commands"]["lin_vel_x"] == [-0.5, 0.5]
-    assert override["commands"]["ang_vel_z"] == [-1.0, 1.0]
-    assert override["wing_velocity_cmd"]["enabled"] is True
-    assert override["noise_config"]["level"] == 1.0
-    assert override["getup_curriculum"]["forced_difficulty"] == 0.0
-    assert override["getup_curriculum"]["forced_stage"] == "home_to_getup"
 
-    args = _parse_args(
-        [
-            "--task",
-            TASK_NAME,
-            "--getup-difficulty",
-            "1.0",
-            "--freeze-initial-pose",
-        ]
-    )
-    assert args.freeze_initial_pose is True
-
-    balance_override = _build_env_cfg_override(TASK_NAME, balance_difficulty=0.8)
-    assert balance_override["getup_curriculum"]["forced_difficulty"] == 0.8
-    assert balance_override["getup_curriculum"]["forced_stage"] == "balance_recovery"
-    balance_args = _parse_args(["--task", TASK_NAME, "--balance-difficulty", "1.0"])
-    assert balance_args.balance_difficulty == 1.0
+def test_flat_configuration_is_not_modified_by_getup_reward_fields() -> None:
+    flat = OmegaConf.to_container(_compose_task(FLAT_SELECTOR), resolve=True)
+    assert isinstance(flat, dict)
+    assert flat["env"]["commands"]["startup_stand_seconds"] == 3.0
+    assert flat["env"]["commands"]["rel_standing_envs"] == 0.2
+    assert "getup_tracking_gate_min_height" not in flat["reward"]
+    assert "getup_success_bonus" not in flat["reward"]["scales"]

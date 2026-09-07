@@ -118,9 +118,9 @@ python -u scripts/train_rsl_rl.py \
 ```
 
 Getup 任务有独立训练入口和日志目录，但与 Flat 共用 145 维观测、6 维动作和最终 Play
-策略槽位。它只替换 reset：从 XML `home` 开始，按成功率逐步推进到 `getup_start_v2`，
-并保持 reset XY/yaw/速度为零。reward、tracking commands、termination、23秒回合、push、
-动力学随机化、观测噪声和翼运动均与 Flat 相同：
+策略槽位。它从 XML `home` 开始，按成功率逐步推进到 `getup_start_v2`，并保持 reset
+XY/yaw/速度为零。受电机和轮子硬件能力约束，Getup 的 `vx` 训练及部署范围为
+`[-1.0, 1.0] m/s`；Deploy 的手柄满量程必须映射到同一安全范围。
 
 ```bash
 python -u scripts/train_rsl_rl.py \

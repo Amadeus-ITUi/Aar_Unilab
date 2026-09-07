@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from unilab.envs.locomotion.common.rewards import RewardContext
 from unilab.envs.locomotion.dr002.joystick import DR002JoystickEnv, RewardConfig
 
 
@@ -21,6 +22,7 @@ def _bare_termination_env(num_envs: int = 1) -> DR002JoystickEnv:
     env._episode_getup_mask = np.zeros(num_envs, dtype=np.bool_)
     env._getup_success_hold_steps = np.zeros(num_envs, dtype=np.int32)
     env._getup_succeeded = np.zeros(num_envs, dtype=np.bool_)
+    env._getup_just_succeeded = np.zeros(num_envs, dtype=np.bool_)
     env._getup_timeout_recorded = np.zeros(num_envs, dtype=np.bool_)
     env._getup_grace_steps = 150
     env._getup_timeout_count = 0
@@ -41,6 +43,42 @@ def _tilted(num_envs: int = 1) -> np.ndarray:
     gravity = _upright(num_envs)
     gravity[:, 2] = 0.7
     return gravity
+
+
+def _reward_context(*, linvel: np.ndarray, gyro: np.ndarray) -> RewardContext:
+    num_envs = linvel.shape[0]
+    return RewardContext(
+        info={"commands": np.zeros((num_envs, 3), dtype=np.float32)},
+        linvel=linvel,
+        gyro=gyro,
+        dof_pos=np.zeros((num_envs, 6), dtype=np.float32),
+        num_envs=num_envs,
+    )
+
+
+def test_yaw_tracking_clip_preserves_small_error_gradient() -> None:
+    env = _bare_termination_env(num_envs=2)
+    env._reward_cfg.scales["track_ang_vel_z"] = 2.0
+    env._reward_cfg.track_ang_vel_z_term_clip = 2.0
+    gyro = np.zeros((2, 3), dtype=np.float32)
+    gyro[1, 2] = 0.1
+    reward = env._reward_track_ang_vel_z(
+        _reward_context(linvel=np.zeros((2, 3), dtype=np.float32), gyro=gyro)
+    )
+    assert reward[0] > reward[1]
+
+
+def test_zero_command_stationary_penalizes_lateral_drift_and_yaw() -> None:
+    env = _bare_termination_env(num_envs=2)
+    env._reward_cfg.scales["zero_cmd_stationary"] = -2.0
+    env._reward_cfg.zero_cmd_stationary_lateral_weight = 0.5
+    env._reward_cfg.zero_cmd_stationary_yaw_weight = 2.0
+    linvel = np.zeros((2, 3), dtype=np.float32)
+    gyro = np.zeros((2, 3), dtype=np.float32)
+    linvel[0, 1] = 0.1
+    gyro[1, 2] = 0.1
+    reward = env._reward_zero_cmd_stationary(_reward_context(linvel=linvel, gyro=gyro))
+    np.testing.assert_allclose(reward, [0.05, 0.20], atol=1.0e-6)
 
 
 def test_contact_requires_25_consecutive_control_steps() -> None:

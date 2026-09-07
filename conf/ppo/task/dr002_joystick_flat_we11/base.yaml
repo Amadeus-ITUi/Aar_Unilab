@@ -200,7 +200,7 @@ reward:
     track_ang_vel_z: 2.0
     track_lin_vel_x_enhance: 4
     lin_vel_z: -2.0
-    ang_vel_xy: -0.05
+    ang_vel_xy: -0.2
     orientation: -10.0
     base_height: -2.0
     joint_torques_l2: -1.0e-4
@@ -217,17 +217,23 @@ reward:
     zero_cmd_stationary: -2
   # Keep the established yaw-tracking width unchanged.
   tracking_sigma: 0.25
-  # The real-training forward-velocity curve used 0.25 directly as its
-  # exponential denominator. UniLab squares std, so sqrt(0.25) is equivalent.
-  track_lin_vel_x_std: 0.5
-  # The historical enhanced term used denominator 0.25 * 10 = 2.5.
-  # The explicit-std formula therefore needs sqrt(2.5).
-  zero_cmd_stationary_yaw_weight: 1.0   # 想让 yaw 惩罚更重就调大
+  # Moderate tracking width avoids demanding an unsafe instantaneous response
+  # during command transitions while retaining useful velocity precision.
+  track_lin_vel_x_std: 0.25
+  zero_cmd_stationary_yaw_weight: 2.0
+  zero_cmd_stationary_lateral_weight: 0.5
   # 顺便还有两个阈值可控制何时启用该惩罚:
   # zero_cmd_stationary_gate_vx: 0.05
   # zero_cmd_stationary_gate_wz: 0.05
-  track_lin_vel_x_enhance_std: 1.5811388300841898
-  track_lin_vel_x_term_clip: 1.5
+  # A wider auxiliary error curve supplies recovery signal without immediately
+  # saturating on ordinary acceleration/deceleration transients.
+  track_lin_vel_x_enhance_std: 0.6
+  track_lin_vel_x_term_clip: 2.0
+  # scale=2 needs a 2/s cap; the generic 1/s cap creates a flat yaw-reward
+  # plateau below about 0.208 rad/s and permits slow zero-command rotation.
+  track_ang_vel_z_term_clip: 2.0
+  # Continue penalizing tilt beyond the old ~18-degree saturation point.
+  orientation_term_clip: 3.0
   base_height_std: 0.05
   base_height_clip: 4.0
   only_positive_rewards: false

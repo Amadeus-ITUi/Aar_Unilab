@@ -291,11 +291,16 @@ class RewardConfig:
     # Keep the historical +/-1/s default; tasks using a larger scale can raise
     # this limit explicitly so that the configured scale is not clipped away.
     track_lin_vel_x_term_clip: float = 1.0
+    # Keep bounded tracking rewards out of the generic +/-1 reward-rate
+    # plateau when their configured scale is greater than one.
+    track_ang_vel_z_term_clip: float = 1.0
     zero_cmd_stationary_gate_vx: float = 0.05
     zero_cmd_stationary_gate_wz: float = 0.05
     zero_cmd_stationary_yaw_weight: float = 0.5
+    zero_cmd_stationary_lateral_weight: float = 0.0
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
+    orientation_term_clip: float = 1.0
     # None preserves the historical exact command-height objective. Tasks may
     # instead configure a dead-band [low, high] in world-frame base-link Z.
     base_height_range: tuple[float, float] | None = None
@@ -317,6 +322,12 @@ class RewardConfig:
     # is applied after this cap; None keeps the historical unbounded penalty.
     getup_workspace_penalty_clip: float | None = None
     getup_success_hold_time_s: float = 0.5
+    # Getup-only reward shaping. Flat/Rough leave these unset and retain their
+    # original reward functions exactly.
+    getup_tracking_gate_min_height: float | None = None
+    getup_tracking_gate_full_height: float | None = None
+    getup_lin_vel_z_min_multiplier: float = 1.0
+    getup_leg_regularization_min_multiplier: float = 1.0
 
 
 @dataclass
@@ -1302,6 +1313,8 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         self._force_samples_by_path: dict[str, np.ndarray] = {}
         self._force_blend_period_tail_by_key: dict[tuple[str, float, tuple[int, ...]], bool] = {}
         self._push_next_elapsed_steps: np.ndarray | None = None
+        self._active_push_force_world: np.ndarray | None = None
+        self._active_push_force_remaining_steps: np.ndarray | None = None
         self._startup_body_mass_multipliers: np.ndarray | None = None
 
     def _body_mass_multipliers_for_reset(
@@ -1440,7 +1453,13 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
         push_force: np.ndarray | None = None
         push_velocity_delta: np.ndarray | None = None
         episode_steps = env.episode_steps()
-        elapsed_after_startup = episode_steps - int(getattr(env, "_startup_stand_steps", 0))
+        startup_steps_fn = getattr(env, "interval_push_startup_steps", None)
+        startup_steps = (
+            int(startup_steps_fn())
+            if callable(startup_steps_fn)
+            else int(getattr(env, "_startup_stand_steps", 0))
+        )
+        elapsed_after_startup = episode_steps - startup_steps
         push_robots_enabled = bool(domain_rand.push_robots)
         if push_robots_enabled and domain_rand.push_interval > 0:
             push_due = self._interval_push_due(
@@ -1448,6 +1467,12 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                 interval_steps=int(domain_rand.push_interval),
                 randomize_within_interval=bool(domain_rand.push_randomize_within_interval),
             )
+            episode_mask_fn = getattr(env, "interval_push_episode_mask", None)
+            if callable(episode_mask_fn):
+                episode_mask = np.asarray(episode_mask_fn(), dtype=np.bool_)
+                if episode_mask.shape != push_due.shape:
+                    raise ValueError("interval push episode mask has an invalid shape")
+                push_due &= episode_mask
             if np.any(push_due):
                 num_push = int(np.count_nonzero(push_due))
                 body_id = env._backend.get_body_id(env.cfg.asset.base_name)
@@ -1478,14 +1503,45 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
                         velocity_delta_body,
                     )
                 if force_limit is not None:
-                    push_force = np.zeros((env._num_envs, 1, 6), dtype=np.float64)
-                    sampled_force = (
+                    sampled_force_body = (
                         np.random.uniform(-1.0, 1.0, size=(num_push, 3)) * force_limit[None, :]
                     )
+                    scale_fn = getattr(env, "sample_interval_push_force_scale", None)
+                    if callable(scale_fn):
+                        force_scales = np.asarray(scale_fn(num_push), dtype=np.float64)
+                        if force_scales.shape != (num_push,):
+                            raise ValueError("interval push force scales have an invalid shape")
+                        sampled_force_body *= force_scales[:, None]
+                    sampled_force = sampled_force_body
                     if domain_rand.push_force_limit is not None:
                         assert push_quat is not None
                         sampled_force = np_quat_apply(push_quat, sampled_force)
-                    push_force[push_due, 0, :3] = sampled_force
+                    self._ensure_active_push_storage(env._num_envs)
+                    assert self._active_push_force_world is not None
+                    assert self._active_push_force_remaining_steps is not None
+                    self._active_push_force_world[push_due] = sampled_force
+                    duration_fn = getattr(env, "sample_interval_push_duration_steps", None)
+                    durations = (
+                        np.asarray(duration_fn(num_push), dtype=np.int32)
+                        if callable(duration_fn)
+                        else np.ones((num_push,), dtype=np.int32)
+                    )
+                    if durations.shape != (num_push,) or np.any(durations <= 0):
+                        raise ValueError(
+                            "interval push durations must be positive per-environment steps"
+                        )
+                    self._active_push_force_remaining_steps[push_due] = durations
+
+            if self._active_push_force_remaining_steps is not None:
+                active = self._active_push_force_remaining_steps > 0
+                episode_mask_fn = getattr(env, "interval_push_episode_mask", None)
+                if callable(episode_mask_fn):
+                    active &= np.asarray(episode_mask_fn(), dtype=np.bool_)
+                if np.any(active):
+                    assert self._active_push_force_world is not None
+                    push_force = np.zeros((env._num_envs, 1, 6), dtype=np.float64)
+                    push_force[active, 0, :3] = self._active_push_force_world[active]
+                    self._active_push_force_remaining_steps[active] -= 1
 
         body_force_trajectory = self._build_csv_force_trajectory(env, step_counter)
         if push_force is not None and hasattr(env, "_external_disturbance_current_wrench"):
@@ -1501,6 +1557,14 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
             body_force=push_force,
             body_force_trajectory=body_force_trajectory,
         )
+
+    def _ensure_active_push_storage(self, num_envs: int) -> None:
+        if self._active_push_force_world is None or self._active_push_force_world.shape != (
+            num_envs,
+            3,
+        ):
+            self._active_push_force_world = np.zeros((num_envs, 3), dtype=np.float64)
+            self._active_push_force_remaining_steps = np.zeros((num_envs,), dtype=np.int32)
 
     @staticmethod
     def _push_linear_velocity_delta_limit(domain_rand: DR002DomainRandConfig) -> np.ndarray | None:
@@ -1708,6 +1772,11 @@ class DR002JoystickDomainRandomizationProvider(LocomotionDRProvider):
 
     def build_reset_plan(self, env: Any, env_ids: np.ndarray) -> ResetPlan:
         num_reset = len(env_ids)
+        self._ensure_active_push_storage(int(env._num_envs))
+        assert self._active_push_force_world is not None
+        assert self._active_push_force_remaining_steps is not None
+        self._active_push_force_world[env_ids] = 0.0
+        self._active_push_force_remaining_steps[env_ids] = 0
         qpos = np.tile(env._init_qpos, (num_reset, 1))
         qvel = np.tile(env._init_qvel, (num_reset, 1))
         getup_mask = env.sample_reset_getup_mask(num_reset)
@@ -2143,6 +2212,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._episode_getup_mask = np.zeros((num_envs,), dtype=np.bool_)
         self._getup_success_hold_steps = np.zeros((num_envs,), dtype=np.int32)
         self._getup_succeeded = np.zeros((num_envs,), dtype=np.bool_)
+        self._getup_just_succeeded = np.zeros((num_envs,), dtype=np.bool_)
         self._getup_timeout_recorded = np.zeros((num_envs,), dtype=np.bool_)
         self._getup_episode_count = 0
         self._getup_success_count = 0
@@ -3157,6 +3227,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._episode_getup_mask[rows] = mask
         self._getup_success_hold_steps[rows] = 0
         self._getup_succeeded[rows] = False
+        self._getup_just_succeeded[rows] = False
         self._getup_timeout_recorded[rows] = False
         self._getup_episode_count += int(np.count_nonzero(mask))
 
@@ -3853,6 +3924,9 @@ class DR002JoystickEnv(DR002BaseEnv):
 
     def _update_getup_success(self, gravity: np.ndarray) -> None:
         num_envs = gravity.shape[0]
+        # This flag is consumed by the reward dispatcher later in the same
+        # control step. Clear it first so success produces exactly one pulse.
+        self._getup_just_succeeded[:num_envs] = False
         if not np.any(self._episode_getup_mask[:num_envs] & ~self._getup_succeeded[:num_envs]):
             return
         base_height = self._reward_base_height_values(num_envs)
@@ -3868,14 +3942,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
         linvel = self.get_local_linvel()
         gyro = self.get_gyro()
-        height_low, height_high = self._reward_cfg.getup_success_base_height_range
-        velocity_clear = np.all(
-            np.abs(linvel[:, :2]) < self._reward_cfg.getup_success_max_abs_lin_vel_xy,
-            axis=1,
-        ) & np.all(
-            np.abs(gyro[:, :3]) < self._reward_cfg.getup_success_max_abs_ang_vel_xyz,
-            axis=1,
-        )
+        kinematics_clear = self._getup_success_kinematics_clear(gravity, base_height, linvel, gyro)
         workspace_clear = np.ones((num_envs,), dtype=np.bool_)
         workspace_half_extent = self._reward_cfg.getup_success_workspace_half_extent
         reset_xy = getattr(self, "_episode_reset_xy", None)
@@ -3890,10 +3957,7 @@ class DR002JoystickEnv(DR002BaseEnv):
         success_now = (
             self._episode_getup_mask[:num_envs]
             & (~self._getup_succeeded[:num_envs])
-            & (gravity[:, 2] > self._reward_cfg.getup_success_gravity_z_threshold)
-            & (base_height >= float(height_low))
-            & (base_height <= float(height_high))
-            & velocity_clear
+            & kinematics_clear
             & workspace_clear
             & contacts_clear
         )
@@ -3912,10 +3976,34 @@ class DR002JoystickEnv(DR002BaseEnv):
             return
         succeeded_rows = np.flatnonzero(newly_succeeded)
         self._getup_succeeded[succeeded_rows] = True
+        self._getup_just_succeeded[succeeded_rows] = True
         success_steps = self.episode_steps()[succeeded_rows]
         self._getup_success_count += int(np.count_nonzero(newly_succeeded))
         self._getup_success_time_sum_s += float(
             np.sum(success_steps.astype(np.float64) * self._cfg.ctrl_dt)
+        )
+
+    def _getup_success_kinematics_clear(
+        self,
+        gravity: np.ndarray,
+        base_height: np.ndarray,
+        linvel: np.ndarray,
+        gyro: np.ndarray,
+    ) -> np.ndarray:
+        height_low, height_high = self._reward_cfg.getup_success_base_height_range
+        velocity_clear = np.all(
+            np.abs(linvel[:, :2]) < self._reward_cfg.getup_success_max_abs_lin_vel_xy,
+            axis=1,
+        ) & np.all(
+            np.abs(gyro[:, :3]) < self._reward_cfg.getup_success_max_abs_ang_vel_xyz,
+            axis=1,
+        )
+        return np.asarray(
+            (gravity[:, 2] > self._reward_cfg.getup_success_gravity_z_threshold)
+            & (base_height >= float(height_low))
+            & (base_height <= float(height_high))
+            & velocity_clear,
+            dtype=np.bool_,
         )
 
     def _log_getup_diagnostics(self, log: dict[str, Any], num_envs: int) -> None:
@@ -5045,15 +5133,21 @@ class DR002JoystickEnv(DR002BaseEnv):
     def _reward_track_ang_vel_z(self, ctx: RewardContext) -> np.ndarray:
         error = np.square(ctx.info["commands"][:, 1] - ctx.gyro[:, 2])
         reward = np.asarray(np.exp(-error / (ctx.tracking_sigma**2)), dtype=get_global_dtype())
-        return self._clip_lingzu_reward("track_ang_vel_z", reward)
+        return self._clip_lingzu_reward(
+            "track_ang_vel_z",
+            reward,
+            clip_single_reward=float(self._reward_cfg.track_ang_vel_z_term_clip),
+        )
 
     def _reward_zero_cmd_stationary(self, ctx: RewardContext) -> np.ndarray:
         cmd = ctx.info["commands"]
         gate = (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx) & (
             np.abs(cmd[:, 1]) < self._reward_cfg.zero_cmd_stationary_gate_wz
         )
-        err = np.abs(ctx.linvel[:, 0]) + self._reward_cfg.zero_cmd_stationary_yaw_weight * np.abs(
-            ctx.gyro[:, 2]
+        err = (
+            np.abs(ctx.linvel[:, 0])
+            + self._reward_cfg.zero_cmd_stationary_lateral_weight * np.abs(ctx.linvel[:, 1])
+            + self._reward_cfg.zero_cmd_stationary_yaw_weight * np.abs(ctx.gyro[:, 2])
         )
         reward = np.where(gate, err, 0.0).astype(get_global_dtype())
         return self._clip_lingzu_reward("zero_cmd_stationary", reward)
@@ -5071,7 +5165,11 @@ class DR002JoystickEnv(DR002BaseEnv):
         reward = np.asarray(
             np.square(ctx.gravity[:, 0]) + np.square(ctx.gravity[:, 1]), dtype=get_global_dtype()
         )
-        return self._clip_lingzu_reward("orientation", reward)
+        return self._clip_lingzu_reward(
+            "orientation",
+            reward,
+            clip_single_reward=float(self._reward_cfg.orientation_term_clip),
+        )
 
     def _reward_base_height_cmd(self, ctx: RewardContext) -> np.ndarray:
         std = max(float(self._reward_cfg.base_height_std), 1.0e-6)
