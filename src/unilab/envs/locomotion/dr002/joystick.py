@@ -60,6 +60,7 @@ _JOINT_POS_SENSOR_NAMES = tuple(f"{prefix}_pos" for prefix in JOINT_SENSOR_PREFI
 _JOINT_VEL_SENSOR_NAMES = tuple(f"{prefix}_vel" for prefix in JOINT_SENSOR_PREFIXES) + tuple(
     f"{prefix}_vel_sensor" for prefix in WING_SENSOR_PREFIXES
 )
+_WHEEL_AXIS_POSITION_SENSOR_NAMES = ("left_wheel_axis_pos_b", "right_wheel_axis_pos_b")
 _POSITION_CONTROL_MASK = np.ones((NUM_DR002_TOTAL_ACTUATORS,), dtype=np.int32)
 _POSITION_CONTROL_MASK[WHEEL_ACTION_INDICES] = 0
 # Wings run position PD (mask=1): the env owns a per-episode position setpoint
@@ -296,8 +297,8 @@ class RewardConfig:
     track_ang_vel_z_term_clip: float = 1.0
     zero_cmd_stationary_gate_vx: float = 0.05
     zero_cmd_stationary_gate_wz: float = 0.05
-    zero_cmd_stationary_yaw_weight: float = 0.5
-    zero_cmd_stationary_lateral_weight: float = 0.0
+    zero_cmd_stationary_vx_term_clip: float = 1.0
+    zero_cmd_stationary_yaw_term_clip: float = 1.0
     base_height_std: float = 0.05
     base_height_clip: float = 4.0
     orientation_term_clip: float = 1.0
@@ -2846,7 +2847,8 @@ class DR002JoystickEnv(DR002BaseEnv):
             "action_smooth_lingzu": self._reward_action_smooth_lingzu,
             "undesired_contacts": self._reward_undesired_contacts,
             "alive": self._reward_alive,
-            "zero_cmd_stationary": self._reward_zero_cmd_stationary,
+            "zero_cmd_stationary_vx": self._reward_zero_cmd_stationary_vx,
+            "zero_cmd_stationary_yaw": self._reward_zero_cmd_stationary_yaw,
         }
 
     def sample_reset_motor_gains(self, num_reset: int) -> tuple[np.ndarray, np.ndarray]:
@@ -5139,18 +5141,31 @@ class DR002JoystickEnv(DR002BaseEnv):
             clip_single_reward=float(self._reward_cfg.track_ang_vel_z_term_clip),
         )
 
-    def _reward_zero_cmd_stationary(self, ctx: RewardContext) -> np.ndarray:
+    def _zero_cmd_stationary_gate(self, ctx: RewardContext) -> np.ndarray:
         cmd = ctx.info["commands"]
-        gate = (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx) & (
+        return (np.abs(cmd[:, 0]) < self._reward_cfg.zero_cmd_stationary_gate_vx) & (
             np.abs(cmd[:, 1]) < self._reward_cfg.zero_cmd_stationary_gate_wz
         )
-        err = (
-            np.abs(ctx.linvel[:, 0])
-            + self._reward_cfg.zero_cmd_stationary_lateral_weight * np.abs(ctx.linvel[:, 1])
-            + self._reward_cfg.zero_cmd_stationary_yaw_weight * np.abs(ctx.gyro[:, 2])
+
+    def _reward_zero_cmd_stationary_vx(self, ctx: RewardContext) -> np.ndarray:
+        reward = np.where(
+            self._zero_cmd_stationary_gate(ctx), np.abs(ctx.linvel[:, 0]), 0.0
+        ).astype(get_global_dtype())
+        return self._clip_lingzu_reward(
+            "zero_cmd_stationary_vx",
+            reward,
+            clip_single_reward=float(self._reward_cfg.zero_cmd_stationary_vx_term_clip),
         )
-        reward = np.where(gate, err, 0.0).astype(get_global_dtype())
-        return self._clip_lingzu_reward("zero_cmd_stationary", reward)
+
+    def _reward_zero_cmd_stationary_yaw(self, ctx: RewardContext) -> np.ndarray:
+        reward = np.where(self._zero_cmd_stationary_gate(ctx), np.abs(ctx.gyro[:, 2]), 0.0).astype(
+            get_global_dtype()
+        )
+        return self._clip_lingzu_reward(
+            "zero_cmd_stationary_yaw",
+            reward,
+            clip_single_reward=float(self._reward_cfg.zero_cmd_stationary_yaw_term_clip),
+        )
 
     def _reward_lin_vel_z_lingzu(self, ctx: RewardContext) -> np.ndarray:
         reward = np.asarray(np.square(ctx.linvel[:, 2]), dtype=get_global_dtype())
@@ -5247,12 +5262,20 @@ class DR002JoystickEnv(DR002BaseEnv):
         return self._clip_lingzu_reward("joint_pos_limits", reward)
 
     def _reward_nominal_state_lingzu(self, ctx: RewardContext) -> np.ndarray:
-        thigh_error = ctx.dof_pos[:, 0] - ctx.dof_pos[:, 3]
-        calf_error = ctx.dof_pos[:, 1] - ctx.dof_pos[:, 4]
-        reward = np.asarray(
-            np.square(thigh_error) + np.square(calf_error), dtype=get_global_dtype()
+        # The nominal geometry we care about is that the two wheel axles are
+        # side-by-side when viewed from above.  Joint-angle symmetry is only an
+        # indirect proxy for that geometry and unnecessarily forbids different
+        # left/right leg configurations that place the wheels at the same
+        # fore-aft position.
+        wheel_pos_b = np.asarray(
+            self._backend.get_sensor_data_batch(_WHEEL_AXIS_POSITION_SENSOR_NAMES).reshape(
+                ctx.num_envs, 2, 3
+            ),
+            dtype=get_global_dtype(),
         )
-        return self._clip_lingzu_reward("nominal_state_lingzu", reward)
+        fore_aft_error = wheel_pos_b[:, 0, 0] - wheel_pos_b[:, 1, 0]
+        reward = np.asarray(np.square(fore_aft_error), dtype=get_global_dtype())
+        return self._clip_lingzu_reward("nominal_state_lingzu", reward, clip_single_reward=3.0)
 
     def _reward_action_rate_lingzu(self, ctx: RewardContext) -> np.ndarray:
         current = np.asarray(ctx.info["current_actions"], dtype=get_global_dtype())

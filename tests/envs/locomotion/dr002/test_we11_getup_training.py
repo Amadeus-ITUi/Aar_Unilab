@@ -88,7 +88,10 @@ def test_getup_registration_and_configuration_contract() -> None:
     assert cfg.reward.scales.getup_success_bonus == 5.0
     assert cfg.reward.track_ang_vel_z_term_clip == 2.0
     assert cfg.reward.orientation_term_clip == 3.0
-    assert cfg.reward.zero_cmd_stationary_lateral_weight == 0.5
+    assert cfg.reward.scales.zero_cmd_stationary_vx == -4
+    assert cfg.reward.scales.zero_cmd_stationary_yaw == -12
+    assert cfg.reward.zero_cmd_stationary_vx_term_clip == 2.0
+    assert cfg.reward.zero_cmd_stationary_yaw_term_clip == 2.0
 
 
 def test_getup_keeps_domain_randomization_unchanged() -> None:

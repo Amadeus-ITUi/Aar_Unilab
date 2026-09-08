@@ -68,17 +68,23 @@ def test_yaw_tracking_clip_preserves_small_error_gradient() -> None:
     assert reward[0] > reward[1]
 
 
-def test_zero_command_stationary_penalizes_lateral_drift_and_yaw() -> None:
+def test_zero_command_stationary_vx_and_yaw_clip_independently() -> None:
     env = _bare_termination_env(num_envs=2)
-    env._reward_cfg.scales["zero_cmd_stationary"] = -2.0
-    env._reward_cfg.zero_cmd_stationary_lateral_weight = 0.5
-    env._reward_cfg.zero_cmd_stationary_yaw_weight = 2.0
+    env._reward_cfg.scales["zero_cmd_stationary_vx"] = -4.0
+    env._reward_cfg.scales["zero_cmd_stationary_yaw"] = -12.0
+    env._reward_cfg.zero_cmd_stationary_vx_term_clip = 2.0
+    env._reward_cfg.zero_cmd_stationary_yaw_term_clip = 2.0
     linvel = np.zeros((2, 3), dtype=np.float32)
     gyro = np.zeros((2, 3), dtype=np.float32)
-    linvel[0, 1] = 0.1
-    gyro[1, 2] = 0.1
-    reward = env._reward_zero_cmd_stationary(_reward_context(linvel=linvel, gyro=gyro))
-    np.testing.assert_allclose(reward, [0.05, 0.20], atol=1.0e-6)
+    linvel[:, 0] = [0.1, 1.0]
+    gyro[:, 2] = [0.1, 1.0]
+    ctx = _reward_context(linvel=linvel, gyro=gyro)
+    vx_reward = env._reward_zero_cmd_stationary_vx(ctx)
+    yaw_reward = env._reward_zero_cmd_stationary_yaw(ctx)
+    np.testing.assert_allclose(vx_reward, [0.1, 0.5], atol=1.0e-6)
+    np.testing.assert_allclose(yaw_reward, [0.1, 1.0 / 6.0], atol=1.0e-6)
+    np.testing.assert_allclose(vx_reward * -4.0, [-0.4, -2.0], atol=1.0e-6)
+    np.testing.assert_allclose(yaw_reward * -12.0, [-1.2, -2.0], atol=1.0e-6)
 
 
 def test_contact_requires_25_consecutive_control_steps() -> None:

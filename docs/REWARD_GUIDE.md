@@ -158,16 +158,16 @@ per_step_reward = ( Σ_i clipped_i(raw_reward_i * scale_i) ) * ctrl_dt
 - **调 0**：allowed to hit joint limits，可能学出机械上不合理的姿态。
 - **调更负**：更严格远离限位。
 
-### 1.15 `nominal_state_lingzu` （当前 = -1.0）
+### 1.15 `nominal_state_lingzu` （当前 = -3.0）
 
-- **计算**（[joystick.py:4881](../../../../../UniLab/src/unilab/envs/locomotion/dr002/joystick.py#L4881)）：
+- **计算**（[joystick.py:5264](../src/unilab/envs/locomotion/dr002/joystick.py#L5264)）：
   ```
-  raw = (dof_pos[0] - dof_pos[3])² + (dof_pos[1] - dof_pos[4])²
+  raw = (left_wheel_pos_base.x - right_wheel_pos_base.x)²
   ```
-  索引 0/3 = 左右 thigh，1/4 = 左右 calf。**惩罚左右腿不对称**。
-- **作用**：保持左右腿姿态基本对称（"标称/nominal"状态）。
-- **调 0**：允许不对称姿态，可能学出瘸腿步态。
-- **调更负**：强制严格对称，可能损害转向能力（转向本身就需要左右腿有差异）。
+  `x` 是机身坐标系中的前后方向，左右 wheel body 原点就是两侧轮轴中心。
+- **作用**：让两根轮轴在俯视图中横向对齐，避免左右轮一前一后的“劈叉”姿态；不再要求左右大腿和小腿关节角完全相同。
+- **调 0**：不约束左右轮的前后错位。
+- **调更负**：更严格地要求轮轴前后对齐；原始误差单位由 `rad²` 改为 `m²`，调整 scale 时应按实际错位距离判断。
 
 ### 1.16 `action_rate_l2` （当前 = -0.01）
 

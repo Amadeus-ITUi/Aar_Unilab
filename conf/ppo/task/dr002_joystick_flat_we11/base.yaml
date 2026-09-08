@@ -210,18 +210,21 @@ reward:
     # Stronger wheel-acceleration regularization for smoother wheel commands.
     joint_acc_wheel_l2: -2.5e-4
     joint_pos_limits: -1.0
-    nominal_state_lingzu: -1.0
+    nominal_state_lingzu: -300.0
     action_rate_l2: -0.2
     action_smooth_lingzu: -0.03
     undesired_contacts: -10.0
-    zero_cmd_stationary: -2
+    zero_cmd_stationary_vx: -20
+    # Preserve the previous effective yaw slope: -4 scale * 3 yaw weight.
+    zero_cmd_stationary_yaw: -20
   # Keep the established yaw-tracking width unchanged.
   tracking_sigma: 0.25
   # Moderate tracking width avoids demanding an unsafe instantaneous response
   # during command transitions while retaining useful velocity precision.
   track_lin_vel_x_std: 0.25
-  zero_cmd_stationary_yaw_weight: 2.0
-  zero_cmd_stationary_lateral_weight: 0.5
+  # Clip vx and yaw independently so one large error cannot hide the other.
+  zero_cmd_stationary_vx_term_clip: 2.0
+  zero_cmd_stationary_yaw_term_clip: 2.0
   # 顺便还有两个阈值可控制何时启用该惩罚:
   # zero_cmd_stationary_gate_vx: 0.05
   # zero_cmd_stationary_gate_wz: 0.05

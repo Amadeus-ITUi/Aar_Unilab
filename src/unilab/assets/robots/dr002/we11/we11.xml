@@ -151,6 +151,10 @@
     <jointpos name="right_wing_pos" joint="right_wing_joint" />
     <jointvel name="left_wing_vel_sensor" joint="left_wing_joint" />
     <jointvel name="right_wing_vel_sensor" joint="right_wing_joint" />
+    <framepos name="left_wheel_axis_pos_b" objtype="body" objname="left_foot_link"
+      reftype="site" refname="imu" />
+    <framepos name="right_wheel_axis_pos_b" objtype="body" objname="right_foot_link"
+      reftype="site" refname="imu" />
     <framequat name="imu_quat" objtype="site" objname="imu" noise="0.0" />
     <gyro name="imu_gyro" site="imu" noise="0.0" />
     <accelerometer name="imu_acc" site="imu" />
