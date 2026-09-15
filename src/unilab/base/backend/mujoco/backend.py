@@ -1380,7 +1380,10 @@ class MuJoCoBackend(SimBackend):
             self._pending_xfrc_applied_trajectory += trajectory
 
     def get_play_capabilities(self) -> BackendPlayCapabilities:
-        return BackendPlayCapabilities(supports_physics_state_playback=True)
+        return BackendPlayCapabilities(
+            supports_physics_state_playback=True,
+            supports_native_interactive_renderer=True,
+        )
 
     def resolve_play_render_plan(
         self,
@@ -1400,7 +1403,13 @@ class MuJoCoBackend(SimBackend):
                 output_video=None,
             )
         if effective_mode == "interactive":
-            raise NotImplementedError("MuJoCo playback does not support interactive rendering.")
+            return BackendPlayRenderPlan(
+                mode=effective_mode,
+                headless=False,
+                record_video=False,
+                num_steps=int(play_steps) if play_steps is not None else None,
+                output_video=None,
+            )
         assert effective_mode == "record"
         if play_steps is None:
             raise ValueError("MuJoCo record playback requires a finite training.play_steps value.")

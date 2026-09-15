@@ -33,7 +33,7 @@ dr002/we11:
   command_x_resampling_time: 5.0
   command_x_accel_limit: 0.5
   startup_stand_seconds: 3.0
-  # Print commands, measured motion/base height, and wing angles at 5 Hz
+  # Print commands and measured motion/base height at 5 Hz
   # (policy runs at 50 Hz).
   status_print_interval_policy_steps: 10
   # Play-only diagnostics matching the split GetUp/Flat training rewards.
@@ -43,14 +43,10 @@ dr002/we11:
   zero_cmd_stationary_yaw_scale: -12.0
   zero_cmd_stationary_vx_term_clip: 2.0
   zero_cmd_stationary_yaw_term_clip: 2.0
+  # Wings remain part of the 145D observation contract, but current Getup
+  # playback does not drive them or inject wing/wrench disturbances.
   wing_velocity_command:
-    # LB/RB drive a shared negative/positive velocity for both wings.
-    #
-    # The env integrates the stick's rad/s into a position setpoint each
-    # step; wing kp/kd hold that setpoint via position PD, so stick-neutral
-    # freezes the wings at their last angle instead of letting them fall.
-    # Max speed matches training and the hardware safety limit: pi/4 rad/s.
-    enabled: true
+    enabled: false
     max_rad_per_s: 0.7853981633974483
     decrease_button: 4
     increase_button: 5

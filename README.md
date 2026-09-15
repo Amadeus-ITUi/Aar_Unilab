@@ -58,13 +58,13 @@ python scripts/play.py \
   robot=we11 task=getup observation=we11_v2_145 \
   policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco \
   algo.load_run=models/we11/getup/model_9999.pt \
-  training.play_render_mode=record training.play_steps=500 training.play_env_num=1
+  training.play_render_mode=interactive training.play_env_num=1
 ```
 
 当前 WE11 的 Flat、Rough 和 Getup 均统一使用 `we11_v2_145`。无窗口检查使用
-`training.play_render_mode=none`。WE11 的 Python 回放当前输出 checkpoint 同目录下的
-`play_video.mp4`，尚不提供实时交互窗口；实时渲染、拖动力和手柄操作使用下文的
-C++ Sim2Sim。
+`training.play_render_mode=none`；录制视频使用 `record`。Python 实时回放与 C++
+使用同一套 WE11 手柄语义：`RB+DPadUp` 启动、`LB+X` 停止、`RB+Y` 重置，
+左摇杆纵轴控制前进速度、右摇杆横轴控制 yaw、右摇杆纵轴控制机身高度。
 
 PE01 回放：
 
@@ -88,16 +88,14 @@ AAR_EXPORT_POLICY=1 python scripts/play.py \
   training.play_render_mode=none training.play_steps=1
 ```
 
-构建当前正式 WE11 Getup release，并用 C++ 回放：
+构建并运行保留原 MuJoCo `simulate` 界面风格的 WE11 Getup C++ Play：
 
 ```bash
-python tools/build_we11_sim2sim_release.py \
-  --destination /ssd/conda/cache/aar_unilab-native/we11-getup-release
-
-sim2sim/build/aar_sim2sim \
-  /ssd/conda/cache/aar_unilab-native/we11-getup-release \
-  --interactive --steps 1000000
+sim2sim/we11_play/build.sh
+sim2sim/we11_play/scripts/play_we11.sh --difficulty 1.0
 ```
+
+两套 WE11 回放均不加载翼角 CSV、wrench CSV，也不再接受扑动频率参数。
 
 PE01 release 位于 `releases/pe01/pe01_flat/<run_id>/`，可直接传给同一个
 `aar_sim2sim`。C++ 支持渲染、摄像机、鼠标拖动力、手柄、图表和 CSV/JSONL

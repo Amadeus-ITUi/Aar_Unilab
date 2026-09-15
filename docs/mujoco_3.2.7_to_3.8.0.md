@@ -14,7 +14,7 @@ Validated gates:
   trajectories before a policy is accepted for deployment. The current WE11
   Getup Python/C++ action, control and state comparison passes with zero error.
 
-The original viewer source is retained under `references/legacy_play_source`
+The original viewer source is retained under `sim2sim/we11_play`
 for provenance. The active GLFW host has rendering, camera, drag force,
 gamepad, plotting and telemetry; automated display smoke is complemented by
 manual physical-controller acceptance.

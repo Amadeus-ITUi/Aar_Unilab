@@ -316,8 +316,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
         }
         std::cout << LOGGER::NOTE
                   << "DR002 controls: 1/RB+DPadUp start, P/LB+X stop, "
-                  << "R/RB+Y reset, LY=vx, RX=yaw, RY=height velocity, "
-                  << "LB/RB=wing down/up."
+                  << "R/RB+Y reset, LY=vx, RX=yaw, RY=height velocity."
                   << std::endl;
     }
     else if (this->robot_name == "nxbx")

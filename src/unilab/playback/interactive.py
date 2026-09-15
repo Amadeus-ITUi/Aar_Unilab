@@ -13,14 +13,13 @@ import numpy as np
 
 
 def joystick_command(axes: np.ndarray | None, deadzone: float = 0.12) -> np.ndarray:
+    """Map standardized GLFW Xbox axes to WE11 ``[vx, yaw, height_rate]``."""
     command = np.zeros(3, dtype=np.float32)
     if axes is None or len(axes) < 4:
         return command
-    values = np.asarray((axes[1], axes[0], axes[3]), dtype=np.float32)
+    values = np.asarray((-axes[1], -axes[2], axes[3]), dtype=np.float32)
     values[np.abs(values) < deadzone] = 0.0
     command[:] = np.clip(values, -1.0, 1.0)
-    command[0] *= -1.0
-    command[2] *= -1.0
     return command
 
 

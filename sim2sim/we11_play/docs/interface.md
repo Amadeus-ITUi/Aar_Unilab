@@ -95,3 +95,5 @@ Level-9 heightfield 固定 seed 42，`noise_range=[0,0.006] m`、`noise_step=0.0
 4. WE11 selector 的 PD、scale、clip、delay 和 command；
 5. `SHA256SUMS`；
 6. flat/rough smoke 和 Deploy parity 记录。
+> 历史接口记录：频率、wrench 和翼角回放接口已从活动启动器删除。
+> 当前接口见 `../README.md`。

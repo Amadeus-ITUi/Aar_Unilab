@@ -224,3 +224,5 @@ ls src/rl_sar_zoo/dr002_description/mjcf/we11/meshes_lod
 ~~~bash
 sha256sum -c SHA256SUMS
 ~~~
+> 历史来源文档：其中频率、wrench CSV、翼角 CSV 和 Level-9 启动命令已停用。
+> 当前唯一有效入口见 `../README.md`。

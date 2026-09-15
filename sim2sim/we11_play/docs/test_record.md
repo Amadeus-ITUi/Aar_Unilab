@@ -34,3 +34,5 @@
 ## 4. 失败判定
 
 SHA-256 失败、模型 shape mismatch、CSV/scene/mesh 缺失、关节顺序不一致、action 持续 clip、PD/delay 与训练不一致时，本回放不通过，不得作为真机模型来源。
+> 历史测试记录：涉及频率、wrench/翼角 CSV 和 Level-9 的项目已经废弃。
+> 当前测试以 `../README.md` 为准。

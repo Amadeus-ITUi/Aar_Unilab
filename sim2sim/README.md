@@ -10,9 +10,9 @@ CSV/JSONL telemetry contract as Python Play.
 
 The active interactive host provides rendering, follow camera, mouse
 rotate/pan/zoom, right-drag external force, GLFW gamepad commands, a live
-MuJoCo plot and diagnostic telemetry. The former implementation remains under
-`references/legacy_play_source/` for provenance. Training-only reward, critic,
-curriculum and PPO code do not enter this target.
+MuJoCo plot and diagnostic telemetry. The original-style WE11 implementation
+is active under `sim2sim/we11_play/`; its `IMPORT.md` retains provenance.
+Training-only reward, critic, curriculum and PPO code do not enter the generic target.
 
 Build the dependency-free contract layer with:
 

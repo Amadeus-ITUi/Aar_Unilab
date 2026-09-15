@@ -10,9 +10,10 @@ set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 
 set(BUNDLE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(RL_SOURCE_DIR "${BUNDLE_ROOT}/src/rl_sar")
-set(ONNX_ROOT "${BUNDLE_ROOT}/library/inference_runtime/onnxruntime")
-set(MUJOCO_ROOT "${BUNDLE_ROOT}/library/mujoco")
-set(GLFW_ROOT "${BUNDLE_ROOT}/library/glfw")
+set(AAR_WE11_RUNTIME_ROOT "" CACHE PATH "WE11 Play runtime root outside the Git repository")
+set(AAR_MUJOCO_ROOT "${AAR_WE11_RUNTIME_ROOT}/mujoco")
+set(AAR_ONNXRUNTIME_ROOT "${AAR_WE11_RUNTIME_ROOT}/inference_runtime/onnxruntime")
+set(AAR_GLFW_ROOT "${AAR_WE11_RUNTIME_ROOT}/glfw")
 
 find_package(Threads REQUIRED)
 find_package(TBB REQUIRED)
@@ -20,32 +21,27 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(Python3 COMPONENTS NumPy)
 find_package(yaml-cpp REQUIRED)
 
-if(NOT EXISTS "${ONNX_ROOT}/lib/libonnxruntime.so")
-    message(FATAL_ERROR "Bundled ONNX Runtime is missing")
-endif()
-if(NOT EXISTS "${MUJOCO_ROOT}/lib/libmujoco.so.3.2.7")
-    message(FATAL_ERROR "Bundled MuJoCo 3.2.7 is missing")
-endif()
-if(NOT EXISTS "${GLFW_ROOT}/lib/libglfw.so.3.4")
-    message(FATAL_ERROR "Bundled GLFW 3.4 is missing")
-endif()
+find_path(MUJOCO_INCLUDE_DIR mujoco/mujoco.h PATHS "${AAR_MUJOCO_ROOT}/include" NO_DEFAULT_PATH REQUIRED)
+find_library(MUJOCO_LIBRARY NAMES libmujoco.so.3.2.7 mujoco PATHS "${AAR_MUJOCO_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+find_library(ONNXRUNTIME_LIBRARY NAMES libonnxruntime.so.1.22.0 onnxruntime PATHS "${AAR_ONNXRUNTIME_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+find_library(GLFW_LIBRARY NAMES libglfw.so.3.4 glfw PATHS "${AAR_GLFW_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
 
 add_library(onnxruntime_prebuilt SHARED IMPORTED GLOBAL)
 set_target_properties(onnxruntime_prebuilt PROPERTIES
-    IMPORTED_LOCATION "${ONNX_ROOT}/lib/libonnxruntime.so"
-    INTERFACE_INCLUDE_DIRECTORIES "${ONNX_ROOT}/include"
+    IMPORTED_LOCATION "${ONNXRUNTIME_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${AAR_ONNXRUNTIME_ROOT}/include"
 )
 
 add_library(mujoco_prebuilt SHARED IMPORTED GLOBAL)
 set_target_properties(mujoco_prebuilt PROPERTIES
-    IMPORTED_LOCATION "${MUJOCO_ROOT}/lib/libmujoco.so.3.2.7"
-    INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_ROOT}/include"
+    IMPORTED_LOCATION "${MUJOCO_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_INCLUDE_DIR}"
 )
 
 add_library(glfw_prebuilt SHARED IMPORTED GLOBAL)
 set_target_properties(glfw_prebuilt PROPERTIES
-    IMPORTED_LOCATION "${GLFW_ROOT}/lib/libglfw.so.3.4"
-    INTERFACE_INCLUDE_DIRECTORIES "${GLFW_ROOT}/include"
+    IMPORTED_LOCATION "${GLFW_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${AAR_GLFW_ROOT}/include"
 )
 
 set(RL_CORE "${RL_SOURCE_DIR}/library/core")
@@ -115,7 +111,7 @@ add_executable(rl_sim_mujoco
 )
 target_include_directories(rl_sim_mujoco PRIVATE
     ${RL_INCLUDE_DIRS}
-    "${MUJOCO_ROOT}/include"
+    "${MUJOCO_INCLUDE_DIR}"
 )
 target_compile_definitions(rl_sim_mujoco PRIVATE
     USE_CMAKE
@@ -137,5 +133,5 @@ set_target_properties(rl_sim_mujoco PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE
     INSTALL_RPATH
-        "$ORIGIN/../../library/inference_runtime/onnxruntime/lib;$ORIGIN/../../library/mujoco/lib;$ORIGIN/../../library/glfw/lib"
+        "${AAR_ONNXRUNTIME_ROOT}/lib;${AAR_MUJOCO_ROOT}/lib;${AAR_GLFW_ROOT}/lib"
 )
