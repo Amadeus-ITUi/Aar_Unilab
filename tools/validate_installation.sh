@@ -16,6 +16,11 @@ PYTHON="$ENV_PREFIX/bin/python"
 test -x "$PYTHON"
 "$PYTHON" -c 'import mujoco, torch, unilab; assert mujoco.__version__ == "3.8.0"; assert torch.__version__.split("+")[0] == "2.7.0"'
 "$PYTHON" -m pytest tests/catalog tests/release tests/pe01 -q
+"$PYTHON" "$REPO_ROOT/tools/audit_repository.py"
+(
+  cd "$REPO_ROOT/models/we11"
+  sha256sum --check SHA256SUMS
+)
 "$PYTHON" -m ruff check src/unilab/catalog scripts/train.py scripts/play.py tests/catalog tests/release tests/pe01
 git -C "$REPO_ROOT" diff --check -- . ':(exclude)references/**'
 
