@@ -1,29 +1,13 @@
 #include "aar/deployment_contract.hpp"
 
 #include <fstream>
-#include <regex>
-#include <sstream>
 #include <stdexcept>
+
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace aar {
 namespace {
-
-std::string read_file(const std::filesystem::path& path) {
-  std::ifstream stream(path);
-  if (!stream) throw std::runtime_error("cannot open manifest: " + path.string());
-  std::ostringstream content;
-  content << stream.rdbuf();
-  return content.str();
-}
-
-std::string string_field(const std::string& document, const std::string& field) {
-  const std::regex pattern("\\\"" + field + "\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
-  std::smatch match;
-  if (!std::regex_search(document, match, pattern)) {
-    throw std::runtime_error("missing manifest field: " + field);
-  }
-  return match[1].str();
-}
 
 std::filesystem::path relative_path(const std::string& value, const std::string& field) {
   std::filesystem::path path(value);
@@ -34,24 +18,65 @@ std::filesystem::path relative_path(const std::string& value, const std::string&
   return path;
 }
 
+std::vector<TensorContract> tensors(const boost::property_tree::ptree& root,
+                                    const std::string& path) {
+  std::vector<TensorContract> result;
+  for (const auto& item : root.get_child(path)) {
+    TensorContract tensor;
+    tensor.name = item.second.get<std::string>("name");
+    tensor.dtype = item.second.get<std::string>("dtype");
+    if (tensor.dtype != "float32") {
+      throw std::runtime_error("only float32 tensors are supported: " + tensor.name);
+    }
+    for (const auto& dim : item.second.get_child("shape")) {
+      tensor.shape.push_back(dim.second.get_value<std::int64_t>());
+    }
+    if (tensor.name.empty() || tensor.shape.empty()) {
+      throw std::runtime_error("tensor name and shape are required");
+    }
+    result.push_back(std::move(tensor));
+  }
+  if (result.empty()) throw std::runtime_error(path + " must not be empty");
+  return result;
+}
+
+std::vector<std::string> strings(const boost::property_tree::ptree& root,
+                                 const std::string& path) {
+  std::vector<std::string> result;
+  for (const auto& item : root.get_child(path)) result.push_back(item.second.get_value<std::string>());
+  return result;
+}
+
 }  // namespace
 
 DeploymentContract load_contract(const std::filesystem::path& manifest_path) {
-  const std::string document = read_file(manifest_path);
-  const std::string schema = string_field(document, "schema");
+  boost::property_tree::ptree document;
+  try {
+    boost::property_tree::read_json(manifest_path.string(), document);
+  } catch (const std::exception& error) {
+    throw std::runtime_error("cannot parse manifest " + manifest_path.string() + ": " + error.what());
+  }
+  const std::string schema = document.get<std::string>("schema");
   if (schema != "aar-unilab.actor.v1") {
     throw std::runtime_error("unsupported deployment contract: " + schema);
   }
-  if (document.find("\"inputs\"") == std::string::npos ||
-      document.find("\"outputs\"") == std::string::npos) {
-    throw std::runtime_error("policy inputs and outputs are required");
-  }
   return DeploymentContract{
       schema,
-      string_field(document, "id"),
-      string_field(document.substr(document.find("\"task\"")), "id"),
-      relative_path(string_field(document, "policy_path"), "policy_path"),
-      relative_path(string_field(document, "runtime_config_path"), "runtime_config_path"),
+      document.get<std::string>("robot.id"),
+      document.get<std::string>("task.id"),
+      relative_path(document.get<std::string>("artifacts.policy_path"), "policy_path"),
+      relative_path(document.get<std::string>("artifacts.runtime_config_path"),
+                    "runtime_config_path"),
+      relative_path(document.get<std::string>("artifacts.scene_path"), "scene_path"),
+      tensors(document, "policy.inputs"),
+      tensors(document, "policy.outputs"),
+      document.get<std::string>("policy.observation_builder", "golden_inputs"),
+      strings(document, "robot.joint_order"),
+      document.get<double>("control.physics_hz"),
+      document.get<double>("control.motor_hz"),
+      document.get<double>("control.policy_hz"),
+      document.get<double>("control.action_scale"),
+      document.get<double>("control.action_clip"),
   };
 }
 

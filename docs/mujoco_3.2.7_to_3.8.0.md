@@ -10,9 +10,11 @@ Validated gates:
 - load the PE01 scene and execute one C++ `mj_step`;
 - require `mj_versionString() == "3.8.0"`;
 - load the same models in Python 3.8.0;
-- compare release-contract observations/actions and short trajectories before
-  a policy is accepted for deployment.
+- compare PE01 and WE11 release-contract observations/actions and 1/10/100-step
+  trajectories before a policy is accepted for deployment. The current WE11
+  Getup Python/C++ action, control and state comparison passes with zero error.
 
 The original viewer source is retained under `references/legacy_play_source`
-for UI behavior comparison. Visual rendering and contact trajectories require
-manual GPU/display acceptance; the version/link/load gate is automated.
+for provenance. The active GLFW host has rendering, camera, drag force,
+gamepad, plotting and telemetry; automated display smoke is complemented by
+manual physical-controller acceptance.

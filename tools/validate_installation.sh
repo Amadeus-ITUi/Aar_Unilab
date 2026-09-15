@@ -45,8 +45,36 @@ if [[ "$RUN_ALL" == true ]]; then
     "$PYTHON" scripts/train_pe01.py training.steps=1 training.seed=1 training.device=cpu
   )
   MUJOCO_ROOT=$("$PYTHON" -c 'import pathlib, mujoco; print(pathlib.Path(mujoco.__file__).parent)')
+  ONNXRUNTIME_ROOT=$("$PYTHON" -c 'import pathlib, onnxruntime; print(pathlib.Path(onnxruntime.__file__).parent / "capi")')
+  GLFW_ROOT=$("$PYTHON" -c 'import pathlib, glfw; print(pathlib.Path(glfw.__file__).parent)')
   cmake -S "$REPO_ROOT/sim2sim" -B "$REPO_ROOT/sim2sim/build" \
-    -DCMAKE_BUILD_TYPE=Release -DAAR_MUJOCO_ROOT="$MUJOCO_ROOT"
+    -DCMAKE_BUILD_TYPE=Release -DAAR_MUJOCO_ROOT="$MUJOCO_ROOT" \
+    -DAAR_ONNXRUNTIME_ROOT="$ONNXRUNTIME_ROOT" \
+    -DAAR_ONNXRUNTIME_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/inference_runtime/onnxruntime/include" \
+    -DAAR_GLFW_ROOT="$GLFW_ROOT" \
+    -DAAR_GLFW_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/glfw/include"
   cmake --build "$REPO_ROOT/sim2sim/build" --parallel
   ctest --test-dir "$REPO_ROOT/sim2sim/build" --output-on-failure
+  WE11_RELEASE=/ssd/conda/cache/aar_unilab-native/we11-getup-release
+  "$PYTHON" "$REPO_ROOT/tools/build_we11_sim2sim_release.py" \
+    --destination "$WE11_RELEASE"
+  for TRAJECTORY_STEPS in 1 10 100; do
+    "$REPO_ROOT/sim2sim/build/aar_sim2sim" "$WE11_RELEASE" \
+      --steps "$TRAJECTORY_STEPS" \
+      --telemetry "/ssd/conda/cache/aar_unilab-native/we11-$TRAJECTORY_STEPS"
+  done
+  "$PYTHON" "$REPO_ROOT/tools/compare_we11_sim2sim.py" \
+    --binary "$REPO_ROOT/sim2sim/build/aar_sim2sim" \
+    --release "$WE11_RELEASE"
+  TORCH_EXTENSIONS_DIR=/ssd/conda/cache/aar_unilab-native \
+    "$PYTHON" "$REPO_ROOT/tools/compare_pe01_sim2sim.py" \
+      --binary "$REPO_ROOT/sim2sim/build/aar_sim2sim" \
+      --release "$REPO_ROOT/releases/examples/pe01_flat"
+  if [[ -n "${DISPLAY:-}" ]]; then
+    "$REPO_ROOT/sim2sim/build/aar_sim2sim" \
+      "$REPO_ROOT/releases/examples/pe01_flat" --steps 2 --interactive \
+      --telemetry /ssd/conda/cache/aar_unilab-native/pe01-ui-smoke
+    "$REPO_ROOT/sim2sim/build/aar_sim2sim" "$WE11_RELEASE" --steps 2 --interactive \
+      --telemetry /ssd/conda/cache/aar_unilab-native/we11-ui-smoke
+  fi
 fi

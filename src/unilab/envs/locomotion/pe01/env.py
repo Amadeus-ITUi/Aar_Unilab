@@ -23,6 +23,9 @@ class PE01Env:
     frame_size = 30
     history_length = 10
     action_size = 6
+    physics_hz = 400
+    policy_hz = 50
+    physics_steps_per_action = physics_hz // policy_hz
 
     def __init__(self, model_path: str | Path | None = None) -> None:
         import mujoco
@@ -46,7 +49,8 @@ class PE01Env:
         if value.shape != (self.action_size,):
             raise ValueError(f"PE01 action must have shape ({self.action_size},), got {value.shape}")
         self.data.ctrl[:] = np.clip(value, -1.0, 1.0)
-        self._mujoco.mj_step(self.model, self.data)
+        for _ in range(self.physics_steps_per_action):
+            self._mujoco.mj_step(self.model, self.data)
         observation = self._observation()
         height = float(self.data.qpos[2])
         reward = height - 0.001 * float(np.square(value).sum())

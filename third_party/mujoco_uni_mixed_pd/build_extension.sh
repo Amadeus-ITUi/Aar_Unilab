@@ -14,7 +14,7 @@ VERSION="3.8.0"
 SDIST_NAME="mujoco_uni-${VERSION}.tar.gz"
 SDIST_URL="https://files.pythonhosted.org/packages/d7/af/c042c865b78400d1309736903168a07dea67d84872a9b999bc19328de412/${SDIST_NAME}"
 SDIST_SHA256="8b1e32dce4f6b7f87b4cb7bfa55ab25a9a9e3191b6bde865196eaa04bf1baac5"
-CACHE_DIR="${UNILAB_NATIVE_BUILD_CACHE:-${HOME}/.cache/unilab/mujoco_uni_mixed_pd}"
+CACHE_DIR="${UNILAB_NATIVE_BUILD_CACHE:-/ssd/conda/cache/aar_unilab-native/mujoco_uni_mixed_pd}"
 ARCHIVE_PATH="${CACHE_DIR}/${SDIST_NAME}"
 SOURCE_DIR="${CACHE_DIR}/source-${VERSION}"
 FETCH_DIR="${CACHE_DIR}/fetchcontent"
@@ -38,6 +38,14 @@ fi
 MUJOCO_DIR="$(${PYTHON_BIN} -c 'import pathlib, mujoco; print(pathlib.Path(mujoco.__file__).resolve().parent)')"
 EXT_SUFFIX="$(${PYTHON_BIN} -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')"
 mkdir -p "${CACHE_DIR}" "${FETCH_DIR}" "${DEST_DIR}"
+DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
+
+if [[ -f "${DEST_SO}" ]] && \
+   PYTHONPATH="${ROOT_DIR}/src" "${PYTHON_BIN}" -c \
+     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available; assert native_mixed_pd_available() and native_command_delay_pd_available()'; then
+  echo "UniLab native torque-FIFO and command-delay PD extension: already ready"
+  exit 0
+fi
 
 if [[ ! -f "${ARCHIVE_PATH}" ]]; then
   curl --fail --location "${SDIST_URL}" --output "${ARCHIVE_PATH}"
@@ -60,7 +68,6 @@ MUJOCO_CMAKE_ARGS="${CMAKE_ARGS}" \
 popd >/dev/null
 
 SOURCE_SO="${SOURCE_DIR}/mujoco/_batch_env${EXT_SUFFIX}"
-DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
 install -m 0755 "${SOURCE_SO}" "${DEST_SO}"
 
 PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}" "${PYTHON_BIN}" - <<'PY'

@@ -23,6 +23,14 @@
       "url": "https://files.pythonhosted.org/packages/1e/70/342514ade3a33ad9dd505dcee96ff1f0e7be6d0e6e9c911fe0f1505abf42/onnxruntime-1.22.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
       "sha256": "9fe45ee3e756300fccfd8d61b91129a121d3d80e9d38e01f03ff1295badc32b8",
       "cache_root": "/ssd/conda/cache/aar_unilab-native"
+    },
+    {
+      "name": "mujoco-uni native extension source",
+      "version": "3.8.0",
+      "distribution": "mujoco_uni-3.8.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/d7/af/c042c865b78400d1309736903168a07dea67d84872a9b999bc19328de412/mujoco_uni-3.8.0.tar.gz",
+      "sha256": "8b1e32dce4f6b7f87b4cb7bfa55ab25a9a9e3191b6bde865196eaa04bf1baac5",
+      "cache_root": "/ssd/conda/cache/aar_unilab-native/mujoco_uni_mixed_pd"
     }
   ]
 }

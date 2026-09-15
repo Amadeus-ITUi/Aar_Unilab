@@ -51,8 +51,17 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
         "observation": np.zeros((1, 30), dtype=np.float32),
         "command": np.zeros((1, 3), dtype=np.float32),
     }
+    with torch.inference_mode():
+        torch_action = actor(
+            *(torch.as_tensor(golden_inputs[name], device=device) for name in (
+                "observation_history",
+                "observation",
+                "command",
+            ))
+        ).cpu().numpy()
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     golden_action = session.run(["action"], golden_inputs)[0]
+    np.testing.assert_allclose(torch_action, golden_action, rtol=1.0e-5, atol=1.0e-6)
     runtime_config = run_dir / "runtime_config.yaml"
     runtime_config.write_text(
         "robot: pe01\ntask: pe01_flat\nsimulator: mujoco\nphysics_hz: 400\npolicy_hz: 50\n",
@@ -74,6 +83,7 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
         },
         "task": {"id": "pe01_flat"},
         "policy": {
+            "observation_builder": "pe01_v1",
             "inputs": [
                 {"name": "observation_history", "dtype": "float32", "shape": [1, 300]},
                 {"name": "observation", "dtype": "float32", "shape": [1, 30]},
@@ -87,7 +97,7 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
             "physics_hz": 400,
             "motor_hz": 400,
             "policy_hz": 50,
-            "action_scale": 0.25,
+            "action_scale": 1.0,
             "action_clip": 1.0,
             "command_delay_steps": 0,
             "gains": {"hip": [4.3, 0.34], "thigh": [4.3, 0.34], "calf": [4.9, 0.24]},

@@ -29,7 +29,7 @@ dependencies. Maintained C++ code is in `sim2sim/`, while imported Play and
 Deploy implementations are isolated under `references/`.
 
 The complete automated gate is `tools/validate_installation.sh --all`. Migration
-status and remaining manual/C++ UI gates are recorded in
+status and the final physical-controller/visual acceptance note are recorded in
 [`docs/仓库规整与训练复用性改造计划.md`](docs/仓库规整与训练复用性改造计划.md).
 
 ## Preserved WE11 handover (historical context)
