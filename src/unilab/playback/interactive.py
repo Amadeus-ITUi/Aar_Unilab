@@ -50,7 +50,10 @@ class InteractiveSession:
         telemetry_dir.mkdir(parents=True, exist_ok=True)
         self._csv_stream = (telemetry_dir / "telemetry.csv").open("w", newline="", encoding="utf-8")
         self._jsonl_stream = (telemetry_dir / "telemetry.jsonl").open("w", encoding="utf-8")
-        self._csv = csv.DictWriter(self._csv_stream, fieldnames=("time_seconds", "base_height", "command_x", "command_y", "command_yaw"))
+        self._csv = csv.DictWriter(
+            self._csv_stream,
+            fieldnames=("time_seconds", "base_height", "command_x", "command_y", "command_yaw"),
+        )
         self._csv.writeheader()
         self._viewer_context = nullcontext(None)
         if render:

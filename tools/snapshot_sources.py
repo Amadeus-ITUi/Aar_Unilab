@@ -21,7 +21,22 @@ EXCLUDED_PARTS = frozenset(
     {".git", ".venv", "build", "install", "log", "logs", "__pycache__", ".pytest_cache"}
 )
 SOURCE_SUFFIXES = frozenset(
-    {".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".xml", ".urdf", ".yaml", ".yml", ".json", ".md", ".txt", ".sh"}
+    {
+        ".py",
+        ".cpp",
+        ".cc",
+        ".c",
+        ".h",
+        ".hpp",
+        ".xml",
+        ".urdf",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".md",
+        ".txt",
+        ".sh",
+    }
 )
 
 
@@ -34,7 +49,9 @@ def run_git(root: Path, *arguments: str) -> str | None:
 
 def selected_files(root: Path):
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or any(part in EXCLUDED_PARTS for part in path.relative_to(root).parts):
+        if not path.is_file() or any(
+            part in EXCLUDED_PARTS for part in path.relative_to(root).parts
+        ):
             continue
         if path.suffix.lower() in SOURCE_SUFFIXES or path.name in {"CMakeLists.txt", "LICENSE"}:
             yield path
@@ -70,7 +87,9 @@ def main() -> int:
             "selected_tree_sha256": digest,
         }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     return 0
 
 

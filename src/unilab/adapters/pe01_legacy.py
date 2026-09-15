@@ -23,8 +23,12 @@ class PE01EncoderPolicy(nn.Module):
         super().__init__()
         self.encoder = nn.Sequential(nn.Linear(history_dim, 256), nn.ELU(), nn.Linear(256, 16))
         self.actor = nn.Sequential(
-            nn.Linear(16 + frame_dim + command_dim, 256), nn.ELU(),
-            nn.Linear(256, 256), nn.ELU(), nn.Linear(256, 6), nn.Tanh()
+            nn.Linear(16 + frame_dim + command_dim, 256),
+            nn.ELU(),
+            nn.Linear(256, 256),
+            nn.ELU(),
+            nn.Linear(256, 6),
+            nn.Tanh(),
         )
         self.critic = nn.Sequential(
             nn.Linear(33 + command_dim + 16, 256), nn.ELU(), nn.Linear(256, 1)
@@ -81,7 +85,10 @@ def train_minimal(
         old_log_probability = distribution.log_prob(action).sum(-1).detach()
         ratio = torch.exp(distribution.log_prob(action).sum(-1) - old_log_probability)
         clipped = torch.clamp(ratio, 0.8, 1.2)
-        losses.append(-torch.minimum(ratio * advantage.detach(), clipped * advantage.detach()).mean() + 0.5 * advantage.square().mean())
+        losses.append(
+            -torch.minimum(ratio * advantage.detach(), clipped * advantage.detach()).mean()
+            + 0.5 * advantage.square().mean()
+        )
         rewards.append(reward)
         current = env.reset() if done else following
     optimizer.zero_grad()

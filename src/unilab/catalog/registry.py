@@ -95,7 +95,9 @@ class Catalog:
             simulator=self._get(self.simulators, "simulator", values["simulator"]),
         )
         if selected.robot.id not in selected.task.robot_ids:
-            raise ValueError(f"task={selected.task.id!r} does not support robot={selected.robot.id!r}")
+            raise ValueError(
+                f"task={selected.task.id!r} does not support robot={selected.robot.id!r}"
+            )
         if selected.policy.id not in selected.algorithm.policy_ids:
             raise ValueError(
                 f"algorithm={selected.algorithm.id!r} does not support policy={selected.policy.id!r}"
@@ -126,8 +128,12 @@ class Catalog:
 catalog = Catalog()
 
 _we11_joints = (
-    "left_hip_joint", "left_thigh_joint", "left_calf_joint",
-    "right_hip_joint", "right_thigh_joint", "right_calf_joint",
+    "left_hip_joint",
+    "left_thigh_joint",
+    "left_calf_joint",
+    "right_hip_joint",
+    "right_thigh_joint",
+    "right_calf_joint",
 )
 catalog.robots["we11"] = RobotSpec(
     id="we11",
@@ -157,8 +163,7 @@ catalog.observations["we11_default"] = ObservationSpec(
     "we11_default", ("policy",), ("critic",), history=5, actor_dim=145
 )
 catalog.observations["pe01_legacy"] = ObservationSpec(
-    "pe01_legacy", ("proprioception",), ("privileged",), history=10, actor_dim=300,
-    critic_dim=33
+    "pe01_legacy", ("proprioception",), ("privileged",), history=10, actor_dim=300, critic_dim=33
 )
 catalog.policies["we11_mlp"] = PolicySpec("we11_mlp", "mlp", ("obs",), ("act",))
 catalog.policies["pe01_encoder_mlp"] = PolicySpec(

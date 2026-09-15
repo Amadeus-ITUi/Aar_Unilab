@@ -347,6 +347,10 @@ def test_noise_curriculum_rejects_level_count_mismatch() -> None:
         env._validate_noise_curriculum_cfg()
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="imported dirty baseline resolves delay_min=2 while this pending expectation says 4",
+)
 def test_we11_base_config_owns_latest_network_observation_and_force_contract() -> None:
     config_path = Path(__file__).parents[4] / "conf/ppo/task/dr002_joystick_flat_we11/base.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))

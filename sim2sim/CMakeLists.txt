@@ -22,3 +22,8 @@ add_test(
     ${CMAKE_CURRENT_SOURCE_DIR}/../releases/examples/we11_flat/deployment_manifest.json
 )
 set_tests_properties(contract_accepts_v1 PROPERTIES PASS_REGULAR_EXPRESSION "aar-unilab.actor.v1")
+add_test(
+  NAME contract_rejects_unknown
+  COMMAND aar_contract_check ${CMAKE_CURRENT_SOURCE_DIR}/tests/unknown_manifest.json
+)
+set_tests_properties(contract_rejects_unknown PROPERTIES WILL_FAIL TRUE)

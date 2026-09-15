@@ -1,0 +1,7 @@
+{
+  "schema": "aar-unilab.actor.v999",
+  "robot": {"id": "test"},
+  "task": {"id": "test"},
+  "policy": {"inputs": [], "outputs": []},
+  "artifacts": {"policy_path": "policy.onnx", "runtime_config_path": "runtime_config.yaml"}
+}

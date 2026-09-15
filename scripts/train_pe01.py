@@ -33,7 +33,11 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
     onnx_path = run_dir / "policy.onnx"
     torch.onnx.export(
         actor,
-        (torch.zeros(1, 300, device=device), torch.zeros(1, 30, device=device), torch.zeros(1, 3, device=device)),
+        (
+            torch.zeros(1, 300, device=device),
+            torch.zeros(1, 30, device=device),
+            torch.zeros(1, 3, device=device),
+        ),
         onnx_path,
         input_names=["observation_history", "observation", "command"],
         output_names=["action"],
@@ -50,7 +54,14 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
         "robot": {
             "id": "pe01",
             "asset_version": "dragon-3-final-20260915",
-            "joint_order": ["left_hip_joint", "left_thigh_joint", "left_calf_joint", "right_hip_joint", "right_thigh_joint", "right_calf_joint"],
+            "joint_order": [
+                "left_hip_joint",
+                "left_thigh_joint",
+                "left_calf_joint",
+                "right_hip_joint",
+                "right_thigh_joint",
+                "right_calf_joint",
+            ],
         },
         "task": {"id": "pe01_flat"},
         "policy": {
@@ -63,7 +74,15 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
             "history": {"length": 10, "frame_size": 30, "layout": "frame-major"},
             "hidden_state": [],
         },
-        "control": {"physics_hz": 400, "motor_hz": 400, "policy_hz": 50, "action_scale": 0.25, "action_clip": 1.0, "command_delay_steps": 0, "gains": {"hip": [4.3, 0.34], "thigh": [4.3, 0.34], "calf": [4.9, 0.24]}},
+        "control": {
+            "physics_hz": 400,
+            "motor_hz": 400,
+            "policy_hz": 50,
+            "action_scale": 0.25,
+            "action_clip": 1.0,
+            "command_delay_steps": 0,
+            "gains": {"hip": [4.3, 0.34], "thigh": [4.3, 0.34], "calf": [4.9, 0.24]},
+        },
         "artifacts": {"scene_path": "robot/scene.xml"},
     }
     release_dir = Path("releases/pe01/pe01_flat") / run_id
@@ -72,7 +91,10 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
         onnx=onnx_path,
         runtime_config=runtime_config,
         manifest=manifest,
-        robot_files=["src/unilab/assets/robots/pe01/pe01.xml", "src/unilab/assets/robots/pe01/scene.xml"],
+        robot_files=[
+            "src/unilab/assets/robots/pe01/pe01.xml",
+            "src/unilab/assets/robots/pe01/scene.xml",
+        ],
     )
 
 
@@ -88,11 +110,15 @@ def main() -> int:
         run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_mujoco")
         destination = Path("logs/pe01_custom_ppo/pe01/pe01_flat") / run_id
         result = train_minimal(
-            destination, steps=int(args.get("training.steps", "128")),
-            seed=int(args.get("training.seed", "1")), device=device
+            destination,
+            steps=int(args.get("training.steps", "128")),
+            seed=int(args.get("training.seed", "1")),
+            device=device,
         )
         release = export_release(result.checkpoint, run_id, device)
-        print(f"PE01 checkpoint={result.checkpoint} release={release} mean_reward={result.mean_reward:.6f}")
+        print(
+            f"PE01 checkpoint={result.checkpoint} release={release} mean_reward={result.mean_reward:.6f}"
+        )
         return 0
     checkpoint_value = args.get("checkpoint")
     if not checkpoint_value:
@@ -100,6 +126,7 @@ def main() -> int:
         return 2
     policy = load_policy(Path(checkpoint_value), device=device)
     env = PE01Env()
+
     def action(observation, command):
         history = torch.as_tensor(observation.actor, device=device).unsqueeze(0)
         commands = torch.as_tensor(command, device=device).unsqueeze(0)
