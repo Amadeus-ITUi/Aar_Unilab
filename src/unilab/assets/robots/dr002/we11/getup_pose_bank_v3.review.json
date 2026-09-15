@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "bank": "/ssd/Pheonix/UniLab/src/unilab/assets/robots/dr002/we11/getup_pose_bank_v3.npz",
+  "bank": "getup_pose_bank_v3.npz",
   "bank_sha256": "ba543378c036851242cafe892749673a0f3d32532fb06bc8fbc3921091da7d8f",
   "poses": {
     "36716b2c1a7b1bd944264af58c93b88b18c31ca42f782b3cab732a158ff3f27d": {

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scene": "/ssd/Pheonix/UniLab/src/unilab/assets/robots/dr002/we11/scene_flat_we11.xml",
+  "scene": "scene_flat_we11.xml",
   "scene_sha256": "267a70c1d237dc63cf245bb74b2f5c693bb58290b965c050695894063ec81181",
   "nq": 15,
   "angle_grid": {

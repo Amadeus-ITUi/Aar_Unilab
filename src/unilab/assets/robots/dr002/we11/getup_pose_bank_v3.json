@@ -12,7 +12,7 @@
     "home": "home",
     "getup": "getup_start_v2"
   },
-  "scene": "/ssd/Pheonix/UniLab/src/unilab/assets/robots/dr002/we11/scene_flat_we11.xml",
+  "scene": "scene_flat_we11.xml",
   "scene_sha256": "9dc8ec5ab0377ab98a89fb30e6046f1cadd26aa9b89b59da919f72fe3dcd2e9f",
   "nq": 15,
   "angle_grid": {
