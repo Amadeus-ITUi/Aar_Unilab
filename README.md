@@ -18,6 +18,9 @@ bash tools/rebind_environment.sh
 source tools/activate_environment.sh
 ```
 
+环境按 SSD 绝对前缀管理，因此不使用 `conda activate aar_unilab`。也可以手动执行
+`conda activate /ssd/conda/envs/aar_unilab`；成功后提示符显示 `(aar_unilab)`。
+
 ## 训练
 
 WE11 使用统一入口，通过 `task=flat|rough|getup` 选择任务：
