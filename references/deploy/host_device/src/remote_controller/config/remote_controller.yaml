@@ -1,0 +1,4 @@
+remote_controller_node:
+    ros__parameters:
+        command_rate: 20.0  # 命令发布频率 (Hz)
+        command_topic: "/cmd_vel"  # 命令话题（与inference节点兼容）

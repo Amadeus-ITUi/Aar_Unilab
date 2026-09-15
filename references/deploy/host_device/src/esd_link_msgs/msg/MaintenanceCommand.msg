@@ -1,0 +1,11 @@
+uint8 SWEEP=3
+uint8 MANUAL_TEST=4
+std_msgs/Header header
+uint8 mode
+uint32 source_state_sample_seq
+uint8[8] port_id
+float32[8] position_rad
+float32[8] velocity_rad_s
+float32[8] kp
+float32[8] kd
+float32[8] effort_nm

@@ -1,0 +1,7 @@
+float32 timeout
+---
+bool success
+string message
+int16[] detected_motor_ids
+
+

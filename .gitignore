@@ -3,6 +3,8 @@ __pycache__/
 dist/
 .eggs/
 *.egg-info/
+*.so
+*.dylib
 
 # uv
 .venv/
@@ -40,6 +42,12 @@ htmlcov/
 # Project specific
 logs/
 runs/
+checkpoints/*
+!checkpoints/README.md
+# Release trees are generated. Selected release artifacts must be force-added.
+releases/*
+!releases/examples/
+!releases/examples/**
 run_config.json
 run_summary.json
 .worktrees/
@@ -58,11 +66,39 @@ run_summary.json
 
 benchmark/outputs/
 outputs/
+build/
+install/
+log/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
 src/unilab/algos/torch/rsl_rl
 
 third-party
 temp/
 agent/
+
+# Local environments and dependency caches (all live below /ssd/conda).
+.conda/
+envs/
+pkgs/
+pip-cache/
+
+# Nested source provenance is recorded as text, never as nested repositories.
+references/**/.git/
+references/**/build/
+references/**/install/
+references/**/log/
+references/**/logs/
+references/**/.pytest_cache/
+references/**/__pycache__/
+references/**/*.pyc
+references/**/*.pyo
+references/**/*.bag
+references/**/*.mkv
+references/**/*.mp4
+references/**/sweep_results_*/
 
 # Motion assets (downloaded from HF at runtime)
 src/unilab/assets/motions/g1/*.npz

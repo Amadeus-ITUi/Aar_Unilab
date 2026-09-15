@@ -1,0 +1,5 @@
+std_msgs/Header header
+uint32 source_state_sample_seq
+uint64 inference_start_monotonic_ns
+uint64 inference_end_monotonic_ns
+float32[6] action

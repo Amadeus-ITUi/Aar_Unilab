@@ -1,0 +1,7 @@
+bool persist
+uint8[] port_ids
+float32[] assigned_position_rad
+---
+bool success
+uint32 config_fingerprint
+string message

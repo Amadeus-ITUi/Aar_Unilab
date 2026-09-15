@@ -1,4 +1,27 @@
-# Walking Eagle WE11 UniLab
+# Aar_Unilab
+
+A self-contained multi-robot MuJoCo training and Sim2Sim workspace. The current
+WE11 Flat/Rough/Getup implementation is preserved as the protected training
+baseline; PE01 is a separate robot/observation/policy/algorithm profile.
+
+```bash
+bash tools/install_environment.sh
+
+/ssd/conda/envs/aar_unilab/bin/python scripts/train.py \
+  robot=we11 task=flat observation=we11_default \
+  policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco
+
+/ssd/conda/envs/aar_unilab/bin/python scripts/play.py \
+  robot=we11 task=flat observation=we11_default \
+  policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco
+```
+
+The repository can be moved: run `tools/rebind_environment.sh` after cloning.
+Historical WE11 notes below may mention predecessor paths; they are not runtime
+dependencies. Maintained C++ code is in `sim2sim/`, while imported Play and
+Deploy implementations are isolated under `references/`.
+
+## Preserved WE11 handover
 
 **算法交付负责人：熊铭煊**
 

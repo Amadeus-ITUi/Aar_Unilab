@@ -1,0 +1,10 @@
+sweep_frequency_node:
+    ros__parameters:
+        motor_ids: [1, 2, 3, 4, 5, 6]  # 电机ID列表
+        start_frequency: 0.1  # 起始频率 (Hz)
+        end_frequency: 5.0    # 结束频率 (Hz)
+        amplitude: 0.3        # 幅度 (rad)
+        publish_rate: 400.0   # 下发频率 (Hz)
+        record_rate: 400.0    # 数据记录频率 (Hz)，用于控制CSV文件大小，不能大于publish_rate
+        duration: 40.0        # 持续时间 (秒)
+        output_file: ""       # 输出CSV文件路径（为空则自动生成到 项目根目录下的 plots/ 目录，或 $DEPLOY_CPP_ROOT/plots/）

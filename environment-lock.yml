@@ -1,0 +1,16 @@
+name: aar_unilab
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - cmake>=3.16
+  - ninja
+  - pkg-config
+  - compilers
+  - git
+  - curl
+  - pip:
+      - torch==2.7.0
+      - mujoco-uni==3.8.0
+      - -e .[dev]

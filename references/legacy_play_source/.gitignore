@@ -1,0 +1,9 @@
+/build/
+/logs/
+/traces/
+MUJOCO_LOG.TXT
+MJDATA.TXT
+*.core
+/core
+__pycache__/
+*.py[cod]

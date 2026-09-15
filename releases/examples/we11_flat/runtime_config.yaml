@@ -1,0 +1,5 @@
+robot: we11
+task: flat
+simulator: mujoco
+telemetry:
+  formats: [csv, jsonl]

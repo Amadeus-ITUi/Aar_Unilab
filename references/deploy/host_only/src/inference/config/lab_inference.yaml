@@ -1,0 +1,44 @@
+lab_inference_node:
+    ros__parameters:
+        model_name: "lab_policy.mnn"
+        motor_ids: [1, 2, 3, 4, 5, 6]
+        # 7/8 号翼电机真实角度，JointState position 单位为 rad、顺序为
+        # [motor7=右翼, motor8=左翼]；推理节点转为训练顺序 [left, right]并反转 motor7 符号。
+        wing_angle_topic: "/policy/wing_angles"
+        # 超过该时间没有新翼角时告警，并沿用最后一次有效翼角；不自动切换 standby。
+        wing_angle_timeout_seconds: 0.1
+        # standby→policy：仅在多久没收到新 /IMU_data 时拒绝（IMU 节点只发新帧，断流即停更）。
+        # 不按倾倒姿态判卡死，避免误拦倒地启动。
+        imu_timeout_seconds: 0.2
+        joint_names:
+            - "Left_thigh_joint"
+            - "Left_calf_joint"
+            - "Left_foot_joint"
+            - "Right_thigh_joint"
+            - "Right_calf_joint"
+            - "Right_foot_joint"
+        # 无 /cmd_vel 高度指令时使用的默认机身高度 (训练 height 范围 0.2~0.3)。
+        default_height_command: 0.24
+        clip_observations: 100.0
+        intra_threads: 1
+        debug_mode: false
+        # 策略周期 = dt * decimation (0.0025 * 8 = 0.02s -> 50 Hz)，与训练侧对齐。
+        dt: 0.0025
+        decimation: 8
+        # Bring-up 期间每秒记录一次指令、IMU、翼角、MNN raw action 和最终 /policy/commands。
+        # 完成观测合同验证后可改回 false。
+        log_policy_outputs: true
+        policy_log_interval_ticks: 50
+        # 专用调试开关：默认关闭。打开后可用默认观测跑 MNN，并可强制实际下发 0 command 回 def pos。
+        dummy_observation_mode: false
+        force_zero_policy_commands: false
+        # 推理节点内部手柄门控：默认关闭。start_robot 由 supervisor 统一处理 X/Y，
+        # 其中 Y 调用 motors_node 的三秒软失能，不使用此内部按键路径。
+        joy_policy_gate_enabled: false
+        joy_policy_start_enabled: false
+        joy_policy_enable_button: 2   # Xbox X
+        joy_policy_standby_button: 3  # Xbox Y
+        # 实机 IMU 安装方向到训练/base_link 坐标的固定符号变换。
+        # 当前判断：IMU x 与 base_link x 相反；为保持右手系，同时翻转 y，z 不变。
+        # 即绕 base_link z 轴 180deg: [x, y, z] -> [-x, -y, z]。
+        imu_to_base_signs: [-1.0, -1.0, 1.0]

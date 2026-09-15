@@ -24,7 +24,8 @@ dependencies = [
     "typing-extensions",
     "wandb",
     "onnxruntime<1.20 ; python_version < '3.11'",
-    "onnxruntime>=1.20 ; python_version >= '3.11'",
+    "onnxruntime==1.22.0 ; python_version >= '3.11'",
+    "onnx==1.18.0",
     "ninja ; sys_platform == 'linux'",
     "cmaes>=0.11,<1",
     "matplotlib>=3.8,<4",
@@ -63,7 +64,7 @@ unilab = [
 line-length = 100
 target-version = "py310"
 src = ["src"]
-extend-exclude = [".history"]
+extend-exclude = [".history", "references"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]

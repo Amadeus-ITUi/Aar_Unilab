@@ -1,0 +1,13 @@
+[Unit]
+Description=Create SocketCAN can0 from CANable ACM device %I
+After=dev-%i.device
+BindsTo=dev-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/setup_canable_can0.sh /dev/%I
+ExecStop=/bin/sh -c '/usr/bin/ip link set can0 down 2>/dev/null || true; /usr/bin/pkill -f "slcand.*can0" 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

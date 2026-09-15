@@ -1,0 +1,40 @@
+[Unit]
+Description=WE11 gamepad lifecycle launcher
+After=multi-user.target systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+ConditionPathExists=/home/esd/Pheonix/Deploy/start_robot.sh
+ConditionPathExists=/home/esd/Pheonix/Deploy/install/setup.bash
+ConditionPathExists=/home/esd/Pheonix/Deploy/src/deploy_tools/scripts/control/we11_gamepad_launcher.py
+ConditionPathExists=/home/esd/Pheonix/Deploy/src/deploy_tools/scripts/hardware/rgb_led.py
+
+[Service]
+Type=simple
+User=esd
+Group=esd
+SupplementaryGroups=dialout
+WorkingDirectory=/home/esd/Pheonix/Deploy
+Environment=WE11_DEPLOY_ROOT=/home/esd/Pheonix/Deploy
+Environment=WE11_AUTOSTART=1
+Environment=PYTHONUNBUFFERED=1
+# 开机流程只加载已有 install/，绝不传 --build。
+# 即使 Service 使用 User=esd，这一步也以 root 加载手柄内核驱动。
+ExecStartPre=+/usr/sbin/modprobe xpad
+ExecStart=/usr/bin/python3 /home/esd/Pheonix/Deploy/src/deploy_tools/scripts/control/we11_gamepad_launcher.py
+KillMode=control-group
+KillSignal=SIGINT
+TimeoutStopSec=45
+# 生命周期启动器持续等待手柄和下一次人工启动，不设置启动超时。
+TimeoutStartSec=infinity
+# Only restart the lightweight lifecycle launcher if it crashes. A stopped or
+# faulted robot child is restarted exclusively by a fresh D-pad-up+X hold.
+Restart=on-failure
+RestartSec=2
+LimitRTPRIO=90
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

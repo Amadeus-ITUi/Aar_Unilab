@@ -1,0 +1,77 @@
+{
+  "artifacts": {
+    "onnx": {
+      "file": "policy.onnx",
+      "input": "obs[1,145]",
+      "output": "act[1,6]",
+      "sha256": "01074758699760f458a4f34163490059b86adb83f2cfaa28913b4caad824bdff",
+      "size_bytes": 162827
+    }
+  },
+  "asset_selector": "we11",
+  "policy_contract": {
+    "history_layout": "term-major",
+    "history_length": 5,
+    "history_term_dims": [
+      3,
+      3,
+      4,
+      6,
+      6,
+      2,
+      2,
+      3
+    ],
+    "input": {
+      "dtype": "tensor(float)",
+      "name": "obs",
+      "shape": [
+        1,
+        145
+      ]
+    },
+    "output": {
+      "dtype": "tensor(float)",
+      "name": "act",
+      "shape": [
+        1,
+        6
+      ]
+    }
+  },
+  "replay": {
+    "default_level9_scene": "rough",
+    "flat_scene": "scene_flat_we11",
+    "level9_scene_prefix": "scene_level9_noise006_",
+    "level9_scenes": [
+      "flat",
+      "uphill",
+      "downhill",
+      "rough"
+    ],
+    "motor_hz": 200,
+    "physics_hz": 400,
+    "policy_hz": 50,
+    "supported_replay_hz": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "schema_version": 2,
+  "selector": "we11",
+  "source_checkpoint": "model_9999.pt",
+  "source_checkpoint_iteration": 9999,
+  "source_checkpoint_sha256": "540db946698be8b3fe5c1c9186755ec6d64889b0bd7c3bc1ab5c8ed9f7e5c1dd",
+  "source_provenance_mode": "export",
+  "source_run": "2026-09-14_18-57-31_mujoco",
+  "source_run_config_sha256": "0de7fd6259ca11a44fe42a62f07f495bdb728d3b551b0df89a06929c9550b62b",
+  "source_run_summary_sha256": "4eaac60cdb865736b9d1895bf527eb7732aff96df742f9259cc27b4179c4c929",
+  "source_task": "DR002JoystickGetupWE11",
+  "source_training_git": {
+    "branch": "pheonix-we11/unilab-bringup",
+    "commit": "0c0a42997e5cd1f93a5dba91f55b6ab98d6ce7eb",
+    "dirty": true
+  }
+}

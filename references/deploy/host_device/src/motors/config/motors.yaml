@@ -1,0 +1,57 @@
+
+motors_node:
+    ros__parameters:
+        # 一路 SocketCAN：6 个电机全部挂在 Linux can0。
+        # 启动时严格检查 can0，失败即退出。
+        can_interfaces: ["can0", "can0", "can0", "can0", "can0", "can0"]
+        motors_type: "RS00"
+        motor_ids: [1, 2, 3, 4, 5, 6]
+        motor_types: ["RS05", "RS00", "RS05", "RS05", "RS00", "RS05"]
+        master_id: 0
+        # 顺序：[左大腿, 左小腿, 左轮, 右大腿, 右小腿, 右轮]
+        # 与训练/Play 完全一致 (UniLab base.yaml Kp/Kd)。
+        # 旧值 [2.0, 8.0, 0.0]/[0.1, 0.8, 0.25] 与训练偏差较大 (thigh Kd +25%, wheel Kd 5x)。
+        kp: [2.0, 8.0, 0.0, 2.0, 8.0, 0.0]
+        kd: [0.1, 0.8, 0.2, 0.1, 0.8, 0.2]
+        # 正常部署零点（不是扫频中心）：
+        # 历史默认角 [-0.82, 1.07] + 新零点偏值 [-0.10020, -0.08662]
+        # = 新默认角 [-0.92020, 0.98338]。
+        joint_default_angle: [-0.92020, 0.98338, 0.0, -0.92020, 0.98338, 0.0] # 电机默认角度；对应 MuJoCo 默认姿态 0.8/-1.6
+        flipped_motors: [true, false, true, false, true, false] # 是否翻转电机
+        vel_only_mode: [false, false, true, false, false, true] # 电机控制模式：true=速度控制（MIT模式，kp=0, kd=kd），false=位置控制（MIT模式，使用kp和kd）
+        # 电机1,2,4,5使用位置控制，电机3,6使用速度控制
+        # 电机相对位置限制（相对于默认位置的范围，与 dragon001_motor_control 保持一致）
+        # 格式：每个电机两个值 [min1, max1, min2, max2, ...]
+        # 大腿保持 MuJoCo 策略相对限位；小腿按新正常零点平移以保持原绝对机械范围。
+        # Motor 1 (L_thigh): [-1.23, 0.77]
+        # Motor 2 (L_calf):  [-0.98338, 1.51662]
+        # Motor 3 (L_foot):  [-6.28, 6.28]
+        # Motor 4 (R_thigh): [-1.23, 0.77]
+        # Motor 5 (R_calf):  [-0.98338, 1.51662]
+        # Motor 6 (R_foot):  [-6.28, 6.28]
+        joint_position_limits: [-1.23, 0.77, -0.98338, 1.51662, -6.28, 6.28, -1.23, 0.77, -0.98338, 1.51662, -6.28, 6.28]
+        debug_mode: False
+        # 正常 start_robot 启动只读取位置，不调用 /set_zeros；需要重设硬件零点时使用专用手柄脚本。
+        auto_zero_on_start: False
+        # WE11 supervisor 启动后先只读检测；按 Y 后通过服务执行 3 秒 Standby 斜坡。
+        start_disarmed: True
+        standby_ramp_seconds: 3.0
+        # 正常按 Y 退出时，保持末帧目标位置并线性衰减速度/力矩/Kp/Kd，完成后 MotorLock。
+        soft_disarm_seconds: 3.0
+        disarmed_query_frequency: 20.0
+        enable_per_motor_topics: False
+        publish_joint_commands: False  # 是否发布动作指令到话题
+        use_gazebo_states: False  # 是否使用Gazebo的状态信息
+        # 仅禁用 motors_node 内部快捷键（A=初始化/失能1~6，B=复位1~6）。
+        # 不影响 /set_zeros 服务或 set_zeros_1_6_joy.sh；正常部署的 A/B 由翼电机流程使用。
+        enable_joy_motor_buttons: False
+        offline_threshold: 600  # 连续无合法反馈多少次才判定离线；600次约等于3秒@200Hz
+        policy_motor_warmup_sec: 0.0  # def-pos standby 已经负责策略切入前稳定姿态；0 表示不额外预热
+        # 发布频率控制 (Hz) - 全部腿轮电机统一为 200Hz
+        # 核心原则：利用 MIT 协议特性（发指令即回状态），避免重复查询，最大限度节省 CAN 总线带宽
+        control_frequency: 200.0  # 控制循环频率（基准频率）
+        publish_rate_policy_joint_states: 200.0  # /policy/joint_states 发布频率，与控制频率一致
+        publish_rate_per_motor: 50.0  # /motor/motor_{id}/state 发布频率（降低到 50Hz 以节省 CPU，仅用于调试/Rviz 显示）
+        publish_rate_joint_commands: 20.0  # /motor/joint_commands 发布频率（降低到 20Hz，通常不需要，用于 Gazebo 验证）
+        policy_frequency: 50.0  # 策略/推理节点发布指令的频率 (Hz)，默认50Hz，用于计算插值步数（200Hz控制 / 50Hz推理 = 4步）
+        enable_interpolation: false  # 是否启用线性插值，设为false时直接使用策略指令

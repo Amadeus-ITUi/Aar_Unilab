@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")" && pwd)"
+source_file="$root/src/xbox_vel_publisher.cpp"
+launch_file="$root/launch/xbox.launch.py"
+
+grep -q 'declare_parameter<std::string>("output_topic", "/cmd_vel")' "$source_file"
+grep -q 'rclcpp::SensorDataQoS' "$source_file"
+grep -q 'axes.size() < 2' "$source_file"
+grep -q 'command_timeout' "$source_file"
+grep -q 'max_linear_accel' "$source_file"
+grep -q 'limit_rate' "$source_file"
+grep -q '(now - last_joy_time_).seconds() > command_timeout_' "$source_file"
+grep -q 'target_linear_x, last_command_linear_x_, max_linear_accel_, dt' "$source_file"
+grep -q 'declare_parameter<double>("max_linear_speed", 1.0)' "$source_file"
+grep -q 'declare_parameter<double>("max_linear_accel", 3.0)' "$source_file"
+grep -q 'declare_parameter<double>("deadzone", 0.05)' "$source_file"
+grep -q "DeclareLaunchArgument(" "$launch_file"
+grep -q "'output_topic'" "$launch_file"
+grep -q "'joy_dev'" "$launch_file"
+grep -q "'max_linear_accel'" "$launch_file"
+grep -A1 "'max_linear_speed'" "$launch_file" | grep -q "default_value='1.0'"
+grep -A1 "'max_linear_accel'" "$launch_file" | grep -q "default_value='3.0'"
+grep -A1 "'deadzone'" "$launch_file" | grep -q "default_value='0.05'"

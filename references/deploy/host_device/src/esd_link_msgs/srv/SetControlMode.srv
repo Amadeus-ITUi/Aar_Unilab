@@ -1,0 +1,10 @@
+uint8 DISABLED=0
+uint8 STANDBY=1
+uint8 POLICY=2
+uint8 SWEEP=3
+uint8 MANUAL_TEST=4
+uint8 target_mode
+---
+bool success
+uint8 actual_mode
+string message

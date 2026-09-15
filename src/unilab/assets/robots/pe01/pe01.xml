@@ -1,0 +1,55 @@
+<mujoco model="pe01">
+  <compiler angle="radian"/>
+  <option timestep="0.0025" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.2" armature="0.01"/>
+    <geom type="capsule" size="0.025" density="500" friction="0.8 0.02 0.001"/>
+    <motor ctrllimited="true" ctrlrange="-1 1"/>
+  </default>
+  <worldbody>
+    <body name="trunk" pos="0 0 0.38">
+      <freejoint name="root"/>
+      <inertial pos="-0.00195686 -0.00021202 0.00523385" mass="1.005466"
+                fullinertia="0.00280656 0.00221498 0.00328795 0.0000022 0.00027951 0.00000817"/>
+      <geom name="trunk_collision" type="box" size="0.08 0.055 0.035"/>
+      <body name="left_hip" pos="-0.03925 0.065 -0.006" euler="1.5708 0 -1.5708">
+        <joint name="left_hip_joint" axis="0 0 1" range="-1.6 0.8"/>
+        <geom fromto="0 0 0 0.04 0 0"/>
+        <body name="left_thigh" pos="-0.02185 0 0.03" euler="1.5708 0 -1.5708">
+          <joint name="left_thigh_joint" axis="0 0 1" range="-0.436 1.221"/>
+          <geom fromto="0 0 0 0.15 0 0"/>
+          <body name="left_calf" pos="0.15 0 -0.0219">
+            <joint name="left_calf_joint" axis="0 0 1" range="-2.669 -0.33" armature="0.0193715"/>
+            <geom fromto="0 0 0 0.16209 0 0"/>
+            <body name="left_foot" pos="0.16209 0 0" euler="1.5708 0 -1.5708">
+              <geom name="left_foot_collision" type="sphere" size="0.025" mass="0.0509"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="right_hip" pos="-0.03895 -0.0652 -0.006" euler="1.5708 0 -1.5708">
+        <joint name="right_hip_joint" axis="0 0 1" range="-0.8 1.6"/>
+        <geom fromto="0 0 0 0.04 0 0"/>
+        <body name="right_thigh" pos="0.02185 0 0.0303" euler="0 1.5708 0">
+          <joint name="right_thigh_joint" axis="0 0 -1" range="-0.436 1.221"/>
+          <geom fromto="0 0 0 0.15 0 0"/>
+          <body name="right_calf" pos="0.15 0 -0.0219">
+            <joint name="right_calf_joint" axis="0 0 1" range="-2.669 -0.33" armature="0.0193715"/>
+            <geom fromto="0 0 0 0.16209 0 0"/>
+            <body name="right_foot" pos="0.16209 0 0" euler="1.5708 0 -1.5708">
+              <geom name="right_foot_collision" type="sphere" size="0.025" mass="0.0509"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="left_hip" joint="left_hip_joint" gear="5.5"/>
+    <motor name="left_thigh" joint="left_thigh_joint" gear="5.5"/>
+    <motor name="left_calf" joint="left_calf_joint" gear="14"/>
+    <motor name="right_hip" joint="right_hip_joint" gear="5.5"/>
+    <motor name="right_thigh" joint="right_thigh_joint" gear="5.5"/>
+    <motor name="right_calf" joint="right_calf_joint" gear="14"/>
+  </actuator>
+</mujoco>

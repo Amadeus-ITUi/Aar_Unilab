@@ -1,0 +1,26 @@
+motors_node:
+    ros__parameters:
+        can_interfaces: ["can0", "can0", "can0"]
+        motors_type: "RS00"
+        motor_ids: [4, 5, 6]
+        motor_types: ["RS05", "RS00", "RS05"]
+        master_id: 0
+        kp: [2.0, 8.0, 1.0]
+        kd: [0.1, 0.8, 0.05]
+        # Full-body defaults for motors 4/5/6 from:
+        # [-0.42, 1.08, 0.0, -0.42, 1.08, 0.0]
+        joint_default_angle: [-0.42, 1.08, 0.0]
+        flipped_motors: [false, true, false]
+        vel_only_mode: [false, false, false]
+        joint_position_limits: [-1.23, 0.42, -1.33, 1.08, -6.28, 6.28]
+        debug_mode: False
+        auto_zero_on_start: False
+        enable_per_motor_topics: False
+        publish_joint_commands: False
+        use_gazebo_states: False
+        control_frequency: 200.0
+        publish_rate_policy_joint_states: 200.0
+        publish_rate_per_motor: 50.0
+        publish_rate_joint_commands: 20.0
+        policy_frequency: 50.0
+        enable_interpolation: false

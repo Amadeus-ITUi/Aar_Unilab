@@ -1,0 +1,81 @@
+Walking_Eagle-Deploy script inventory
+=====================================
+
+Stable operator entrypoints
+---------------------------
+start_robot.sh
+  Main real-robot startup chain. Kept at the repository root for compatibility.
+
+start_readonly_foxglove.sh
+  Read-only IMU, motor-state, and Foxglove startup chain.
+
+set_zeros_1_6_joy.sh
+  Dedicated joystick-confirmed zero-setting flow for motors 1 through 6.
+
+record_deploy_runtime.sh
+  Stable launcher for the passive ROS runtime recorder.
+
+env_init.sh
+  Environment/bootstrap helper and selected-package workspace build.
+
+setup_dual_can.sh
+setup_canable_can0.sh
+  Host CAN setup entrypoints retained at the repository root.
+
+ROS 2 deploy_tools package
+--------------------------
+Canonical implementations live under src/deploy_tools/scripts:
+
+  can/          SocketCAN inspection and maintenance tools
+  diagnostics/  ROS diagnostics and runtime recorders
+  control/      Explicit runtime parameter tools
+  analysis/     Offline CSV plotting and comparison
+
+After a build and source, tools can be called with:
+
+  ros2 run deploy_tools <tool_name> [arguments]
+
+Examples:
+
+  ros2 run deploy_tools read_motor_status --help
+  ros2 run deploy_tools read_all_motor_status --help
+  ros2 run deploy_tools check_imu_data --help
+  ros2 run deploy_tools set_foot_pd --help
+
+Installing deploy_tools starts no nodes. Running a tool retains its original
+behavior; some CAN tools can transmit frames when requested by their arguments.
+
+Sweep and experiment flows
+--------------------------
+scripts/sweeps/
+  Canonical location for all paired-motor sweep scripts, YAML files, and logs.
+
+scripts/sweeps/sweep_motor14/run_sweep_motor14.sh
+scripts/sweeps/sweep_motor25/run_sweep_motor25.sh
+scripts/sweeps/sweep_motor36/run_sweep_motor36.sh
+  Canonical paired-motor sweep launchers.
+
+experiments/wing/
+  Wing motor experiments that are not part of the normal startup chain.
+  Run retained experiments through their paths in this directory.
+
+Removed legacy entrypoints are listed with their replacements in
+docs/troubleshooting/REMOVED_LEGACY_SCRIPTS.md.
+
+Host configuration and documentation
+------------------------------------
+config/system/
+  udev and systemd templates. Moving these source templates does not modify
+  already-installed files under /etc.
+
+docs/WORKSPACE_LAYOUT.md
+  Directory ownership and compatibility policy.
+
+docs/LAB_DEPLOY_START.md
+  Deployment startup notes.
+
+docs/CAN配置说明.md
+  CAN configuration notes.
+
+docs/hardware/
+  Hardware manuals and protocol PDFs.

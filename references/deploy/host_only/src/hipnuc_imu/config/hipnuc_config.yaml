@@ -1,0 +1,21 @@
+imu_node:
+    ros__parameters:
+        # 串口配置
+        serial_port: "/dev/ttyUSB0"
+        baud_rate: 115200
+        
+        # 话题和帧配置
+        frame_id: "imu_link"
+        imu_topic: "/IMU_data"       # 发布到 /IMU_data（inference 节点订阅）
+        publish_rate: 200            # 定时器上限；实际只在收到新串口姿态帧时发布（禁止重发旧帧）
+        
+        # 低通滤波配置（与推理节点一致）
+        imu_ang_vel_lpf_alpha: 1.0   # 角速度低通滤波系数 (1.0 = 不做 EMA 平滑)
+        imu_gravity_lpf_alpha: 1.0   # 重力投影低通滤波系数 (1.0 = 不做 EMA 平滑)
+
+        # 超过该时间没有新姿态帧则关闭并重开串口（自愈卡死/USB 抖断）
+        serial_stale_reconnect_seconds: 0.5
+        
+        # 数据记录和绘图
+        enable_plotting: false      # 是否启用数据记录和绘图 (生产环境建议false)
+        output_file: ""              # 留空则自动生成时间戳文件名

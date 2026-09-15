@@ -1,10 +1,9 @@
-# WE11 Archive Agent Rules
+# Aar_Unilab Development Rules
 
-Create the supported Conda environment with
-`bash install_conda_environment.txt unilab_cuda cu128`, activate it, and run
-Python entrypoints directly inside that environment.
+Create the supported SSD Conda environment with `bash tools/install_environment.sh`.
+Do not run `conda init`; invoke tools from `/ssd/conda/envs/aar_unilab` explicitly.
 
-This branch has one supported product path:
+The protected baseline product path is:
 
 - robot: WE11;
 - algorithm: RSL-RL PPO;
@@ -28,8 +27,10 @@ This branch has one supported product path:
    description.
 7. Preserve the 400 Hz physics, 200 Hz motor-control, and existing shared
    command-delay semantics unless the task explicitly changes that contract.
-8. Do not reintroduce other robot assets, algorithms, Motrix/Viser routes, or
-   stale compatibility copies into this archive.
+8. New robots and algorithms enter through `unilab.catalog` contracts. Never
+   specialize a common entrypoint or the C++ release loader to WE11 dimensions.
+9. Treat `references/` as read-only provenance: production modules and build
+   targets must not import, include, link or execute reference code.
 
 ## Important paths
 

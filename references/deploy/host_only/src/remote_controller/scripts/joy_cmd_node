@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Wrapper script so that ROS2 can find `joy_cmd_node` as an executable in
+`install/remote_controller/lib/remote_controller`.
+实际逻辑在 `remote_controller/joy_cmd_node.py` 里的 main()。
+"""
+
+from remote_controller.joy_cmd_node import main
+
+
+if __name__ == '__main__':
+    main()
+
