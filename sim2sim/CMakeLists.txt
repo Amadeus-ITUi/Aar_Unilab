@@ -60,7 +60,7 @@ enable_testing()
 add_test(
   NAME contract_accepts_v1
   COMMAND aar_contract_check
-    ${CMAKE_CURRENT_SOURCE_DIR}/../releases/examples/we11_flat/deployment_manifest.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/../releases/examples/pe01_flat/deployment_manifest.json
 )
 set_tests_properties(contract_accepts_v1 PROPERTIES PASS_REGULAR_EXPRESSION "aar-unilab.actor.v1")
 add_test(

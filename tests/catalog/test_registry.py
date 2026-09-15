@@ -30,17 +30,6 @@ def test_we11_routes_to_existing_owner_config():
     ]
 
 
-def test_legacy_we11_observation_adds_only_compatibility_overrides():
-    legacy = [
-        value.replace("observation=we11_default", "observation=we11_legacy_135")
-        for value in WE11
-    ]
-    command = build_legacy_command("play", legacy, Path("/repo"))
-    assert "+env.actor_observation_contract=we11_legacy_135" in command
-    assert "algo.actor.history_term_dims=[3,3,4,6,6,2,3]" in command
-    assert "training.play_only=true" in command
-
-
 def test_robot_and_observation_must_match():
     with pytest.raises(ValueError, match="observation=.*does not support"):
         catalog.resolve(

@@ -184,18 +184,6 @@ catalog.observations["we11_default"] = ObservationSpec(
     actor_dim=145,
     robot_ids=frozenset({"we11"}),
 )
-catalog.observations["we11_legacy_135"] = ObservationSpec(
-    "we11_legacy_135",
-    ("policy",),
-    ("critic",),
-    history=5,
-    actor_dim=135,
-    adapter_overrides=(
-        "+env.actor_observation_contract=we11_legacy_135",
-        "algo.actor.history_term_dims=[3,3,4,6,6,2,3]",
-    ),
-    robot_ids=frozenset({"we11"}),
-)
 catalog.observations["pe01_legacy"] = ObservationSpec(
     "pe01_legacy",
     ("proprioception",),

@@ -31,7 +31,7 @@ git -C "$REPO_ROOT" diff --check -- . ':(exclude)references/**'
 if [[ "$RUN_ALL" == true ]]; then
   "$PYTHON" -m pytest -m "not slow"
   "$PYTHON" -m mypy src/unilab
-  for TASK_PROFILE in "flat:we11_legacy_135:model_1500.pt" "rough:we11_legacy_135:model_1500.pt" "getup:we11_v2_145:model_9999.pt"; do
+  for TASK_PROFILE in "getup:we11_v2_145:model_9999.pt"; do
     IFS=: read -r TASK_NAME OBSERVATION_NAME CHECKPOINT_NAME <<<"$TASK_PROFILE"
     AAR_EXPORT_POLICY=0 "$PYTHON" "$REPO_ROOT/scripts/play.py" \
       robot=we11 task="$TASK_NAME" observation="$OBSERVATION_NAME" \

@@ -21,9 +21,8 @@ does not inherit a WE9 or WE10 task.
 - Leg action scale: `0.5`
 - Wheel action scale / raw clip: `10.0 / ±3.5`
 - Shared command FIFO: reset-sampled `2..8` motor ticks (`10..40 ms`)
-- Current actor dimension: `145` (29D × 5, term-major). The frozen legacy
-  `models/we11/*/model_1500.pt` checkpoints retain their historical 135D actor
-  contract; the archived rough critic is 334D.
+- Current actor dimension: `145` (29D × 5, term-major). Flat, Rough and Getup
+  all use this contract; the obsolete 135D compatibility path has been removed.
 - Measured replay: discrete `0/1/2/3 Hz`; 4 Hz is excluded
 - Wrench amplitude: one reset-owned scale in `[0.5, 1.5]`
 - Wing-position amplitude: independent reset-owned scale in `[0.8, 1.2]`
@@ -43,12 +42,11 @@ conda activate unilab_cuda
 The installer uses Conda + pip and also builds and validates native
 command-delay PD. The repository intentionally does not ship `uv.lock`.
 
-## Final checkpoints
+## Preserved checkpoint
 
-| Task | File | SHA-256 |
-|---|---|---|
-| Flat | `models/we11/flat/model_1500.pt` | `53aa1e447568ebf9de22ab04967b43ad9c7d9a38d8bd76627e080c3f75be28b7` |
-| Rough | `models/we11/rough/model_1500.pt` | `f7f80dfae9718584e31fc66d66a4821e95ff4510f6aa37f835e39a983066e232` |
+The repository keeps the current 145D Getup checkpoint and ONNX release under
+`models/we11/getup/`. Flat and Rough should be trained afresh with the same
+145D observation contract.
 
 ## Build the private MuJoCo extension
 

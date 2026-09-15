@@ -58,8 +58,7 @@ python scripts/play.py \
   training.play_render_mode=interactive training.play_steps=500
 ```
 
-仓库内保留的 Flat/Rough 老模型使用 `observation=we11_legacy_135`；Getup 最新
-模型使用 `we11_v2_145`。无窗口检查使用
+当前 WE11 的 Flat、Rough 和 Getup 均统一使用 `we11_v2_145`。无窗口检查使用
 `training.play_render_mode=none`。
 
 PE01 回放：

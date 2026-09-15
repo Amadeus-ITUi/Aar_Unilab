@@ -145,19 +145,15 @@ python -m pytest -q \
 - Kd：`[0.080,0.682,0.05,0.080,0.682,0.05]`；
 - 腿 action scale：`0.5`；轮 action scale/raw clip：`10/±3.5`；
 - shared command FIFO：每次 reset 随机 `2..8` 个 200 Hz tick；
-- 本节冻结归档 checkpoint 的 actor/rough critic：`135/334` 维；当前正式 Flat `model_499.pt` 发布契约为 actor `145` 维，不与该旧归档混用；
+- Flat、Rough 和 Getup 的当前 actor 统一为 `145` 维；旧观测合同不再提供兼容入口；
 - 冻结基线实测回放等级：`0/1/2/3 Hz`，4 Hz 不在该提交中。
 
 完整输入输出和单位见 [`interface.md`](interface.md)。
 
 ## 8. 模型和实验结果
 
-Git 已跟踪两个选定的最终 checkpoint：
-
-| 模型 | 位置/用途 | 状态 |
-|---|---|---|
-| Flat | `models/we11/flat/model_1500.pt` | 来源 `2026-07-30_21-41-17_mujoco`；SHA-256 见模型 manifest |
-| Rough | `models/we11/rough/model_1500.pt` | 来源 `2026-07-31_13-01-10_mujoco`；对应 Play rough ONNX |
+Git 只跟踪与当前 145D 合同一致的 Getup 正式 checkpoint、ONNX、运行配置和
+导出 manifest。Flat/Rough 使用当前环境重新训练，不再携带旧模型兼容包。
 
 关键 PACE/Kp/Kd 参数已固化在 WE11 配置和资产中；原始训练日志、TensorBoard 曲线和视频应在交付介质中另行冻结，并记录 SHA-256。
 

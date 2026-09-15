@@ -27,7 +27,7 @@ smoke 训练、`SHA256SUMS` 校验、Play 的 `rl_sim_mujoco` 重建，以及 ON
 ### 今天做什么
 
 - 使用归档中已有的 WE11 PACE 参数、Kp/Kd、command-delay、实测 wrench 与翼角数据；
-- 用冻结的 `model_1500.pt` 验证成熟策略；
+- 用当前 145D Getup `model_9999.pt` 验证成熟策略；
 - 跑一次小规模 PPO smoke，确认新的 checkpoint 能产生；
 - 将一个确认兼容的 checkpoint 导出为 ONNX、在 Play 加载、转换为 MNN，并让树莓派加载；
 - 在真实机器人上只按 `CAN -> 状态 -> standby -> 架空零速 -> 极低速` 的顺序验收。
@@ -91,13 +91,13 @@ UniLab 不提供手柄交互式播放；它的 MuJoCo playback 只支持无界�
 
 ```bash
 python -u scripts/train_rsl_rl.py \
-  task=dr002_joystick_rough_we11/mujoco \
+  task=dr002_joystick_getup_we11/mujoco \
   training.device=cuda:0 \
   training.play_only=true \
   training.play_render_mode=none \
   training.play_env_num=1 \
   training.export_jit=false \
-  algo.load_run=models/we11/rough/model_1500.pt
+  algo.load_run=models/we11/getup/model_9999.pt
 ```
 
 此步骤确认 checkpoint、环境、actor 145D 输入、6D action 与 ONNX 导出合同；可交互、可见的手柄仿真验证只在第 6 节 Play 工作区执行。
@@ -142,27 +142,27 @@ find logs/rsl_rl_ppo/DR002JoystickFlatWE11 -type f -name 'model_*.pt' \
 
 训练脚本在 play 模式加载 checkpoint 时会导出 ONNX。当前 PyTorch/RSL-RL
 组合不能稳定将 `MlpAdaptModel` 导出为 TorchScript，因此本分支默认禁用 JIT
-导出；部署只使用 ONNX/MNN。对冻结 rough checkpoint 导出，使用：
+导出；部署只使用 ONNX/MNN。对当前 Getup checkpoint 导出，使用：
 
 ```bash
 cd ~/ssd/Pheonix/UniLab
 conda activate unilab_cuda
 python -u scripts/train_rsl_rl.py \
-  task=dr002_joystick_rough_we11/mujoco \
+  task=dr002_joystick_getup_we11/mujoco \
   training.device=cuda:0 \
   training.play_only=true \
   training.play_render_mode=none \
   training.play_env_num=1 \
   training.export_jit=false \
-  algo.load_run=models/we11/rough/model_1500.pt
+  algo.load_run=models/we11/getup/model_9999.pt
 ```
 
 导出文件会写入 checkpoint 所在目录。当前 RSL-RL 导出的 ONNX 文件名为
 `policy.onnx`；仍应先确认文件和 hash，再进行交付：
 
 ```bash
-find models/we11/rough -maxdepth 1 -type f -name '*.onnx' -print
-sha256sum models/we11/rough/policy.onnx
+find models/we11/getup -maxdepth 1 -type f -name '*.onnx' -print
+sha256sum models/we11/getup/policy.onnx
 ```
 
 对新训练 checkpoint，替换 `algo.load_run` 为该 `model_N.pt` 的绝对路径，并使用与其训练任务完全一致的 `task=`。

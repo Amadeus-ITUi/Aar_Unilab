@@ -233,7 +233,6 @@ struct We11State {
   std::vector<std::vector<float>> term_history;
   std::vector<float> previous_action = std::vector<float>(6, 0.0F);
   std::vector<float> command = std::vector<float>(3, 0.0F);
-  bool include_wing_velocity{true};
 };
 
 void append_term_history(std::vector<float>& result, std::vector<float>& history,
@@ -286,7 +285,7 @@ void update_we11_inputs(const mjModel* model, const mjData* data,
       static_cast<float>(0.1 * data->sensordata[right_wing_vel_adr])};
   std::vector<std::vector<float>> terms{gyro, gravity, leg_position, velocity,
                                         state.previous_action, wing_angle};
-  if (state.include_wing_velocity) terms.push_back(wing_velocity);
+  terms.push_back(wing_velocity);
   terms.push_back(state.command);
   if (state.term_history.empty()) state.term_history.resize(terms.size());
   std::vector<float> observation;
@@ -448,11 +447,8 @@ int main(int argc, char** argv) {
     We11State we11;
     if (contract.observation_builder == "pe01_v1") {
       history = inputs[input_index(contract, "observation_history")];
-    } else if (contract.observation_builder == "we11_v2_145") {
-      we11.include_wing_velocity = true;
-    } else if (contract.observation_builder == "we11_legacy_135") {
-      we11.include_wing_velocity = false;
-    } else if (contract.observation_builder != "golden_inputs") {
+    } else if (contract.observation_builder != "we11_v2_145" &&
+               contract.observation_builder != "golden_inputs") {
       throw std::runtime_error("unknown observation builder: " + contract.observation_builder);
     }
 #ifdef AAR_WITH_GLFW

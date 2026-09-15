@@ -185,7 +185,7 @@ tensorboard --logdir logs/rsl_rl_ppo --port 6006
 
 ## 4. 导出选定 checkpoint 为 ONNX
 
-选定一个 checkpoint 后，用与它**相同的 task** 导出。例如归档 rough 基线：
+选定一个 checkpoint 后，用与它**相同的 task** 导出。例如当前 Getup 基线：
 
 ```bash
 cd ~/ssd/Pheonix/UniLab
@@ -193,13 +193,13 @@ source /data/miniconda3/etc/profile.d/conda.sh
 conda activate unilab_cuda
 
 python -u scripts/train_rsl_rl.py \
-  task=dr002_joystick_rough_we11/mujoco \
+  task=dr002_joystick_getup_we11/mujoco \
   training.device=cuda:0 \
   training.play_only=true \
   training.play_render_mode=none \
   training.play_env_num=1 \
   training.export_jit=false \
-  algo.load_run=models/we11/rough/model_1500.pt
+  algo.load_run=models/we11/getup/model_9999.pt
 ```
 
 这个无界面命令正常时可能只打印 `Using device: cuda` 后返回；它会将 `policy.onnx` 写到

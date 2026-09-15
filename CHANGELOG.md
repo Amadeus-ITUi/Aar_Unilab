@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## Unreleased
+
+### 删除
+
+- 删除过时的 WE11 Flat/Rough 135D checkpoint、ONNX、示例 release 和兼容入口。
+- Flat、Rough 和 Getup 训练环境统一只接受当前 145D 翼速度观测合同。
+
 ## v1.1.0 - 2026-08-04
 
 ### 新增
