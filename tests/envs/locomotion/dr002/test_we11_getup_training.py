@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
 from scripts.visualize_task_env import _build_env_cfg_override, _parse_args

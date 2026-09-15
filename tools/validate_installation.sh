@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+unset PYTHONPATH
+export PYTHONNOUSERSITE=1
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+
 ENV_PREFIX=/ssd/conda/envs/aar_unilab
 RUN_ALL=false
 while (($#)); do
@@ -27,7 +31,22 @@ git -C "$REPO_ROOT" diff --check -- . ':(exclude)references/**'
 if [[ "$RUN_ALL" == true ]]; then
   "$PYTHON" -m pytest -m "not slow"
   "$PYTHON" -m mypy src/unilab
-  cmake -S "$REPO_ROOT/sim2sim" -B "$REPO_ROOT/sim2sim/build" -DCMAKE_BUILD_TYPE=Release
+  for TASK_PROFILE in "flat:we11_legacy_135:model_1500.pt" "rough:we11_legacy_135:model_1500.pt" "getup:we11_v2_145:model_9999.pt"; do
+    IFS=: read -r TASK_NAME OBSERVATION_NAME CHECKPOINT_NAME <<<"$TASK_PROFILE"
+    AAR_EXPORT_POLICY=0 "$PYTHON" "$REPO_ROOT/scripts/play.py" \
+      robot=we11 task="$TASK_NAME" observation="$OBSERVATION_NAME" \
+      policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco \
+      "algo.load_run=$REPO_ROOT/models/we11/$TASK_NAME/$CHECKPOINT_NAME" \
+      training.sim2sim_strict=false training.play_render_mode=none \
+      training.play_steps=1 training.play_env_num=1 algo.num_envs=1
+  done
+  (
+    cd "$REPO_ROOT"
+    "$PYTHON" scripts/train_pe01.py training.steps=1 training.seed=1 training.device=cpu
+  )
+  MUJOCO_ROOT=$("$PYTHON" -c 'import pathlib, mujoco; print(pathlib.Path(mujoco.__file__).parent)')
+  cmake -S "$REPO_ROOT/sim2sim" -B "$REPO_ROOT/sim2sim/build" \
+    -DCMAKE_BUILD_TYPE=Release -DAAR_MUJOCO_ROOT="$MUJOCO_ROOT"
   cmake --build "$REPO_ROOT/sim2sim/build" --parallel
-  "$REPO_ROOT/sim2sim/build/aar_contract_check" "$REPO_ROOT/releases/examples/we11_flat/deployment_manifest.json"
+  ctest --test-dir "$REPO_ROOT/sim2sim/build" --output-on-failure
 fi

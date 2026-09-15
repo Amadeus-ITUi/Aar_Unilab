@@ -12,5 +12,5 @@ dependencies:
   - curl
   - pip:
       - torch==2.7.0
-      - mujoco-uni==3.8.0
+      - mujoco-uni @ https://files.pythonhosted.org/packages/dd/23/a1bce997e15a8d27beadff7c320375bb5c71a9cf2700607ec97c6239240c/mujoco_uni-3.8.0-cp313-cp313-manylinux_2_27_x86_64.whl
       - -e .[dev]

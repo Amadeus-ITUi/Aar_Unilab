@@ -82,6 +82,8 @@ class InteractiveSession:
         return self._viewer_context.__exit__(*error)
 
     def gamepad(self) -> np.ndarray:
+        if not self.render:
+            return joystick_command(None)
         try:
             import glfw
 

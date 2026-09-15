@@ -81,7 +81,7 @@ agent/
 
 # Local environments and dependency caches (all live below /ssd/conda).
 .conda/
-envs/
+/envs/
 pkgs/
 pip-cache/
 

@@ -400,6 +400,10 @@ class DR002JoystickCfg(DR002BaseCfg):
         default_factory=WingVelocityObservationConfig
     )
     wing_velocity_cmd: WingVelocityCommandConfig = field(default_factory=WingVelocityCommandConfig)
+    # Explicitly version the actor observation shape.  The 135D contract is
+    # retained only for the frozen July Flat/Rough policies; current training
+    # continues to use the 145D contract by default.
+    actor_observation_contract: str = "we11_v2_145"
     critic_obs_mode: str = "legacy"
 
 
@@ -1975,10 +1979,21 @@ class DR002JoystickEnv(DR002BaseEnv):
         )
         self._wing_angle_obs_enabled = bool(cfg.wing_angle_obs.enabled)
         self._wing_velocity_obs_enabled = bool(cfg.wing_velocity_obs.enabled)
-        # Actor obs frame is fixed at 29 dims (see _TERM_DIMS); disabling a
-        # wing observation config only zeroes those slots at the actor input
-        # via force_zero_output. This keeps the deployment ONNX shape stable.
-        self._history_term_dims = _TERM_DIMS
+        actor_contract = str(cfg.actor_observation_contract)
+        self._history_term_dims: tuple[int, ...]
+        if actor_contract == "we11_v2_145":
+            self._include_wing_velocity_actor_term = True
+            self._history_term_dims = _TERM_DIMS
+        elif actor_contract == "we11_legacy_135":
+            # Historical July 2026 policies used gyro, gravity, joint pos,
+            # joint vel, actions, wing angle and commands (27D x 5).
+            self._include_wing_velocity_actor_term = False
+            self._history_term_dims = (3, 3, 4, 6, 6, 2, 3)
+        else:
+            raise ValueError(
+                "actor_observation_contract must be 'we11_v2_145' or "
+                f"'we11_legacy_135', got {actor_contract!r}"
+            )
         self._actor_dim = _HISTORY_LENGTH * sum(self._history_term_dims)
         critic_obs_mode = str(cfg.critic_obs_mode)
         if critic_obs_mode not in {"legacy", "isaaclab"}:
@@ -4913,7 +4928,10 @@ class DR002JoystickEnv(DR002BaseEnv):
             )
             if vel_cfg.force_zero_output:
                 wing_vel_obs.fill(0.0)
-        frame_terms.append(wing_vel_obs)
+        # Some focused unit fixtures construct the environment without running
+        # __init__; preserve the current 145D contract as their default.
+        if getattr(self, "_include_wing_velocity_actor_term", True):
+            frame_terms.append(wing_vel_obs)
         frame_terms.append(commands)
         actor = self._update_history(frame_terms, env_ids=env_ids, reset_history=reset_history)
         previous_actions = np.asarray(

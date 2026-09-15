@@ -10,26 +10,27 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "numpy>=1.26,<3",
+    "numpy==2.3.3",
     "torch==2.7.0",
+    "torchvision==0.22.0",
     "mujoco-uni==3.8.0",
-    "gymnasium",
-    "imageio",
-    "hydra-core>=1.3",
-    "tensordict",
-    "rsl-rl-lib>=5.0.0",
-    "mediapy",
-    "tensorboard",
-    "setuptools<70",
-    "typing-extensions",
-    "wandb",
+    "gymnasium==1.3.0",
+    "imageio==2.37.4",
+    "hydra-core==1.3.6",
+    "tensordict==0.14.1",
+    "rsl-rl-lib==5.0.1",
+    "mediapy==1.2.7",
+    "tensorboard==2.21.0",
+    "setuptools==78.1.0",
+    "typing-extensions==4.16.0",
+    "wandb==0.29.0",
     "onnxruntime<1.20 ; python_version < '3.11'",
     "onnxruntime==1.22.0 ; python_version >= '3.11'",
     "onnx==1.18.0",
-    "ninja ; sys_platform == 'linux'",
-    "cmaes>=0.11,<1",
-    "matplotlib>=3.8,<4",
-    "scipy>=1.11,<2",
+    "ninja==1.13.2 ; sys_platform == 'linux'",
+    "cmaes==0.13.1",
+    "matplotlib==3.11.1",
+    "scipy==1.18.1",
 ]
 
 [project.scripts]
@@ -40,7 +41,7 @@ unilab-viz-nan = "unilab.tools.viz_nan:main"
 unilab-export-scene = "unilab.tools.export_scene:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "ruff", "mypy"]
+dev = ["pytest==9.1.1", "pytest-cov", "ruff==0.16.6", "mypy==2.3.1"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

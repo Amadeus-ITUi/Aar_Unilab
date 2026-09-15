@@ -1,4 +1,5 @@
 import datetime
+import os
 import statistics
 import sys
 import time
@@ -223,7 +224,22 @@ def play_rsl_rl(cfg: DictConfig, device: str) -> str | None:
         env_action_dim=getattr(wrapped_env, "num_actions", None),
         algo_name="ppo",
     ):
-        runner.load(str(load_path), map_location=device)
+        # Play needs only the actor.  This deliberately allows frozen policies
+        # to remain usable when a later training profile changes critic-only
+        # observations (the July Flat and Rough baselines use 147D/334D
+        # critics respectively).  Resume training still loads the complete
+        # checkpoint and optimizer state through the unchanged training path.
+        runner.load(
+            str(load_path),
+            load_cfg={
+                "actor": True,
+                "critic": False,
+                "optimizer": False,
+                "iteration": False,
+                "rnd": False,
+            },
+            map_location=device,
+        )
     policy = runner.get_inference_policy(device=device)
     if EXPORT_POLICY:
         runner.export_policy_to_onnx(path=str(load_path_dir))
@@ -423,7 +439,7 @@ def main(cfg: DictConfig) -> None:
             env.close()
 
         should_export_play_only_policy = bool(EXPORT_POLICY and cfg.training.play_only)
-        if should_export_play_only_policy or should_run_playback(
+        if cfg.training.play_only or should_export_play_only_policy or should_run_playback(
             play_only=cfg.training.play_only,
             no_play=cfg.training.no_play,
             play_render_mode=getattr(cfg.training, "play_render_mode", "auto"),
@@ -437,5 +453,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    EXPORT_POLICY = True
+    EXPORT_POLICY = os.environ.get("AAR_EXPORT_POLICY", "1").lower() not in {"0", "false", "no"}
     main()

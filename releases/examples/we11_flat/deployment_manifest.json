@@ -14,7 +14,8 @@
   },
   "task": {"id": "flat"},
   "policy": {
-    "inputs": [{"name": "obs", "dtype": "float32", "shape": [1, 145]}],
+    "observation_contract": "we11_legacy_135",
+    "inputs": [{"name": "obs", "dtype": "float32", "shape": [1, 135]}],
     "outputs": [{"name": "act", "dtype": "float32", "shape": [1, 6]}],
     "history": {"length": 5, "layout": "term-major"},
     "hidden_state": []

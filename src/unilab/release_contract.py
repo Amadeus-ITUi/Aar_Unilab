@@ -6,7 +6,9 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
+
+import numpy as np
 
 SCHEMA_ID = "aar-unilab.actor.v1"
 SUPPORTED_SCHEMA_IDS = frozenset({SCHEMA_ID})
@@ -75,6 +77,8 @@ def create_release(
     runtime_config: str | Path,
     manifest: dict[str, Any],
     robot_files: Iterable[str | Path] = (),
+    golden_inputs: Mapping[str, np.ndarray] | None = None,
+    golden_outputs: Mapping[str, np.ndarray] | None = None,
 ) -> Path:
     """Materialize a self-contained release without embedding source paths."""
     release_dir = Path(destination)
@@ -91,6 +95,18 @@ def create_release(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied.append(target)
+    for directory_name, tensors in (
+        ("golden_inputs", golden_inputs or {}),
+        ("golden_outputs", golden_outputs or {}),
+    ):
+        directory = release_dir / directory_name
+        for name, value in tensors.items():
+            if Path(name).name != name:
+                raise ValueError(f"golden tensor name must be a filename stem: {name!r}")
+            target = directory / f"{name}.npy"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            np.save(target, np.asarray(value), allow_pickle=False)
+            copied.append(target)
     manifest = dict(manifest)
     manifest["artifacts"] = dict(manifest.get("artifacts", {}))
     manifest["artifacts"].update(

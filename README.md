@@ -8,12 +8,19 @@ baseline; PE01 is a separate robot/observation/policy/algorithm profile.
 bash tools/install_environment.sh
 
 /ssd/conda/envs/aar_unilab/bin/python scripts/train.py \
-  robot=we11 task=flat observation=we11_default \
+  robot=we11 task=flat observation=we11_v2_145 \
   policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco
 
 /ssd/conda/envs/aar_unilab/bin/python scripts/play.py \
-  robot=we11 task=flat observation=we11_default \
-  policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco
+  robot=we11 task=flat observation=we11_legacy_135 \
+  policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco \
+  algo.load_run=models/we11/flat/model_1500.pt \
+  training.sim2sim_strict=false
+
+/ssd/conda/envs/aar_unilab/bin/python scripts/train.py \
+  robot=pe01 task=pe01_flat observation=pe01_legacy \
+  policy=pe01_encoder_mlp algorithm=pe01_custom_ppo simulator=mujoco \
+  training.steps=1
 ```
 
 The repository can be moved: run `tools/rebind_environment.sh` after cloning.
@@ -21,7 +28,15 @@ Historical WE11 notes below may mention predecessor paths; they are not runtime
 dependencies. Maintained C++ code is in `sim2sim/`, while imported Play and
 Deploy implementations are isolated under `references/`.
 
-## Preserved WE11 handover
+The complete automated gate is `tools/validate_installation.sh --all`. Migration
+status and remaining manual/C++ UI gates are recorded in
+[`docs/仓库规整与训练复用性改造计划.md`](docs/仓库规整与训练复用性改造计划.md).
+
+## Preserved WE11 handover (historical context)
+
+The material below is preserved from the WE11 source handover. Commands that
+refer to the predecessor branch, `UniLab`, or a sibling `Play` repository are
+historical records, not setup instructions for Aar_Unilab.
 
 **算法交付负责人：熊铭煊**
 

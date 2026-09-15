@@ -1,5 +1,6 @@
 robot: we11
 task: flat
 simulator: mujoco
+observation: we11_legacy_135
 telemetry:
   formats: [csv, jsonl]

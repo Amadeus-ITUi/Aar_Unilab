@@ -39,7 +39,10 @@ Rough checkpoint 是 `Walking_Eagle-Play_final` 中
 ## 使用边界
 
 - 加载时必须选择与 checkpoint 对应的 Flat/Rough task。
-- 本目录冻结的是旧归档 checkpoint：其 actor 输入为 135D、action 为 6D，Rough critic 为 334D。当前 145D 发布策略以对应训练 run 的 `policy_export_manifest.json` 为准，不与本目录旧 checkpoint 混用。
+- 本目录冻结的 Flat/Rough checkpoint 使用显式的 `we11_legacy_135`
+  回放合同：actor 输入为 135D、action 为 6D；Flat/Rough critic 分别为
+  147D/334D。Python Play 只加载 actor，因而不把历史 critic 合同错误地
+  带入当前环境。当前训练及 Getup 保持 `we11_v2_145`，两种合同不得混用。
 - 关节顺序、PD、action scale/clip、command-delay 和频率合同见
   `WE11_HANDOVER.md`。
 - 观测语义、网络结构或动作维度改变后，不得把这两个 checkpoint 当作兼容模型。

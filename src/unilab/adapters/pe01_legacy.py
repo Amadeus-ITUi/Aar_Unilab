@@ -101,7 +101,8 @@ def train_minimal(
 
 
 def load_policy(checkpoint: Path, device: str = "cpu") -> PE01EncoderPolicy:
-    policy = PE01EncoderPolicy().to(device)
+    policy = PE01EncoderPolicy()
+    policy.to(device)
     state = torch.load(checkpoint, map_location=device, weights_only=True)
     policy.load_state_dict(state["actor_state_dict"])
     policy.eval()

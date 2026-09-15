@@ -40,6 +40,8 @@ class ObservationSpec:
     history: int
     actor_dim: int | None = None
     critic_dim: int | None = None
+    adapter_overrides: tuple[str, ...] = ()
+    robot_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,11 @@ class Catalog:
         if selected.robot.id not in selected.task.robot_ids:
             raise ValueError(
                 f"task={selected.task.id!r} does not support robot={selected.robot.id!r}"
+            )
+        if selected.observation.robot_ids and selected.robot.id not in selected.observation.robot_ids:
+            raise ValueError(
+                f"observation={selected.observation.id!r} does not support "
+                f"robot={selected.robot.id!r}"
             )
         if selected.policy.id not in selected.algorithm.policy_ids:
             raise ValueError(
@@ -159,11 +166,44 @@ for task_id, owner, runtime in (
 catalog.tasks["pe01_flat"] = TaskSpec(
     "pe01_flat", frozenset({"pe01"}), "pe01_flat", "PE01Flat", frozenset({"legacy-semantics"})
 )
+catalog.observations["we11_v2_145"] = ObservationSpec(
+    "we11_v2_145",
+    ("policy",),
+    ("critic",),
+    history=5,
+    actor_dim=145,
+    robot_ids=frozenset({"we11"}),
+)
+# Backward-compatible selector spelling.  Both names resolve to the current
+# training contract and do not alter the tuned WE11 defaults.
 catalog.observations["we11_default"] = ObservationSpec(
-    "we11_default", ("policy",), ("critic",), history=5, actor_dim=145
+    "we11_default",
+    ("policy",),
+    ("critic",),
+    history=5,
+    actor_dim=145,
+    robot_ids=frozenset({"we11"}),
+)
+catalog.observations["we11_legacy_135"] = ObservationSpec(
+    "we11_legacy_135",
+    ("policy",),
+    ("critic",),
+    history=5,
+    actor_dim=135,
+    adapter_overrides=(
+        "+env.actor_observation_contract=we11_legacy_135",
+        "algo.actor.history_term_dims=[3,3,4,6,6,2,3]",
+    ),
+    robot_ids=frozenset({"we11"}),
 )
 catalog.observations["pe01_legacy"] = ObservationSpec(
-    "pe01_legacy", ("proprioception",), ("privileged",), history=10, actor_dim=300, critic_dim=33
+    "pe01_legacy",
+    ("proprioception",),
+    ("privileged",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe01"}),
 )
 catalog.policies["we11_mlp"] = PolicySpec("we11_mlp", "mlp", ("obs",), ("act",))
 catalog.policies["pe01_encoder_mlp"] = PolicySpec(

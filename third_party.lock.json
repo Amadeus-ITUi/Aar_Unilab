@@ -11,13 +11,17 @@
     {
       "name": "MuJoCo",
       "version": "3.8.0",
-      "distribution": "mujoco-uni==3.8.0",
+      "distribution": "mujoco_uni-3.8.0-cp313-cp313-manylinux_2_27_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/dd/23/a1bce997e15a8d27beadff7c320375bb5c71a9cf2700607ec97c6239240c/mujoco_uni-3.8.0-cp313-cp313-manylinux_2_27_x86_64.whl",
+      "sha256": "441bbb1800a8f36985f146c5bc3fa3eb6c1aa16efe6eb94770c653994258c8f7",
       "cache_root": "/ssd/conda/cache/aar_unilab-native"
     },
     {
       "name": "ONNX Runtime",
       "version": "1.22.0",
-      "distribution": "onnxruntime==1.22.0",
+      "distribution": "onnxruntime-1.22.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/1e/70/342514ade3a33ad9dd505dcee96ff1f0e7be6d0e6e9c911fe0f1505abf42/onnxruntime-1.22.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "9fe45ee3e756300fccfd8d61b91129a121d3d80e9d38e01f03ff1295badc32b8",
       "cache_root": "/ssd/conda/cache/aar_unilab-native"
     }
   ]

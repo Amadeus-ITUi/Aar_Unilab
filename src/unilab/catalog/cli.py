@@ -42,6 +42,7 @@ def build_legacy_command(mode: str, argv: Sequence[str], root: Path) -> list[str
         raise ValueError(f"no executable adapter for algorithm={selection.algorithm.id!r}")
     command = [sys.executable, str(root / "scripts" / "train_rsl_rl.py")]
     command.append(f"task={selection.task.owner_config}/{selection.simulator.id}")
+    command.extend(selection.observation.adapter_overrides)
     if mode == "play":
         command.append("training.play_only=true")
     command.extend(passthrough)

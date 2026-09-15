@@ -44,6 +44,15 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
         opset_version=17,
         dynamo=False,
     )
+    import onnxruntime as ort
+
+    golden_inputs = {
+        "observation_history": np.zeros((1, 300), dtype=np.float32),
+        "observation": np.zeros((1, 30), dtype=np.float32),
+        "command": np.zeros((1, 3), dtype=np.float32),
+    }
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    golden_action = session.run(["action"], golden_inputs)[0]
     runtime_config = run_dir / "runtime_config.yaml"
     runtime_config.write_text(
         "robot: pe01\ntask: pe01_flat\nsimulator: mujoco\nphysics_hz: 400\npolicy_hz: 50\n",
@@ -95,6 +104,8 @@ def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
             "src/unilab/assets/robots/pe01/pe01.xml",
             "src/unilab/assets/robots/pe01/scene.xml",
         ],
+        golden_inputs=golden_inputs,
+        golden_outputs={"action": golden_action},
     )
 
 
