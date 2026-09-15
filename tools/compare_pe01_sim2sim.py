@@ -38,6 +38,9 @@ def python_trajectory(release: Path, steps: int) -> list[dict[str, float]]:
         observation, _, _, info = env.step(action)
         row = {"base_height": info["base_height"]}
         row.update({f"action_{index}": float(value) for index, value in enumerate(action)})
+        row.update(
+            {f"ctrl_{index}": float(value) for index, value in enumerate(env.data.ctrl)}
+        )
         result.append(row)
     return result
 
