@@ -117,6 +117,9 @@ cache/
 src/unilab/assets/checkpoints/**/*.pt
 src/unilab/assets/checkpoints/**/*.onnx
 
+# Generated Python playback videos beside formal checkpoints
+models/**/play_video.mp4
+
 
 # Local tool/runtime artifacts (any subfolder)
 .codex
