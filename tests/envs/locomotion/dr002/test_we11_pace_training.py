@@ -33,6 +33,11 @@ KD = [0.080, 0.682, 0.05, 0.080, 0.682, 0.05]
 ARMATURE = [0.0045092746608505355, 0.0056654868268008396, 0.0008] * 2
 DAMPING = [2.3658001235049574e-06, 1.7025403002922656e-05, 0.0] * 2
 FRICTIONLOSS = [9.003633786813792e-06, 0.20614840564125578, 0.0] * 2
+IDENTIFIED_KP = [1.86, 9.6, 0.0, 1.86, 9.6, 0.0]
+IDENTIFIED_KD = [0.058, 0.11, 0.05, 0.058, 0.11, 0.05]
+IDENTIFIED_ARMATURE = [0.008677222203964018, 0.030286671302744577, 0.004881044618994038] * 2
+IDENTIFIED_DAMPING = [0.003964611000548929, 0.9333306854823012, 0.01824383576670055] * 2
+IDENTIFIED_FRICTIONLOSS = [0.01165612207571664, 0.07282249089084407, 0.08020703598415967] * 2
 CALF_RANGE = [-2.522524368, -1.285784060]
 
 
@@ -117,11 +122,13 @@ def test_we11_registry_scene_and_compiled_pace_are_exact() -> None:
         )
 
     pace = json.loads(WE11_PACE.read_text())
-    assert pace["armature"] == ARMATURE
-    assert pace["damping"] == DAMPING
-    assert pace["frictionloss"] == FRICTIONLOSS
-    assert pace["kp"] == KP
-    assert pace["kd"] == KD
+    # Keep the latest identification artifact available without silently
+    # injecting it into the Sep-09 training/play runtime contract.
+    assert pace["armature"] == IDENTIFIED_ARMATURE
+    assert pace["damping"] == IDENTIFIED_DAMPING
+    assert pace["frictionloss"] == IDENTIFIED_FRICTIONLOSS
+    assert pace["kp"] == IDENTIFIED_KP
+    assert pace["kd"] == IDENTIFIED_KD
     assert (WE11_ROOT / "meshes_lod/base_link_part_00.STL").is_file()
     assert (WE11_ROOT / "urdf/we11_reviewed.urdf").is_file()
     assert not (REPO_ROOT / "src/unilab/assets/robots/dr002/u9").exists()

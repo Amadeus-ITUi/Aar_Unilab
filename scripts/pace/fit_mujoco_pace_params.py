@@ -317,6 +317,27 @@ def source_controller_gain(
     return values
 
 
+def source_fixture_gain(
+    source: dict[str, Any],
+    key: str,
+    fallback: np.ndarray,
+) -> np.ndarray:
+    """Resolve a per-acquisition non-source fixture gain vector.
+
+    ESD-Link acquisitions use different holding gains depending on which joint
+    pair is swept.  Keeping this separate from ``source_controller_gain`` is
+    intentional: fixture gains always describe all six joints, including the
+    inactive joints that are not represented by the scalar source Kp/Kd.
+    """
+
+    values = np.asarray(source.get(key, fallback), dtype=np.float64).reshape(-1)
+    if values.shape != (len(JOINT_NAMES),):
+        raise ValueError(f"source.{key} must contain {len(JOINT_NAMES)} values")
+    if not np.all(np.isfinite(values)) or np.any(values < 0.0):
+        raise ValueError(f"source.{key} must contain finite non-negative values")
+    return values.copy()
+
+
 def canonicalize_mirrored_fit_joints(
     fit_joints: Sequence[int],
     *,
@@ -1039,6 +1060,8 @@ class MujocoPaceReplay:
         active_joint_ids: Sequence[int] | None = None,
         kp: np.ndarray | None = None,
         kd: np.ndarray | None = None,
+        fixture_hold_kp: np.ndarray | None = None,
+        fixture_hold_kd: np.ndarray | None = None,
     ) -> np.ndarray:
         kp_values = self.kp if kp is None else np.asarray(kp, dtype=np.float64)
         kd_values = self.kd if kd is None else np.asarray(kd, dtype=np.float64)
@@ -1075,9 +1098,9 @@ class MujocoPaceReplay:
                 )
             non_source = np.ones(len(JOINT_NAMES), dtype=bool)
             non_source[np.asarray(active_ids, dtype=np.int32)] = False
-            hold_tau = (
-                self.fixture_hold_kp * (self.fixture_target_qpos - q) - self.fixture_hold_kd * qd
-            )
+            hold_kp = self.fixture_hold_kp if fixture_hold_kp is None else fixture_hold_kp
+            hold_kd = self.fixture_hold_kd if fixture_hold_kd is None else fixture_hold_kd
+            hold_tau = hold_kp * (self.fixture_target_qpos - q) - hold_kd * qd
             raw[non_source] = hold_tau[non_source]
         if self.lock_wheel_positions and self.locked_wheel_joint_ids.size:
             raw[self.locked_wheel_joint_ids] = 0.0
@@ -1106,6 +1129,12 @@ class MujocoPaceReplay:
         active_index = np.asarray(active_joint_ids, dtype=np.int32)
         source_kp = source_controller_gain(item.source, "kp", self.kp)
         source_kd = source_controller_gain(item.source, "kd", self.kd)
+        source_fixture_kp = source_fixture_gain(
+            item.source, "fixture_hold_kp", self.fixture_hold_kp
+        )
+        source_fixture_kd = source_fixture_gain(
+            item.source, "fixture_hold_kd", self.fixture_hold_kd
+        )
         self.reset(
             real_pos[0],
             params,
@@ -1175,6 +1204,8 @@ class MujocoPaceReplay:
                     active_joint_ids=active_joint_ids,
                     kp=source_kp,
                     kd=source_kd,
+                    fixture_hold_kp=source_fixture_kp,
+                    fixture_hold_kd=source_fixture_kd,
                 )
                 if self.delay_semantics == "torque" and delay > 0:
                     torque_delay.append(motor_tau)
@@ -2711,6 +2742,20 @@ def main() -> None:
                     "active_joints": list(source_active_joint_names(item.source)),
                     "kp": source_controller_gain(item.source, "kp", kp).tolist(),
                     "kd": source_controller_gain(item.source, "kd", kd).tolist(),
+                }
+                for source_index, item in enumerate(sources)
+            ],
+            "source_fixture_gains": [
+                {
+                    "source_index": source_index,
+                    "active_joint_ids": list(source_active_joint_ids(item.source)),
+                    "active_joints": list(source_active_joint_names(item.source)),
+                    "fixture_hold_kp": source_fixture_gain(
+                        item.source, "fixture_hold_kp", replay.fixture_hold_kp
+                    ).tolist(),
+                    "fixture_hold_kd": source_fixture_gain(
+                        item.source, "fixture_hold_kd", replay.fixture_hold_kd
+                    ).tolist(),
                 }
                 for source_index, item in enumerate(sources)
             ],

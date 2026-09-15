@@ -27,6 +27,140 @@ python -m pip install -r scripts/pace/requirements.txt
 
 所有命令都从 UniLab 仓库根目录运行。
 
+## 2026-09-10 ESD-Link sweep flow
+
+Current ESD-Link CSV files are imported with a dedicated entry point.  The raw
+CSV files stay in `../temp`; UniLab writes only derived artifacts, reports, and
+candidate parameters.
+
+```bash
+python -u scripts/pace/import_esd_link_sweeps.py \
+  --csv-dir ../temp \
+  --out-root outputs/we11_esd_link_sweep_import \
+  --run-name current_sweeps_20260910
+```
+
+The importer reads `host_monotonic_ns` as the main clock, keeps device time and
+sequence counters for quality reports, accepts `unavailable` temperature fields,
+selects the final 40 s formal chirp, converts policy coordinates to MuJoCo
+coordinates, unwraps wheel position, and resamples every source to 200 Hz.  It
+creates these fit-compatible truth directories:
+
+- `thigh_kp2_kd0p1__calf_kp8_kd0p8`: Group A, primary leg PACE fit.
+- `thigh_kp4_kd0p2__calf_kp4_kd0p2`: Group B, cross-gain validation only.
+- `wheel_kd0p05`, `wheel_kd0p1`, `wheel_kd0p2`: independent wheel fits.
+
+The ESD-Link coordinate contract is:
+
+- `q_mujoco = [0.8, -1.6, 0, 0.8, -1.6, 0] + p_q`.
+- `qd_mujoco = p_dq`.
+- Position commands use the same MuJoCo default-angle offset.
+- Wheel positions are unwrapped across `[-6.28, 6.28]`, then made relative to
+  the first formal sample.
+
+Leg PACE uses Group A and validates on Group B:
+
+```bash
+TRUTH_RUN_DIR=outputs/we11_esd_link_sweep_import/<run>/thigh_kp2_kd0p1__calf_kp8_kd0p8
+
+python -u scripts/pace/fit_mujoco_pace_params.py \
+  --truth-run-dir "$TRUTH_RUN_DIR" \
+  --out-root outputs/we11_pace_fit \
+  --run-name esd_groupA_full \
+  --model src/unilab/assets/robots/dr002/we11/we11.xml \
+  --sim-hz 400 \
+  --control-hz 200 \
+  --require-rk4 \
+  --delay-semantics command \
+  --delay-values 0,1,2,3,4,5,6,7,8,9,10,11,12 \
+  --fixture-mode high-impedance \
+  --enable-gravity \
+  --initial-joint-qpos 0.8 -1.6 0 0.8 -1.6 0 \
+  --initial-joint-qvel 0 0 0 0 0 0 \
+  --kp 2 8 0 2 8 0 \
+  --kd 0.1 0.8 0.05 0.1 0.8 0.05 \
+  --time-score-freq-range 0.5 4.5 \
+  --bode-freq-range 0.5 4.5 \
+  --population-size 64 \
+  --max-generations 40 \
+  --epsilon 0.01 \
+  --workers 32
+
+python -u scripts/pace/validate_mujoco_pace_params.py \
+  --pace-params outputs/we11_pace_fit/<fit-run>/pace_best_params.json \
+  --truth-run-dir outputs/we11_esd_link_sweep_import/<run>/thigh_kp4_kd0p2__calf_kp4_kd0p2 \
+  --out-root outputs/we11_pace_validation \
+  --run-name esd_groupB_validation \
+  --model src/unilab/assets/robots/dr002/we11/we11.xml
+```
+
+After Group B passes, freeze the PACE artifact and search symmetric leg gains:
+
+```bash
+python -u scripts/pace/sweep_we11_paired_leg_pd.py \
+  --pace-params outputs/we11_pace_fit/<fit-run>/pace_best_params.json \
+  --truth-run-dir "$TRUTH_RUN_DIR" \
+  --model src/unilab/assets/robots/dr002/we11/we11.xml \
+  --groups thigh calf \
+  --out-root outputs/we11_paired_kp_kd_fit \
+  --run-name esd_groupA_full \
+  --workers 32
+```
+
+Fit each wheel Kd directory independently.  Do not merge the three Kd sweeps
+into one optimizer target.
+
+```bash
+WHEEL_RUN=outputs/we11_esd_link_sweep_import/<run>
+
+for KD_DIR in wheel_kd0p05 wheel_kd0p1 wheel_kd0p2; do
+  python -u scripts/pace/fit_mujoco_pace_params.py \
+    --truth-run-dir "$WHEEL_RUN/$KD_DIR" \
+    --out-root outputs/we11_wheel_pace_fit \
+    --run-name "esd_${KD_DIR}_full" \
+    --model src/unilab/assets/robots/dr002/we11/we11.xml \
+    --control-mode mixed \
+    --source-joints active \
+    --fit-joints active \
+    --sim-hz 400 \
+    --control-hz 200 \
+    --require-rk4 \
+    --delay-semantics command \
+    --delay-values 0,1,2,3,4,5,6,7,8,9,10,11,12 \
+    --fixture-mode high-impedance \
+    --enable-gravity \
+    --initial-joint-qpos 0.8 -1.6 0 0.8 -1.6 0 \
+    --initial-joint-qvel 0 0 0 0 0 0 \
+    --kp 1 1 0 1 1 0 \
+    --kd 0.1 0.1 0.1 0.1 0.1 0.1 \
+    --time-score-freq-range 0.5 4.5 \
+    --bode-freq-range 0.5 4.5 \
+    --population-size 64 \
+    --max-generations 40 \
+    --epsilon 0.01 \
+    --workers 32
+done
+
+python -u scripts/pace/summarize_esd_link_wheel_fits.py \
+  outputs/we11_wheel_pace_fit/<kd005-run> \
+  outputs/we11_wheel_pace_fit/<kd01-run> \
+  outputs/we11_wheel_pace_fit/<kd02-run> \
+  --out-dir outputs/we11_wheel_pace_fit/<summary-run>
+```
+
+This flow uses the source manifest's per-source fixture gains.  For example,
+thigh sweeps hold the non-swept calf joints at the measured `20/1`, calf sweeps
+hold thighs at `40/2`, and wheel sweeps hold leg joints at `1/0.1`.  The old
+uniform `1/0.1` fixture assumption is not valid for these ESD-Link files.
+
+The scripts only generate reports and candidate JSONs.  They do not modify
+`we11_pace_params.json` or training task/control configs.
+
+## Legacy 2026-07-30 CSV flow
+
+The remaining sections describe the earlier July 2026 sweep files and are kept
+for reproducibility of archived results.
+
 ## 1. 校验 Deploy 原始数据
 
 在 Deploy 仓库根目录运行：

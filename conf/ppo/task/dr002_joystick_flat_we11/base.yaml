@@ -202,7 +202,7 @@ reward:
     lin_vel_z: -2.0
     ang_vel_xy: -0.2
     orientation: -10.0
-    base_height: -2.0
+    base_height: -0.4
     joint_torques_l2: -1.0e-4
     joint_torques_wheel_l2: -1.0e-4
     joint_vel_l2: -5.0e-5

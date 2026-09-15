@@ -32,8 +32,8 @@ DEFAULT_ANGLES = np.array(
     [0.8, -1.6, 0.0, 0.8, -1.6, 0.0],
     dtype=np.float64,
 )
-HAND_PLAY_KP = np.array([2.0, 7.59, 0.0, 2.0, 7.59, 0.0], dtype=np.float64)
-HAND_PLAY_KD = np.array([0.080, 0.682, 0.05, 0.080, 0.682, 0.05], dtype=np.float64)
+HAND_PLAY_KP = np.array([1.86, 9.6, 0.0, 1.86, 9.6, 0.0], dtype=np.float64)
+HAND_PLAY_KD = np.array([0.058, 0.11, 0.05, 0.058, 0.11, 0.05], dtype=np.float64)
 PARAM_VECTOR_ORDER = [
     "armature[6]",
     "viscous_friction[6]",

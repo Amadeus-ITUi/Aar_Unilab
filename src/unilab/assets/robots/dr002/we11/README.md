@@ -1,7 +1,8 @@
 # WE11 third-version MuJoCo asset
 
 WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核参数合成。
-运行模型使用 RK4，腿部 PACE 动力学采用 2026-07-30 实机扫频辨识结果。
+运行模型使用 RK4；训练和 Play 的动力学、PD 与延迟保持 2026-09-09 基线。
+2026-09-10 ESD-Link 实机扫频辨识结果单独保存在 `we11_pace_params.json`，当前不注入运行模型。
 本目录包含运行所需的 MJCF、visual 网格和 URDF，不依赖 WE9/WE10 资产目录。
 
 ## 与旧版 (we11-origin) 的关键差异
@@ -12,7 +13,7 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
   - 两翼 axis 互反：同 joint 值 → 翼面镜像对称
 - **尾翼**：U1_link/U2_link 保留新版 mesh 几何，固定连接 base_link
 - **base_link**：inertial 抄新版 CAD (mass=1.7974)，collision 抄旧版简化 box + 新增 shoulder box
-- **腿部**：惯量、armature、damping、frictionloss 沿用旧版 reviewed 值；calf
+- **腿部**：惯量沿用 reviewed 值，运行时 armature、damping、frictionloss 使用 9 月 9 日基线；calf
   限位按实机膝关节内夹角 `35.47°–106.33°` 标定为
   `[-2.522524368, -1.285784060] rad`
 
@@ -26,16 +27,17 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
 - 腿部 6 motor（同旧版）：`[thigh, calf, foot] × [L, R]`，ctrlrange `±5.5/±14/±5.5`
 - 机翼 2 velocity actuator：`[left_wing_vel, right_wing_vel]`，kv=0.5，ctrlrange `±10 rad/s`
 
-## PACE 参数（腿部，同旧版）
+## 训练与 Play 运行参数（2026-09-09 基线）
 
-- Armature: `[0.0045092746608505355, 0.0056654868268008396, 0.0008, 0.0045092746608505355, 0.0056654868268008396, 0.0008]`
-- Damping: `[2.3658001235049574e-06, 1.7025403002922656e-05, 0, 2.3658001235049574e-06, 1.7025403002922656e-05, 0]`
-- Frictionloss: `[9.003633786813792e-06, 0.20614840564125578, 0, 9.003633786813792e-06, 0.20614840564125578, 0]`
+- Armature: `[0.0045092746608505355, 0.0056654868268008396, 0.0008] × 2`
+- Damping: `[2.3658001235049574e-06, 1.7025403002922656e-05, 0.0] × 2`
+- Frictionloss: `[9.003633786813792e-06, 0.20614840564125578, 0.0] × 2`
 - Kp: `[2.0, 7.59, 0, 2.0, 7.59, 0]`
 - Kd: `[0.080, 0.682, 0.05, 0.080, 0.682, 0.05]`
 
-轮子使用 `Kd=0.05`、action scale `10.0` 和 raw clip `±3.5`。辨识时使用固定
-4 步 command delay；训练使用每环境共享、reset 随机 2–8 步 command FIFO。
+控制使用 action scale `10.0` 和 raw clip `±3.5`；训练使用每环境共享、reset
+随机 2–8 步 command FIFO。最新辨识值及其来源哈希仍保留在
+`we11_pace_params.json`，供后续独立消融和验证。
 
 ## 机翼参数（估值，未做 PACE 辨识）
 
@@ -55,7 +57,7 @@ WE11 的形态、惯量、碰撞体和传感器基于新版 CAD + 旧版审核�
 - `meshes_lod/`: WE11 自包含 visual 网格（新版 STL + 旧版 base_link 5 分片 LOD）
 - `urdf/we11_reviewed.urdf`: 与运行模型物理属性对应的审核版 URDF
 - `urdf/we11_source.urdf`: 新 CAD 导出的原始 URDF 归档
-- `we11_pace_params.json`: PACE 辨识参数（腿部 6 关节，与旧版完全一致）
+- `we11_pace_params.json`: 腿部与轮子的 PACE 辨识参数及来源合同
 - `training_data/measured_wrench_20260728_skin/`: 六维力数据（同旧版）
 - `training_data/wing_angle_20260713/`: 翼角观测数据（同旧版）
 

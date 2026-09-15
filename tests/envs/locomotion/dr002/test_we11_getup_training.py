@@ -8,6 +8,7 @@ from omegaconf import DictConfig, OmegaConf
 from scripts.visualize_task_env import _build_env_cfg_override, _parse_args
 
 from unilab.base import registry
+from unilab.envs.locomotion.common.rewards import RewardContext
 from unilab.envs.locomotion.dr002.getup import (
     _RESET_BALANCE,
     _RESET_EXACT_GETUP,
@@ -74,10 +75,18 @@ def test_getup_registration_and_configuration_contract() -> None:
     cfg = _compose_task(GETUP_SELECTOR)
     assert cfg.env.commands.lin_vel_x == [-1.0, 1.0]
     assert cfg.env.commands.ang_vel_z == [-1.0, 1.0]
+    assert cfg.env.commands.height == [0.25, 0.25]
+    assert cfg.env.commands.height_observation_center == 0.25
+    assert cfg.env.commands.height_observation_scale == 20.0
     assert cfg.env.commands.rel_standing_envs == 0.30
     assert cfg.env.commands.startup_stand_seconds == 0.0
     assert cfg.env.commands.standing_envs_episode_persistent is True
     assert cfg.env.commands.curriculum is False
+    assert cfg.env.getup_curriculum.enhance_height_command_range == [0.20, 0.30]
+    assert cfg.env.getup_curriculum.enhance_height_command_initial == 0.25
+    assert cfg.env.getup_curriculum.enhance_height_velocity_max_m_s == 0.03
+    assert cfg.reward.base_height_range is None
+    assert cfg.reward.base_height_clip == 8.0
     assert cfg.reward.getup_success_gravity_z_threshold == 0.90
     assert cfg.reward.getup_success_base_height_range[0] == 0.20
     assert np.isinf(cfg.reward.getup_success_base_height_range[1])
@@ -88,8 +97,8 @@ def test_getup_registration_and_configuration_contract() -> None:
     assert cfg.reward.scales.getup_success_bonus == 5.0
     assert cfg.reward.track_ang_vel_z_term_clip == 2.0
     assert cfg.reward.orientation_term_clip == 3.0
-    assert cfg.reward.scales.zero_cmd_stationary_vx == -4
-    assert cfg.reward.scales.zero_cmd_stationary_yaw == -12
+    assert cfg.reward.scales.zero_cmd_stationary_vx == -20
+    assert cfg.reward.scales.zero_cmd_stationary_yaw == -20
     assert cfg.reward.zero_cmd_stationary_vx_term_clip == 2.0
     assert cfg.reward.zero_cmd_stationary_yaw_term_clip == 2.0
 
@@ -165,6 +174,7 @@ def test_enhance_starts_stationary_then_resamples_hardware_safe_commands() -> No
         state = env.init_state()
         assert env._getup_curriculum_stage == _STAGE_ENHANCE
         np.testing.assert_allclose(state.info["commands"][:, :2], 0.0)
+        np.testing.assert_allclose(state.info["commands"][:, 2], 0.25)
 
         startup_steps = int(
             round(env._cfg.getup_curriculum.enhance_startup_stand_seconds / env._cfg.ctrl_dt)
@@ -176,6 +186,109 @@ def test_enhance_starts_stationary_then_resamples_hardware_safe_commands() -> No
         assert moving.size > 0
         assert np.all((-1.0 <= moving[:, 0]) & (moving[:, 0] <= 1.0))
         assert np.std(moving[:, 0]) > 0.50
+        assert np.all((0.20 <= commands[:, 2]) & (commands[:, 2] <= 0.30))
+        assert np.max(np.abs(env._height_velocity_command)) <= 0.03
+    finally:
+        env.close()
+
+
+def test_enhance_height_velocity_integrates_and_clamps_target() -> None:
+    env = _make_getup_env(num_envs=3, difficulty=1.0, forced_stage="enhance")
+    try:
+        state = env.init_state()
+        startup_steps = int(
+            round(env._cfg.getup_curriculum.enhance_startup_stand_seconds / env._cfg.ctrl_dt)
+        )
+        state.info["steps"].fill(startup_steps + 1)
+        env._height_command_target[:] = [0.20, 0.25, 0.30]
+        env._height_velocity_command[:] = [-0.03, 0.03, 0.03]
+        env._update_commands(state.info)
+        np.testing.assert_allclose(
+            state.info["commands"][:, 2],
+            [0.20, 0.2506, 0.30],
+            atol=1.0e-7,
+        )
+    finally:
+        env.close()
+
+
+def test_height_command_observation_is_normalized_without_changing_physical_command() -> None:
+    env = _make_getup_env(num_envs=3)
+    try:
+        physical = np.asarray(
+            [[0.4, -0.2, 0.20], [0.0, 0.0, 0.25], [-0.3, 0.7, 0.30]],
+            dtype=np.float32,
+        )
+        observed = env._commands_for_observation(physical)
+        np.testing.assert_allclose(observed[:, :2], physical[:, :2])
+        np.testing.assert_allclose(observed[:, 2], [-1.0, 0.0, 1.0], atol=1.0e-6)
+        np.testing.assert_allclose(physical[:, 2], [0.20, 0.25, 0.30])
+    finally:
+        env.close()
+
+
+def test_height_reward_uses_continuous_getup_gate() -> None:
+    env = _make_getup_env(num_envs=3)
+    try:
+        env.init_state()
+        base_height = np.asarray([0.19, 0.19, 0.19], dtype=np.float32)
+        gate = np.clip((base_height - 0.14285) / (0.20 - 0.14285), 0.0, 1.0)
+        env._getup_tracking_gate[:] = gate
+        zeros = np.zeros((3, 3), dtype=np.float32)
+        ctx = RewardContext(
+            info={
+                "commands": np.asarray(
+                    [[0.0, 0.0, 0.19], [0.0, 0.0, 0.20], [0.0, 0.0, 0.21]],
+                    dtype=np.float32,
+                )
+            },
+            linvel=zeros,
+            gyro=zeros,
+            dof_pos=env.get_dof_pos(),
+            dof_vel=env.get_dof_vel(),
+            num_envs=3,
+            default_angles=env.default_angles,
+            tracking_sigma=env._reward_cfg.tracking_sigma,
+            base_height=base_height,
+            gravity=np.asarray([[0.0, 0.0, 1.0]] * 3, dtype=np.float32),
+        )
+        floor_term = (0.20 - 0.19) ** 2
+        tracking_error_sq = np.square(np.asarray([0.0, 0.01, 0.02]))
+        expected = (floor_term + gate * tracking_error_sq) / (0.025**2)
+        np.testing.assert_allclose(
+            env._reward_base_height_cmd(ctx),
+            expected,
+            atol=1.0e-6,
+        )
+    finally:
+        env.close()
+
+
+def test_height_reward_clip_keeps_signal_through_five_centimetres() -> None:
+    env = _make_getup_env(num_envs=3)
+    try:
+        env.init_state()
+        env._getup_tracking_gate[:] = 1.0
+        zeros = np.zeros((3, 3), dtype=np.float32)
+        ctx = RewardContext(
+            info={"commands": np.asarray([[0.0, 0.0, 0.25]] * 3, dtype=np.float32)},
+            linvel=zeros,
+            gyro=zeros,
+            dof_pos=env.get_dof_pos(),
+            dof_vel=env.get_dof_vel(),
+            num_envs=3,
+            default_angles=env.default_angles,
+            tracking_sigma=env._reward_cfg.tracking_sigma,
+            base_height=np.asarray([0.285, 0.30, 0.31], dtype=np.float32),
+            gravity=np.asarray([[0.0, 0.0, 1.0]] * 3, dtype=np.float32),
+        )
+        # With scale=-2 and clip=8, the raw quadratic cost clips at 4:
+        # 3.5 cm stays unsaturated, while 5 cm reaches the boundary.
+        np.testing.assert_allclose(
+            env._reward_base_height_cmd(ctx),
+            [1.96, 4.0, 4.0],
+            atol=1.0e-5,
+        )
     finally:
         env.close()
 

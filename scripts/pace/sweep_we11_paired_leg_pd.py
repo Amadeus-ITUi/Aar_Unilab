@@ -16,10 +16,11 @@ import json
 import math
 import multiprocessing
 import os
+import signal
 import shlex
 import sys
 import xml.etree.ElementTree as ET
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -59,6 +60,7 @@ METRIC_KEYS = (
     "time_rmse",
     "time_normalized_mse",
 )
+TIMEOUT_PENALTY_SCORE = 1.0e12
 PRIMARY_METRICS = {
     "bode-mag": "bode_magnitude_mse_db2",
     "bode-complex": "bode_complex_score",
@@ -92,6 +94,7 @@ class PairedContext:
     references: tuple[BodeReference, BodeReference]
     params: dict[str, Any]
     replay: MujocoPaceReplay
+    candidate_timeout_s: float = 0.0
 
 
 @dataclass
@@ -244,19 +247,25 @@ def validate_pace_contract(pace: dict[str, Any], model_path: Path) -> dict[str, 
         raise ValueError("PACE replay must use gravity with a fixed base")
     if meta.get("fixture_mode") != "high-impedance":
         raise ValueError("PACE fixture mode must be high-impedance")
-    expected_hold_kp = np.asarray([1.0, 1.0, 0.0, 1.0, 1.0, 0.0])
-    expected_hold_kd = np.asarray([0.1, 0.1, 0.0, 0.1, 0.1, 0.0])
-    if not np.allclose(np.asarray(meta.get("fixture_hold_kp", [])), expected_hold_kp):
-        raise ValueError("PACE fixture hold Kp does not match the real acquisition")
-    if not np.allclose(np.asarray(meta.get("fixture_hold_kd", [])), expected_hold_kd):
-        raise ValueError("PACE fixture hold Kd does not match the real acquisition")
+    pace_sources = meta.get("sources")
+    if not isinstance(pace_sources, list) or not pace_sources:
+        raise ValueError("PACE artifact is missing per-source acquisition metadata")
+    for source in pace_sources:
+        if not isinstance(source, dict):
+            raise ValueError("PACE source metadata must be an object")
+        for key in ("fixture_hold_kp", "fixture_hold_kd"):
+            gain = np.asarray(source.get(key, []), dtype=np.float64).reshape(-1)
+            if gain.shape != (len(JOINT_NAMES),) or not np.all(np.isfinite(gain)):
+                raise ValueError(f"PACE source {key} must contain six finite values")
+            if np.any(gain < 0.0):
+                raise ValueError(f"PACE source {key} must be non-negative")
     if meta.get("lock_wheel_positions") is not True:
         raise ValueError("PACE artifact must declare exact wheel position locking")
     if pace.get("delay_semantics") != "pre_controller_command_fifo":
         raise ValueError("PACE artifact must use a pre-controller command FIFO")
     delay = pace.get("shared_command_delay_steps", pace.get("command_delay_steps"))
-    if isinstance(delay, bool) or not isinstance(delay, int) or delay != 4:
-        raise ValueError("PACE shared command delay must be exactly 4 control ticks")
+    if isinstance(delay, bool) or not isinstance(delay, int) or delay < 0:
+        raise ValueError("PACE shared command delay must be a non-negative integer")
     model_sha = meta.get("model_sha256_at_fit")
     if not isinstance(model_sha, str) or len(model_sha) != 64:
         raise ValueError("PACE artifact is missing model_sha256_at_fit")
@@ -316,6 +325,13 @@ def resolve_paired_sources(
             raise ValueError(f"{group} truth PT SHA-256 mismatch")
         if frozen.get("pt_sha256") != data_sha:
             raise ValueError(f"{group} truth is not the frozen Group A PACE source")
+        for key in ("fixture_hold_kp", "fixture_hold_kd"):
+            actual = np.asarray(source.get(key, []), dtype=np.float64)
+            expected = np.asarray(frozen.get(key, []), dtype=np.float64)
+            if actual.shape != (len(JOINT_NAMES),) or not np.allclose(
+                actual, expected, atol=1.0e-12, rtol=0.0
+            ):
+                raise ValueError(f"{group} {key} does not match the frozen PACE source")
         resolved[group] = source
         paths[group] = data_path
     return resolved, paths, manifest
@@ -350,25 +366,70 @@ def set_group_gains(replay: MujocoPaceReplay, group: str, kp: float, kd: float) 
     replay.kd = kd_vector
 
 
+class CandidateTimeoutError(TimeoutError):
+    pass
+
+
+def candidate_timeout_handler(_signum: int, _frame: Any) -> None:
+    raise CandidateTimeoutError("candidate evaluation exceeded timeout")
+
+
+def timeout_penalty_row(context: PairedContext, kp: float, kd: float, stage: str) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "group": context.group,
+        "stage": f"{stage}_timeout",
+        "kp": float(kp),
+        "kd": float(kd),
+    }
+    for key in METRIC_KEYS:
+        row[key] = TIMEOUT_PENALTY_SCORE
+    for side in SIDE_LABELS:
+        for key in METRIC_KEYS:
+            row[f"{side}_{key}"] = TIMEOUT_PENALTY_SCORE
+    return row
+
+
 def evaluate_candidate(
     context: PairedContext,
     kp: float,
     kd: float,
     stage: str,
 ) -> dict[str, Any]:
+    timeout = float(getattr(context, "candidate_timeout_s", 0.0))
+    previous_handler = None
+    if timeout > 0.0:
+        previous_handler = signal.signal(signal.SIGALRM, candidate_timeout_handler)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
     set_group_gains(context.replay, context.group, kp, kd)
-    result = context.replay.replay(context.source, context.params, log_full=False)
-    metrics = reduce_paired_metrics(
-        context.references,
-        np.asarray(result["response"], dtype=np.float64),
-    )
-    return {
-        "group": context.group,
-        "stage": stage,
-        "kp": float(kp),
-        "kd": float(kd),
-        **metrics,
-    }
+    try:
+        candidate_source_metadata = dict(context.source.source)
+        candidate_source_metadata["kp"] = np.asarray(context.replay.kp, dtype=np.float64).tolist()
+        candidate_source_metadata["kd"] = np.asarray(context.replay.kd, dtype=np.float64).tolist()
+        candidate_source = SourceData(
+            source=candidate_source_metadata,
+            payload=context.source.payload,
+            target_kind=context.source.target_kind,
+            score_time_window=context.source.score_time_window,
+        )
+        result = context.replay.replay(candidate_source, context.params, log_full=False)
+        metrics = reduce_paired_metrics(
+            context.references,
+            np.asarray(result["response"], dtype=np.float64),
+        )
+        return {
+            "group": context.group,
+            "stage": stage,
+            "kp": float(kp),
+            "kd": float(kd),
+            **metrics,
+        }
+    except CandidateTimeoutError:
+        return timeout_penalty_row(context, kp, kd, stage)
+    finally:
+        if timeout > 0.0:
+            signal.setitimer(signal.ITIMER_REAL, 0.0)
+            if previous_handler is not None:
+                signal.signal(signal.SIGALRM, previous_handler)
 
 
 _WORKER_CONTEXT: PairedContext | None = None
@@ -415,7 +476,8 @@ def evaluate_grid(
             max_workers=workers,
             mp_context=multiprocessing.get_context("fork"),
         )
-        rows = executor.map(evaluate_worker, pending, chunksize=1)
+        futures = [executor.submit(evaluate_worker, task) for task in pending]
+        rows = (future.result() for future in as_completed(futures))
     try:
         for index, row in enumerate(rows, start=1):
             store.add(row)
@@ -560,7 +622,10 @@ def write_report(
             axis[2].grid(True, alpha=0.25)
             axis[2].legend()
             row += 1
-    figure.suptitle("WE11 paired leg Kp/Kd fit | RK4 400 Hz / PD 200 Hz / delay 4")
+    delay = int(next(iter(contexts.values())).params["command_delay_steps"])
+    figure.suptitle(
+        f"WE11 paired leg Kp/Kd fit | RK4 400 Hz / PD 200 Hz / delay {delay}"
+    )
     figure.tight_layout()
     figure.savefig(path, dpi=170)
     figure.savefig(path.with_suffix(".pdf"))
@@ -582,14 +647,14 @@ def build_contexts(
     params["torque_delay_steps"] = 0
     initial_qpos = np.asarray(pace_meta["initial_joint_qpos"], dtype=np.float64)
     initial_qvel = np.asarray(pace_meta["initial_joint_qvel"], dtype=np.float64)
-    hold_kp = np.asarray(pace_meta["fixture_hold_kp"], dtype=np.float64)
-    hold_kd = np.asarray(pace_meta["fixture_hold_kd"], dtype=np.float64)
     effort_limit = np.asarray(pace_meta["effort_limit"], dtype=np.float64)
     baseline_kp = np.asarray(pace["kp"], dtype=np.float64)
     baseline_kd = np.asarray(pace["kd"], dtype=np.float64)
     contexts: dict[str, PairedContext] = {}
     for group in groups:
         source_metadata = sources[group]
+        hold_kp = np.asarray(source_metadata["fixture_hold_kp"], dtype=np.float64)
+        hold_kd = np.asarray(source_metadata["fixture_hold_kd"], dtype=np.float64)
         active = GROUP_ACTIVE_IDS[group]
         payload = load_chirp_data(data_paths[group])
         source = SourceData(
@@ -644,6 +709,7 @@ def build_contexts(
             references=references,  # type: ignore[arg-type]
             params=params,
             replay=replay,
+            candidate_timeout_s=float(getattr(args, "candidate_timeout_s", 0.0)),
         )
     return contexts, params, effort_limit
 
@@ -791,6 +857,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ultra-kd-step", type=float, default=0.002)
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--progress-every", type=int, default=25)
+    parser.add_argument(
+        "--candidate-timeout-s",
+        type=float,
+        default=0.0,
+        help="Per-candidate wall-clock timeout inside each worker; 0 disables timeout.",
+    )
     parser.add_argument("--no-refine", action="store_true")
     return parser.parse_args()
 
@@ -798,6 +870,8 @@ def parse_args() -> argparse.Namespace:
 def validate_args(args: argparse.Namespace, groups: tuple[str, ...]) -> None:
     if args.workers <= 0 or args.progress_every <= 0:
         raise ValueError("workers and progress-every must be positive")
+    if not math.isfinite(args.candidate_timeout_s) or args.candidate_timeout_s < 0.0:
+        raise ValueError("--candidate-timeout-s must be finite and non-negative")
     if args.freq_min <= 0.0 or args.freq_max <= args.freq_min:
         raise ValueError("frequency range must be positive and increasing")
     if args.freq_min < 0.1 or args.freq_max > 5.0:
@@ -848,7 +922,11 @@ def main() -> None:
     }
     print(f"[INFO] out_dir={out_dir}", flush=True)
     print(f"[INFO] model={model_path}, integrator=RK4, sim/control=400/200 Hz", flush=True)
-    print(f"[INFO] pace_params={pace_path}, shared_command_delay_steps=4", flush=True)
+    delay_steps = int(pace["shared_command_delay_steps"])
+    print(
+        f"[INFO] pace_params={pace_path}, shared_command_delay_steps={delay_steps}",
+        flush=True,
+    )
     print(f"[INFO] truth_run_dir={truth_run_dir}, groups={list(groups)}", flush=True)
     print(
         "[INFO] gravity=true fixed_base=true fixture=high-impedance "
@@ -922,12 +1000,18 @@ def main() -> None:
             "gravity_enabled": True,
             "fixed_base": True,
             "fixture_mode": "high-impedance",
-            "fixture_hold_kp": pace_meta["fixture_hold_kp"],
-            "fixture_hold_kd": pace_meta["fixture_hold_kd"],
+            "fixture_gain_source": "truth_manifest_per_source",
+            "source_fixture_gains": {
+                group: {
+                    "fixture_hold_kp": sources[group]["fixture_hold_kp"],
+                    "fixture_hold_kd": sources[group]["fixture_hold_kd"],
+                }
+                for group in groups
+            },
             "lock_wheel_positions": True,
             "delay_semantics": "pre_controller_command_fifo",
-            "shared_command_delay_steps": 4,
-            "delay_s": 0.02,
+            "shared_command_delay_steps": delay_steps,
+            "delay_s": delay_steps / 200.0,
             "initial_joint_qpos": pace_meta["initial_joint_qpos"],
             "initial_joint_qvel": pace_meta["initial_joint_qvel"],
             "effort_limit": pace_meta["effort_limit"],

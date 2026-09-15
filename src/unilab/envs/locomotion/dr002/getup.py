@@ -87,6 +87,13 @@ class GetupPoseCurriculumConfig:
     # acceleration, braking, and reversal transients more frequently.
     enhance_startup_stand_seconds: float = 1.0
     enhance_command_resampling_time: float = 2.5
+    # The operator supplies a vertical velocity, while the policy continues to
+    # receive an absolute base-height target. Enhance mirrors that interface by
+    # integrating a held random velocity and clamping the target to this range.
+    enhance_height_command_range: tuple[float, float] = (0.20, 0.30)
+    enhance_height_command_initial: float = 0.25
+    enhance_height_velocity_max_m_s: float = 0.03
+    enhance_height_velocity_zero_fraction: float = 0.30
     # Only this fraction of Enhance environments receives the stronger,
     # multi-control-step interval push. Other stages retain the legacy push.
     enhance_push_episode_fraction: float = 0.20
@@ -310,6 +317,10 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self._getup_vx_error_normalized = np.zeros((num_envs,), dtype=dtype)
         self._getup_yaw_error_normalized = np.zeros((num_envs,), dtype=dtype)
         self._getup_current_commands = np.zeros((num_envs, 3), dtype=dtype)
+        self._height_command_target = np.full(
+            (num_envs,), curriculum.enhance_height_command_initial, dtype=dtype
+        )
+        self._height_velocity_command = np.zeros((num_envs,), dtype=dtype)
 
     def _load_pose_bank(self, bank_file: Path) -> None:
         """Load and index the offline-generated reset library on the cold path."""
@@ -420,6 +431,10 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             c.enhance_path_fraction,
             c.enhance_startup_stand_seconds,
             c.enhance_command_resampling_time,
+            *c.enhance_height_command_range,
+            c.enhance_height_command_initial,
+            c.enhance_height_velocity_max_m_s,
+            c.enhance_height_velocity_zero_fraction,
             c.enhance_push_episode_fraction,
             *c.enhance_push_force_scale_range,
             *c.enhance_push_duration_s,
@@ -449,6 +464,14 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             raise ValueError("balance episode duration must be positive")
         if c.enhance_startup_stand_seconds < 0.0 or c.enhance_command_resampling_time <= 0.0:
             raise ValueError("enhance command timing must be non-negative/positive")
+        height_low, height_high = c.enhance_height_command_range
+        if (
+            height_low >= height_high
+            or not height_low <= c.enhance_height_command_initial <= height_high
+            or c.enhance_height_velocity_max_m_s <= 0.0
+            or not 0.0 <= c.enhance_height_velocity_zero_fraction <= 1.0
+        ):
+            raise ValueError("enhance height-command configuration is invalid")
         if not 0.0 <= c.enhance_push_episode_fraction <= 1.0:
             raise ValueError("enhance_push_episode_fraction must be in [0, 1]")
         push_scale = np.asarray(c.enhance_push_force_scale_range, dtype=np.float64)
@@ -798,6 +821,10 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         self._episode_max_abs_xy_displacement[rows] = 0.0
         self._episode_workspace_violated[rows] = False
         self._episode_initialized[rows] = True
+        self._height_command_target[rows] = float(
+            self._cfg.getup_curriculum.enhance_height_command_initial
+        )
+        self._height_velocity_command[rows] = 0.0
         if self._getup_curriculum_stage == _STAGE_ENHANCE:
             probability = float(self._cfg.getup_curriculum.enhance_push_episode_fraction)
             self._episode_enhance_push_mask[rows] = np.random.uniform(size=rows.size) < probability
@@ -821,6 +848,22 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             resample_standing=resample_standing,
         )
 
+    def startup_commands(self, num_samples: int) -> np.ndarray:
+        commands = super().startup_commands(num_samples)
+        commands[:, 2] = float(self._cfg.getup_curriculum.enhance_height_command_initial)
+        return commands
+
+    def _sample_enhance_height_velocity(self, num_samples: int) -> np.ndarray:
+        c = self._cfg.getup_curriculum
+        velocity = np.random.uniform(
+            -c.enhance_height_velocity_max_m_s,
+            c.enhance_height_velocity_max_m_s,
+            size=num_samples,
+        )
+        stopped = np.random.uniform(size=num_samples) < c.enhance_height_velocity_zero_fraction
+        velocity[stopped] = 0.0
+        return np.asarray(velocity, dtype=get_global_dtype())
+
     def _update_commands(self, info: dict) -> None:
         if self._getup_curriculum_stage != _STAGE_ENHANCE:
             super()._update_commands(info)
@@ -832,7 +875,9 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             interval = max(int(round(c.enhance_command_resampling_time / self._cfg.ctrl_dt)), 1)
             startup = steps < startup_steps
             if np.any(startup):
-                commands[startup] = self.startup_commands(int(np.count_nonzero(startup)))
+                commands[startup, :2] = 0.0
+                self._height_command_target[startup] = float(c.enhance_height_command_initial)
+                self._height_velocity_command[startup] = 0.0
             elapsed = steps.astype(np.int64) - startup_steps
             resample = (steps == startup_steps) | (
                 (steps > startup_steps) & ((elapsed % interval) == 0)
@@ -842,6 +887,21 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
                 commands[resample] = super().sample_commands(
                     len(env_ids), env_ids=env_ids, resample_standing=True
                 )
+                self._height_velocity_command[resample] = self._sample_enhance_height_velocity(
+                    len(env_ids)
+                )
+            active = ~startup
+            self._height_command_target[active] += (
+                self._height_velocity_command[active] * self._cfg.ctrl_dt
+            )
+            height_low, height_high = c.enhance_height_command_range
+            np.clip(
+                self._height_command_target,
+                float(height_low),
+                float(height_high),
+                out=self._height_command_target,
+            )
+            commands[:, 2] = self._height_command_target
             info["commands"] = commands
         commands = np.asarray(info.get("commands"), dtype=get_global_dtype())
         if commands.shape == self._getup_current_commands.shape:
@@ -945,6 +1005,28 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
             "track_lin_vel_x",
             reward,
             clip_single_reward=float(self._reward_cfg.track_lin_vel_x_term_clip),
+        )
+
+    def _reward_base_height_cmd(self, ctx: RewardContext) -> np.ndarray:
+        """Clear the ground while continuously taking over target tracking."""
+        std = max(float(self._reward_cfg.base_height_std), 1.0e-6)
+        min_height = float(self._reward_cfg.getup_success_base_height_range[0])
+        floor_error = np.maximum(min_height - ctx.base_height, 0.0)
+        tracking_error = (
+            ctx.base_height - np.asarray(ctx.info["commands"], dtype=get_global_dtype())[:, 2]
+        )
+        # This gate ramps from zero at the minimum recoverable height to one at
+        # 0.20 m. Multiplying the squared error by the gate avoids the former
+        # discontinuity that made settling just below 0.20 m advantageous.
+        tracking_weight = self._getup_tracking_gate[: ctx.num_envs]
+        reward = np.asarray(
+            (np.square(floor_error) + tracking_weight * np.square(tracking_error)) / (std * std),
+            dtype=get_global_dtype(),
+        )
+        return self._clip_lingzu_reward(
+            "base_height",
+            reward,
+            clip_single_reward=float(self._reward_cfg.base_height_clip),
         )
 
     def _reward_track_ang_vel_z(self, ctx: RewardContext) -> np.ndarray:
@@ -1286,6 +1368,27 @@ class DR002JoystickGetupEnv(DR002JoystickEnv):
         base_height = self._reward_base_height_values(num_envs)
         log["getup_base_height/below_range_fraction"] = float(np.mean(base_height < 0.20))
         log["getup_base_height/above_range_fraction"] = float(np.mean(base_height > 0.30))
+        height_target = self._getup_current_commands[:num_envs, 2]
+        height_abs_error = np.abs(base_height - height_target)
+        log["getup_base_height/actual_mean"] = float(np.mean(base_height))
+        log["getup_base_height/actual_std"] = float(np.std(base_height))
+        log["getup_base_height/actual_min"] = float(np.min(base_height))
+        log["getup_base_height/actual_max"] = float(np.max(base_height))
+        log["getup_base_height/target_mean"] = float(np.mean(height_target))
+        log["getup_base_height/target_std"] = float(np.std(height_target))
+        log["getup_base_height/target_min"] = float(np.min(height_target))
+        log["getup_base_height/target_max"] = float(np.max(height_target))
+        log["getup_base_height/abs_error_mean"] = float(np.mean(height_abs_error))
+        log["getup_base_height/tracking_weight_mean"] = float(
+            np.mean(self._getup_tracking_gate[:num_envs])
+        )
+        target_std = float(np.std(height_target))
+        actual_std = float(np.std(base_height))
+        log["getup_base_height/target_actual_correlation"] = (
+            float(np.corrcoef(height_target, base_height)[0, 1])
+            if target_std > 1.0e-6 and actual_std > 1.0e-6
+            else 0.0
+        )
         for command_family, name in enumerate(("standing", "moving")):
             episodes = int(self._command_episode_counts[command_family])
             successes = int(self._command_success_counts[command_family])

@@ -97,6 +97,10 @@ class DR002Commands:
     lin_vel_x: list[float] = field(default_factory=lambda: [-0.5, 0.5])
     ang_vel_z: list[float] = field(default_factory=lambda: [-1.0, 1.0])
     height: list[float] = field(default_factory=lambda: [0.28, 0.28])
+    # Affine transform used only at the actor/critic input. Commands kept in
+    # env state and reward calculations remain in physical metres.
+    height_observation_center: float = 0.0
+    height_observation_scale: float = 1.0
     resampling_time: float = 5.0
     startup_stand_seconds: float = 3.0
     rel_standing_envs: float = 0.0
@@ -2226,6 +2230,14 @@ class DR002JoystickEnv(DR002BaseEnv):
         self._last_termination_gravity_done_fraction = 0.0
         self._base_command_lin_vel_x = np.asarray(cfg.commands.lin_vel_x, dtype=np.float64)
         self._base_command_ang_vel_z = np.asarray(cfg.commands.ang_vel_z, dtype=np.float64)
+        if (
+            not np.isfinite(cfg.commands.height_observation_center)
+            or not np.isfinite(cfg.commands.height_observation_scale)
+            or cfg.commands.height_observation_scale <= 0.0
+        ):
+            raise ValueError(
+                "commands.height_observation_center/scale must be finite and scale positive"
+            )
         self._standing_probability = float(cfg.commands.rel_standing_envs)
         self._standing_envs_episode_persistent = bool(cfg.commands.standing_envs_episode_persistent)
         if not 0.0 <= self._standing_probability <= 1.0:
@@ -4851,7 +4863,7 @@ class DR002JoystickEnv(DR002BaseEnv):
             noise_cfg.scale_wheel_vel,
             noise_level,
         )
-        commands = np.asarray(info["commands"], dtype=get_global_dtype())
+        commands = self._commands_for_observation(info["commands"])
         noisy_projected_gravity = self._actor_projected_gravity(
             projected_gravity,
             num_obs=num_obs,
@@ -4997,6 +5009,15 @@ class DR002JoystickEnv(DR002BaseEnv):
             "critic": critic,
             "privileged_target": linvel.astype(get_global_dtype()),
         }
+
+    def _commands_for_observation(self, commands: np.ndarray) -> np.ndarray:
+        """Return policy commands with height centred/scaled, preserving physical state."""
+        observed = np.asarray(commands, dtype=get_global_dtype()).copy()
+        command_cfg = getattr(self._cfg, "commands", None)
+        center = float(getattr(command_cfg, "height_observation_center", 0.0))
+        scale = float(getattr(command_cfg, "height_observation_scale", 1.0))
+        observed[:, 2] = (observed[:, 2] - center) * scale
+        return observed
 
     def _update_history(
         self,

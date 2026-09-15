@@ -37,6 +37,7 @@ from fit_mujoco_pace_params import (  # noqa: E402
     source_artifact_token,
     source_bode_time_window,
     source_controller_gain,
+    source_fixture_gain,
     with_candidate_params,
     write_generation_progress,
 )
@@ -79,6 +80,50 @@ class PaceParameterAssemblyTests(unittest.TestCase):
             source_controller_gain({"active_joint_ids": [2]}, "kd", base),
             base,
         )
+
+    def test_source_fixture_gain_requires_a_complete_finite_vector(self) -> None:
+        fallback = np.ones(6)
+        source = {"fixture_hold_kp": [0.0, 20.0, 0.0, 0.0, 20.0, 0.0]}
+
+        np.testing.assert_allclose(
+            source_fixture_gain(source, "fixture_hold_kp", fallback),
+            source["fixture_hold_kp"],
+        )
+        with self.assertRaisesRegex(ValueError, "must contain 6"):
+            source_fixture_gain({"fixture_hold_kp": [1.0]}, "fixture_hold_kp", fallback)
+        with self.assertRaisesRegex(ValueError, "finite non-negative"):
+            source_fixture_gain(
+                {"fixture_hold_kp": [0.0, -1.0, 0.0, 0.0, 0.0, 0.0]},
+                "fixture_hold_kp",
+                fallback,
+            )
+
+    def test_high_impedance_torque_accepts_per_source_fixture_gains(self) -> None:
+        replay = object.__new__(MujocoPaceReplay)
+        replay.kp = np.zeros(6)
+        replay.kd = np.zeros(6)
+        replay.control_mode = "position"
+        replay.fixture_mode = "high-impedance"
+        replay.fixture_target_qpos = np.zeros(6)
+        replay.fixture_hold_kp = np.ones(6)
+        replay.fixture_hold_kd = np.zeros(6)
+        replay.lock_wheel_positions = False
+        replay.locked_wheel_joint_ids = np.asarray([], dtype=np.int32)
+        replay.torque_clip = False
+        replay.effort_limit = np.full(6, 100.0)
+
+        torque = replay.torque(
+            np.ones(6),
+            np.zeros(6),
+            np.zeros(6),
+            np.zeros(6),
+            np.zeros(6),
+            active_joint_ids=(0, 3),
+            fixture_hold_kp=np.asarray([0.0, 20.0, 0.0, 0.0, 20.0, 0.0]),
+            fixture_hold_kd=np.zeros(6),
+        )
+
+        np.testing.assert_allclose(torque, [0.0, -20.0, 0.0, 0.0, -20.0, 0.0])
 
     def test_delay_artifact_fields_are_mutually_exclusive(self) -> None:
         self.assertEqual(

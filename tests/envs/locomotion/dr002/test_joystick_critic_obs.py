@@ -358,7 +358,7 @@ def test_we11_base_config_owns_latest_network_observation_and_force_contract() -
     assert env_cfg["noise_config"]["level"] == 1.0
     assert env_cfg["noise_config"]["curriculum"] is False
     assert env_cfg["noise_config"]["curriculum_levels"] == [1.0] * 4
-    assert env_cfg["control_config"]["action_delay_min_steps"] == 2
+    assert env_cfg["control_config"]["action_delay_min_steps"] == 4
     assert env_cfg["control_config"]["action_delay_max_steps"] == 8
     assert env_cfg["control_config"]["resample_action_delay"] is True
     assert domain_rand["push_force_limit"] == [10.0, 10.0, 0.0]
