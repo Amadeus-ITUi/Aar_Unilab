@@ -57,12 +57,14 @@ python scripts/train.py \
 python scripts/play.py \
   robot=we11 task=getup observation=we11_v2_145 \
   policy=we11_mlp algorithm=rsl_rl_ppo simulator=mujoco \
-  algo.load_run=logs/rsl_rl_ppo/DR002JoystickGetupWE11/<run_id>/model_N.pt \
-  training.play_render_mode=interactive training.play_steps=500
+  algo.load_run=models/we11/getup/model_9999.pt \
+  training.play_render_mode=record training.play_steps=500 training.play_env_num=1
 ```
 
 当前 WE11 的 Flat、Rough 和 Getup 均统一使用 `we11_v2_145`。无窗口检查使用
-`training.play_render_mode=none`。
+`training.play_render_mode=none`。WE11 的 Python 回放当前输出 checkpoint 同目录下的
+`play_video.mp4`，尚不提供实时交互窗口；实时渲染、拖动力和手柄操作使用下文的
+C++ Sim2Sim。
 
 PE01 回放：
 
