@@ -77,6 +77,7 @@ DeploymentContract load_contract(const std::filesystem::path& manifest_path) {
       document.get<double>("control.policy_hz"),
       document.get<double>("control.action_scale"),
       document.get<double>("control.action_clip"),
+      document.get<std::string>("task.reset_keyframe", ""),
   };
 }
 

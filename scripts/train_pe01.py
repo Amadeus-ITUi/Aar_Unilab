@@ -1,24 +1,33 @@
 #!/usr/bin/env python3
-"""PE01 custom PPO adapter entrypoint used by generic train/play selectors."""
+"""Independent PE01 training, playback and ONNX export entrypoint."""
 
 from __future__ import annotations
 
+import json
+import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf
 from torch import nn
 
-from unilab.adapters.pe01_legacy import load_policy, train_minimal
-from unilab.envs.locomotion.pe01 import PE01Env
+from unilab.adapters.pe01_ppo import load_policy, train
+from unilab.algos.torch.pe01 import PE01EncoderPolicy
+from unilab.base.backend.mujoco.single_robot import configure_release_model
+from unilab.catalog import catalog
+from unilab.catalog.registry import repository_path
+from unilab.envs.locomotion.pe01.config import ROOT, load_config
+from unilab.envs.locomotion.pe01.play_env import make_play_env
 from unilab.playback import InteractiveSession
 from unilab.release_contract import create_release
 
 
 class ExportedPE01Actor(nn.Module):
-    def __init__(self, policy):
+    def __init__(self, policy: PE01EncoderPolicy):
         super().__init__()
         self.policy = policy
 
@@ -26,144 +35,205 @@ class ExportedPE01Actor(nn.Module):
         return self.policy.action_mean(observation_history, observation, command)
 
 
-def export_release(checkpoint: Path, run_id: str, device: str) -> Path:
+def export_release(checkpoint: Path, run_id: str, device: str = "cpu") -> Path:
+    import onnxruntime as ort
+
     policy = load_policy(checkpoint, device=device)
+    config = policy.config
+    robot = catalog.robots["pe01"]
+    if tuple(config.env.joint_order) != robot.joints:
+        raise ValueError("PE01 config joint_order differs from its catalog contract")
     actor = ExportedPE01Actor(policy)
-    run_dir = checkpoint.parent
-    onnx_path = run_dir / "policy.onnx"
+    onnx_path = checkpoint.parent / "policy.onnx"
+    golden_inputs = {
+        "observation_history": np.zeros((1, policy.history_dim), dtype=np.float32),
+        "observation": np.zeros((1, policy.frame_size), dtype=np.float32),
+        "command": np.zeros((1, policy.command_dim), dtype=np.float32),
+    }
+    tensors = tuple(torch.as_tensor(value, device=device) for value in golden_inputs.values())
     torch.onnx.export(
         actor,
-        (
-            torch.zeros(1, 300, device=device),
-            torch.zeros(1, 30, device=device),
-            torch.zeros(1, 3, device=device),
-        ),
+        tensors,
         onnx_path,
-        input_names=["observation_history", "observation", "command"],
+        input_names=list(golden_inputs),
         output_names=["action"],
         opset_version=17,
         dynamo=False,
     )
-    import onnxruntime as ort
-
-    golden_inputs = {
-        "observation_history": np.zeros((1, 300), dtype=np.float32),
-        "observation": np.zeros((1, 30), dtype=np.float32),
-        "command": np.zeros((1, 3), dtype=np.float32),
-    }
     with torch.inference_mode():
-        torch_action = actor(
-            *(torch.as_tensor(golden_inputs[name], device=device) for name in (
-                "observation_history",
-                "observation",
-                "command",
-            ))
-        ).cpu().numpy()
+        torch_action = actor(*tensors).cpu().numpy()
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     golden_action = session.run(["action"], golden_inputs)[0]
     np.testing.assert_allclose(torch_action, golden_action, rtol=1.0e-5, atol=1.0e-6)
-    runtime_config = run_dir / "runtime_config.yaml"
-    runtime_config.write_text(
-        "robot: pe01\ntask: pe01_flat\nsimulator: mujoco\nphysics_hz: 400\npolicy_hz: 50\n",
-        encoding="utf-8",
-    )
+    runtime_config = checkpoint.parent / "runtime_config.yaml"
+    OmegaConf.save(config, runtime_config, resolve=True)
+    model_path = repository_path(str(config.env.model_path), ROOT)
     manifest = {
         "schema": "aar-unilab.actor.v1",
         "robot": {
             "id": "pe01",
-            "asset_version": "dragon-3-final-20260915",
-            "joint_order": [
-                "left_hip_joint",
-                "left_thigh_joint",
-                "left_calf_joint",
-                "right_hip_joint",
-                "right_thigh_joint",
-                "right_calf_joint",
-            ],
+            "asset_version": robot.asset_version,
+            "joint_order": list(config.env.joint_order),
         },
-        "task": {"id": "pe01_flat"},
+        "task": {"id": str(config.task_id)},
         "policy": {
-            "observation_builder": "pe01_v1",
+            "observation_builder": str(config.observation),
             "inputs": [
-                {"name": "observation_history", "dtype": "float32", "shape": [1, 300]},
-                {"name": "observation", "dtype": "float32", "shape": [1, 30]},
-                {"name": "command", "dtype": "float32", "shape": [1, 3]},
+                {"name": name, "dtype": "float32", "shape": list(value.shape)}
+                for name, value in golden_inputs.items()
             ],
-            "outputs": [{"name": "action", "dtype": "float32", "shape": [1, 6]}],
-            "history": {"length": 10, "frame_size": 30, "layout": "frame-major"},
+            "outputs": [{"name": "action", "dtype": "float32", "shape": [1, policy.action_dim]}],
+            "history": {
+                "length": int(config.env.history_length),
+                "frame_size": policy.frame_size,
+                "layout": "frame-major",
+            },
             "hidden_state": [],
         },
         "control": {
-            "physics_hz": 400,
-            "motor_hz": 400,
-            "policy_hz": 50,
-            "action_scale": 1.0,
-            "action_clip": 1.0,
+            "physics_hz": int(config.control.physics_hz),
+            "motor_hz": int(config.control.get("motor_hz", config.control.physics_hz)),
+            "policy_hz": int(config.control.policy_hz),
+            "action_scale": float(config.control.action_scale),
+            "action_clip": float(config.control.action_clip),
             "command_delay_steps": 0,
-            "gains": {"hip": [4.3, 0.34], "thigh": [4.3, 0.34], "calf": [4.9, 0.24]},
         },
-        "artifacts": {"scene_path": "robot/scene.xml"},
+        "artifacts": {"scene_path": f"robot/{model_path.name}"},
     }
-    release_dir = Path("releases/pe01/pe01_flat") / run_id
-    return create_release(
-        release_dir,
-        onnx=onnx_path,
-        runtime_config=runtime_config,
-        manifest=manifest,
-        robot_files=[
-            "src/unilab/assets/robots/pe01/pe01.xml",
-            "src/unilab/assets/robots/pe01/scene.xml",
-        ],
-        golden_inputs=golden_inputs,
-        golden_outputs={"action": golden_action},
-    )
+    reset_keyframe = config.env.get("reset_keyframe")
+    if reset_keyframe is not None:
+        manifest["task"]["reset_keyframe"] = str(reset_keyframe)
+    # Bake timing/reset settings into the release without altering the source assets.
+    with tempfile.TemporaryDirectory(prefix="pe01-release-") as temporary:
+        staging = Path(temporary)
+        for relative in robot.runtime_assets:
+            source = model_path.parent / relative
+            if source.is_dir():
+                shutil.copytree(source, staging / relative)
+            else:
+                shutil.copy2(source, staging / relative)
+        configure_release_model(
+            staging / "pe01.xml",
+            scene_path=staging / model_path.name,
+            physics_hz=int(config.control.physics_hz),
+            base_height=(
+                float(config.env.initial_height) if config.env.initial_height is not None else None
+            ),
+            reset_keyframe=reset_keyframe,
+        )
+        if config.observation == "pe01_v2":
+            from unilab.base.backend.mujoco.batched_robot import compile_robot_scene
 
-
-def values(argv: list[str]) -> dict[str, str]:
-    return dict(item.split("=", 1) for item in argv if "=" in item)
+            model = compile_robot_scene(
+                staging / model_path.name, tuple(config.env.body_names), visual=False
+            )
+            runtime = {
+                "schema": "pe01.runtime.v2",
+                "default_joint_position": model.key(str(reset_keyframe)).qpos[7:].tolist(),
+                "kp": list(config.control.kp),
+                "kd": list(config.control.kd),
+                "torque_limits": list(config.control.torque_limits),
+                "user_torque_limit": float(config.control.user_torque_limit),
+                "position_difference": bool(config.env.dof_vel_use_pos_diff),
+                "delay_steps": round(
+                    float(config.play.delay_ms) * int(config.control.physics_hz) / 1000
+                ),
+                "gait": list(config.play.gait),
+                "normalization": OmegaConf.to_container(config.normalization, resolve=True),
+            }
+            (staging / "pe01_runtime.json").write_text(json.dumps(runtime, indent=2) + "\n")
+            manifest["artifacts"]["pe01_runtime_path"] = "robot/pe01_runtime.json"
+            manifest["control"]["command_delay_steps"] = runtime["delay_steps"]
+            manifest["control"]["type"] = "position_pd"
+            golden_inputs["command"][:] = np.array(config.play.command) * [
+                config.normalization.lin_vel,
+                config.normalization.lin_vel,
+                config.normalization.ang_vel,
+            ]
+            # Recompute golden output if a nonzero default play command was configured.
+            golden_action = session.run(["action"], golden_inputs)[0]
+        return create_release(
+            Path("releases/pe01") / str(config.task_id) / run_id,
+            onnx=onnx_path,
+            runtime_config=runtime_config,
+            manifest=manifest,
+            robot_root=staging,
+            robot_files=sorted(path for path in staging.rglob("*") if path.is_file()),
+            golden_inputs=golden_inputs,
+            golden_outputs={"action": golden_action},
+        )
 
 
 def main() -> int:
-    args = values(sys.argv[1:])
-    mode = args.get("mode", "train")
-    device = args.get("training.device", "cpu")
-    if mode == "train":
-        run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_mujoco")
-        destination = Path("logs/pe01_custom_ppo/pe01/pe01_flat") / run_id
-        result = train_minimal(
-            destination,
-            steps=int(args.get("training.steps", "128")),
-            seed=int(args.get("training.seed", "1")),
-            device=device,
+    arguments = dict(value.split("=", 1) for value in sys.argv[1:] if "=" in value)
+    legacy = arguments.get("observation") in {"pe01_legacy", "pe01_v1"}
+    legacy |= "training.steps" in arguments and "observation" not in arguments
+    checkpoint = arguments.get("checkpoint")
+    if arguments.get("mode") == "play" and checkpoint:
+        metadata = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        legacy = metadata.get("schema") != "pe01.training.v2"
+    if legacy:
+        from train_pe01_legacy import main as legacy_main
+
+        return legacy_main()
+    config = load_config(sys.argv[1:])
+    catalog.resolve(
+        {
+            "robot": str(config.robot),
+            "task": str(config.task_id),
+            "observation": str(config.observation),
+            "policy": str(config.policy),
+            "algorithm": str(config.algorithm),
+            "simulator": str(config.simulator),
+        }
+    )
+    device = str(config.training.device)
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    if config.mode == "train":
+        run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f_mujoco")
+        destination = Path(str(config.training.log_root)) / run_id
+        result = train(destination, config=config)
+        release = (
+            export_release(result.checkpoint, run_id, device) if config.training.export else None
         )
-        release = export_release(result.checkpoint, run_id, device)
         print(
-            f"PE01 checkpoint={result.checkpoint} release={release} mean_reward={result.mean_reward:.6f}"
+            f"PE01 checkpoint={result.checkpoint} iterations={result.iterations} "
+            f"samples={result.samples} release={release}"
         )
         return 0
-    checkpoint_value = args.get("checkpoint")
-    if not checkpoint_value:
+    if config.mode != "play":
+        raise ValueError(f"unsupported PE01 mode={config.mode!r}")
+    if not config.checkpoint:
         print("PE01 play requires checkpoint=<path>", file=sys.stderr)
         return 2
-    policy = load_policy(Path(checkpoint_value), device=device)
-    env = PE01Env()
+    policy = load_policy(Path(str(config.checkpoint)), device=device)
+    play_config = OmegaConf.merge(policy.config)
+    if play_config.observation == "pe01_v2":
+        play_config.play = config.play
+    env = make_play_env(play_config)
 
     def action(observation, command):
+        if hasattr(env, "set_command"):
+            if not np.any(command):
+                command = np.array(play_config.play.command, dtype=np.float32)
+            command = env.set_command(command)
         history = torch.as_tensor(observation.actor, device=device).unsqueeze(0)
         commands = torch.as_tensor(command, device=device).unsqueeze(0)
         with torch.inference_mode():
-            selected = policy.action_mean(history, history[:, -30:], commands)
+            selected = policy.action_mean(history, history[:, -policy.frame_size :], commands)
         return selected.cpu().numpy()[0]
 
-    telemetry_dir = Path(args.get("play.telemetry", "logs/play/pe01/pe01_flat/latest"))
     with InteractiveSession(
         env.model,
         env.data,
-        telemetry_dir=telemetry_dir,
-        render=args.get("play.render", "interactive") == "interactive",
-        plot=args.get("play.plot", "true").lower() == "true",
+        telemetry_dir=Path(str(config.play.telemetry)),
+        render=config.play.render == "interactive",
+        plot=bool(config.play.plot),
     ) as session:
-        session.run(int(args.get("play.steps", "1000")), action, env)
+        session.run(int(config.play.steps), action, env)
+    if hasattr(env, "close"):
+        env.close()
     return 0
 
 

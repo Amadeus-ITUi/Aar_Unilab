@@ -21,6 +21,9 @@ class RobotSpec:
     actuators: tuple[str, ...]
     capabilities: frozenset[str] = frozenset()
     metadata: Mapping[str, object] = field(default_factory=dict)
+    scene: str = ""
+    asset_version: str = ""
+    runtime_assets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class PolicySpec:
     input_names: tuple[str, ...]
     output_names: tuple[str, ...]
     stateful: bool = False
+    robot_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -59,6 +63,7 @@ class AlgorithmSpec:
     adapter: str
     runner: str
     policy_ids: frozenset[str]
+    entrypoint: str = ""
 
 
 @dataclass(frozen=True)
@@ -100,7 +105,10 @@ class Catalog:
             raise ValueError(
                 f"task={selected.task.id!r} does not support robot={selected.robot.id!r}"
             )
-        if selected.observation.robot_ids and selected.robot.id not in selected.observation.robot_ids:
+        if (
+            selected.observation.robot_ids
+            and selected.robot.id not in selected.observation.robot_ids
+        ):
             raise ValueError(
                 f"observation={selected.observation.id!r} does not support "
                 f"robot={selected.robot.id!r}"
@@ -108,6 +116,10 @@ class Catalog:
         if selected.policy.id not in selected.algorithm.policy_ids:
             raise ValueError(
                 f"algorithm={selected.algorithm.id!r} does not support policy={selected.policy.id!r}"
+            )
+        if selected.policy.robot_ids and selected.robot.id not in selected.policy.robot_ids:
+            raise ValueError(
+                f"policy={selected.policy.id!r} does not support robot={selected.robot.id!r}"
             )
         return selected
 
@@ -152,10 +164,24 @@ catalog.robots["we11"] = RobotSpec(
 catalog.robots["pe01"] = RobotSpec(
     id="pe01",
     asset="src/unilab/assets/robots/pe01/dragon_3/urdf/v_end.urdf",
-    joints=(),
-    actuators=(),
+    joints=_we11_joints,
+    actuators=("left_hip", "left_thigh", "left_calf", "right_hip", "right_thigh", "right_calf"),
     capabilities=frozenset({"legs", "legacy-custom-ppo"}),
     metadata={"source_asset_name": "DRAGON_3", "status": "mechanical-validation"},
+    scene="src/unilab/assets/robots/pe01/scene.xml",
+    asset_version="dragon-3-final-20260915",
+    runtime_assets=("pe01.xml", "scene.xml"),
+)
+catalog.robots["pe02"] = RobotSpec(
+    id="pe02",
+    asset="src/unilab/assets/robots/pe02/urdf/pe02.urdf",
+    joints=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    actuators=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    capabilities=frozenset({"legs", "legacy-custom-ppo"}),
+    metadata={"source_asset_name": "dianzu23", "training_profile": "pe02"},
+    scene="src/unilab/assets/robots/pe02/scene.xml",
+    asset_version="dianzu23-collision-v2-20260916",
+    runtime_assets=("pe02.xml", "scene.xml", "runtime_meshes", "collision_meshes"),
 )
 for task_id, owner, runtime in (
     ("flat", "dr002_joystick_flat_we11", "DR002JoystickFlatWE11"),
@@ -164,7 +190,10 @@ for task_id, owner, runtime in (
 ):
     catalog.tasks[task_id] = TaskSpec(task_id, frozenset({"we11"}), owner, runtime)
 catalog.tasks["pe01_flat"] = TaskSpec(
-    "pe01_flat", frozenset({"pe01"}), "pe01_flat", "PE01Flat", frozenset({"legacy-semantics"})
+    "pe01_flat", frozenset({"pe01"}), "pe01/task/pe01_flat", "PE01Flat"
+)
+catalog.tasks["pe02_flat"] = TaskSpec(
+    "pe02_flat", frozenset({"pe02"}), "pe02/task/pe02_flat", "PE02Flat"
 )
 catalog.observations["we11_v2_145"] = ObservationSpec(
     "we11_v2_145",
@@ -193,18 +222,66 @@ catalog.observations["pe01_legacy"] = ObservationSpec(
     critic_dim=33,
     robot_ids=frozenset({"pe01"}),
 )
-catalog.policies["we11_mlp"] = PolicySpec("we11_mlp", "mlp", ("obs",), ("act",))
+catalog.observations["pe02_v1"] = ObservationSpec(
+    "pe02_v1",
+    ("proprioception",),
+    ("privileged",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe02"}),
+)
+catalog.observations["pe01_v2"] = ObservationSpec(
+    "pe01_v2",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe01"}),
+)
+catalog.observations["pe02_v2"] = ObservationSpec(
+    "pe02_v2",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe02"}),
+)
+catalog.policies["we11_mlp"] = PolicySpec(
+    "we11_mlp", "mlp", ("obs",), ("act",), robot_ids=frozenset({"we11"})
+)
 catalog.policies["pe01_encoder_mlp"] = PolicySpec(
-    "pe01_encoder_mlp", "mlp-encoder", ("observation_history",), ("action",)
+    "pe01_encoder_mlp",
+    "mlp-encoder",
+    ("observation_history", "observation", "command"),
+    ("action",),
+    robot_ids=frozenset({"pe01"}),
+)
+catalog.policies["pe02_encoder_mlp"] = PolicySpec(
+    "pe02_encoder_mlp",
+    "mlp-encoder",
+    ("observation_history", "observation", "command"),
+    ("action",),
+    robot_ids=frozenset({"pe02"}),
 )
 catalog.algorithms["rsl_rl_ppo"] = AlgorithmSpec(
     "rsl_rl_ppo", "unilab.adapters.rsl_rl", "OnPolicyRunner", frozenset({"we11_mlp"})
 )
 catalog.algorithms["pe01_custom_ppo"] = AlgorithmSpec(
     "pe01_custom_ppo",
-    "unilab.adapters.pe01_legacy",
-    "LegacyPPOAdapter",
+    "unilab.adapters.pe01_ppo",
+    "PE01PPOAdapter",
     frozenset({"pe01_encoder_mlp"}),
+    entrypoint="scripts/train_pe01.py",
+)
+catalog.algorithms["pe02_custom_ppo"] = AlgorithmSpec(
+    "pe02_custom_ppo",
+    "unilab.adapters.pe02_ppo",
+    "PE02PPOAdapter",
+    frozenset({"pe02_encoder_mlp"}),
+    entrypoint="scripts/train_pe02.py",
 )
 catalog.simulators["mujoco"] = SimulatorSpec(
     "mujoco", "mujoco", frozenset({"headless", "render", "mouse-force", "camera"})

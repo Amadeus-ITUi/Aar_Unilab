@@ -6,10 +6,13 @@ import csv
 import json
 import time
 from contextlib import nullcontext
+from itertools import count
 from pathlib import Path
 from typing import Callable
 
 import numpy as np
+
+from unilab.base.backend.mujoco.play_metrics import base_motion, frame_base_once, motion_overlay
 
 
 def joystick_command(axes: np.ndarray | None, deadzone: float = 0.12) -> np.ndarray:
@@ -27,8 +30,9 @@ class InteractiveSession:
     """Optional services around a MuJoCo step loop.
 
     MuJoCo's native passive viewer owns camera rotate/pan/zoom and Ctrl-drag
-    perturbation. This class adds follow mode, GLFW gamepad polling, live
-    Matplotlib plots and matching CSV/JSONL diagnostic streams.
+    perturbation. This class adds a velocity/height HUD, GLFW gamepad polling,
+    live Matplotlib plots and matching CSV/JSONL diagnostic streams. The camera
+    is framed once on startup; Free and Tracking remain native viewer choices.
     """
 
     def __init__(
@@ -51,7 +55,16 @@ class InteractiveSession:
         self._jsonl_stream = (telemetry_dir / "telemetry.jsonl").open("w", encoding="utf-8")
         self._csv = csv.DictWriter(
             self._csv_stream,
-            fieldnames=("time_seconds", "base_height", "command_x", "command_y", "command_yaw"),
+            fieldnames=(
+                "time_seconds",
+                "base_height",
+                "command_x",
+                "command_y",
+                "command_yaw",
+                "base_velocity_x",
+                "base_velocity_y",
+                "base_yaw_rate",
+            ),
         )
         self._csv.writeheader()
         self._viewer_context = nullcontext(None)
@@ -94,7 +107,7 @@ class InteractiveSession:
     def tick(self, command: np.ndarray) -> bool:
         row = {
             "time_seconds": float(self.data.time),
-            "base_height": float(self.data.qpos[2]),
+            **base_motion(self.model, self.data, self.follow_body),
             "command_x": float(command[0]),
             "command_y": float(command[1]),
             "command_yaw": float(command[2]),
@@ -104,7 +117,7 @@ class InteractiveSession:
         if self.viewer is not None:
             if not self.viewer.is_running():
                 return False
-            self.viewer.cam.lookat[:] = self.data.xpos[self.follow_body]
+            self.viewer.set_texts(motion_overlay(row))
             self.viewer.sync()
         if self._chart is not None:
             plt, figure, axis, line = self._chart
@@ -117,9 +130,19 @@ class InteractiveSession:
         return True
 
     def run(self, steps: int, action: Callable[[object, np.ndarray], np.ndarray], env) -> None:
+        """Run policy steps; -1 continues until viewer closure or interruption."""
+        if steps < -1:
+            raise ValueError("play.steps must be nonnegative or -1 for unlimited playback")
         observation = env.reset()
-        timestep = float(env.model.opt.timestep)
-        for _ in range(steps):
+        if self.viewer is not None:
+            frame_base_once(self.viewer, self.data, self.follow_body)
+        # env.step advances one policy period, including all physics substeps.
+        policy_hz = getattr(env, "policy_hz", None)
+        timestep = (
+            1.0 / float(policy_hz) if policy_hz is not None else float(env.model.opt.timestep)
+        )
+        iterations = count() if steps == -1 else range(steps)
+        for _ in iterations:
             started = time.monotonic()
             command = self.gamepad()
             selected_action = action(observation, command)

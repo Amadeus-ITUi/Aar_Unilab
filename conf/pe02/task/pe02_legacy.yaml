@@ -1,0 +1,22 @@
+# @package _global_
+task_id: pe02_flat
+
+env:
+  model_path: src/unilab/assets/robots/pe02/scene.xml
+  joint_order: [L_hip_, L_thigh_, L_calf_, R_hip_, R_thigh_, R_calf_]
+  frame_size: 30
+  history_length: 10
+  reset_keyframe: home
+  # null uses the ground-aligned height from the scene keyframe; a number overrides z.
+  initial_height: null
+  termination_height: 0.08
+
+control:
+  physics_hz: 400
+  policy_hz: 50
+  action_clip: 1.0
+  action_scale: 1.0
+
+reward:
+  base_height: 1.0
+  action_l2: -0.001

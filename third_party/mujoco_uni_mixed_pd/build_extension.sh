@@ -20,6 +20,7 @@ SOURCE_DIR="${CACHE_DIR}/source-${VERSION}"
 FETCH_DIR="${CACHE_DIR}/fetchcontent"
 PATCH_PATH="${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/batch_env.patch"
 COMMAND_DELAY_PATCH_PATH="${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/command_delay_pd.patch"
+JOINT_POSITION_PATCH_PATH="${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/joint_position_pd.patch"
 DEST_DIR="${ROOT_DIR}/src/unilab/base/backend/mujoco/_native"
 CMAKE_ARGS="-DMUJOCO_PYTHON_USE_SYSTEM_EIGEN=ON -DMUJOCO_PYTHON_BUILD_SIMULATE=OFF"
 if [[ -n "${UNILAB_ABSEIL_SOURCE:-}" ]]; then
@@ -42,8 +43,8 @@ DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
 
 if [[ -f "${DEST_SO}" ]] && \
    PYTHONPATH="${ROOT_DIR}/src" "${PYTHON_BIN}" -c \
-     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available; assert native_mixed_pd_available() and native_command_delay_pd_available()'; then
-  echo "UniLab native torque-FIFO and command-delay PD extension: already ready"
+     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available, native_joint_position_pd_available; assert native_mixed_pd_available() and native_command_delay_pd_available() and native_joint_position_pd_available()'; then
+  echo "UniLab native torque-FIFO, command-delay and joint-position PD extension: already ready"
   exit 0
 fi
 
@@ -57,6 +58,7 @@ mkdir -p "${SOURCE_DIR}"
 tar -xzf "${ARCHIVE_PATH}" --strip-components=1 -C "${SOURCE_DIR}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${PATCH_PATH}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${COMMAND_DELAY_PATCH_PATH}"
+patch --directory="${SOURCE_DIR}" --strip=1 < "${JOINT_POSITION_PATCH_PATH}"
 
 pushd "${SOURCE_DIR}" >/dev/null
 MUJOCO_PATH="${MUJOCO_DIR}" \
@@ -74,9 +76,10 @@ PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}" "${PYTHON_BIN}" - <<'P
 from unilab.base.backend.mujoco.native_batch import (
     native_command_delay_pd_available,
     native_mixed_pd_available,
+    native_joint_position_pd_available,
 )
 
-if not native_mixed_pd_available() or not native_command_delay_pd_available():
-    raise SystemExit("native torque-FIFO/command-delay PD extension import check failed")
-print("UniLab native torque-FIFO and command-delay PD extension: ready")
+if not all((native_mixed_pd_available(), native_command_delay_pd_available(), native_joint_position_pd_available())):
+    raise SystemExit("native PD extension import check failed")
+print("UniLab native torque-FIFO, command-delay and joint-position PD extension: ready")
 PY

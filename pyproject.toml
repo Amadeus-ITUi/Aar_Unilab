@@ -54,6 +54,7 @@ include = ["unilab*"]
 [tool.setuptools.package-data]
 unilab = [
     "assets/**/*.STL",
+    "assets/**/*.obj",
     "assets/**/*.csv",
     "assets/**/*.json",
     "assets/**/*.md",

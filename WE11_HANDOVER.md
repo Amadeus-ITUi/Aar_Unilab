@@ -31,16 +31,18 @@ does not inherit a WE9 or WE10 task.
 
 ## Reproducible Conda installation
 
+For the current Aar_Unilab checkout, run from the repository root:
+
 ```bash
-git clone --branch Walking_Eagle-Unilab_final \
-  git@git.esdyn.cn:walking-eagle/sar_unilab.git
-cd sar_unilab
-bash install_conda_environment.txt unilab_cuda cu128
-conda activate unilab_cuda
+bash tools/install_environment.sh
+source tools/activate_environment.sh
 ```
 
-The installer uses Conda + pip and also builds and validates native
-command-delay PD. The repository intentionally does not ship `uv.lock`.
+The environment prefix is `/ssd/conda/envs/aar_unilab`. After moving or cloning
+the repository, run `bash tools/rebind_environment.sh`. See the
+[daily usage guide](docs/DAILY_USAGE.md#environment) for current commands and
+validation. The installer uses Conda + pip and builds native command-delay PD.
+The repository intentionally does not ship `uv.lock`.
 
 ## Preserved checkpoint
 
@@ -73,7 +75,6 @@ CUDA_VISIBLE_DEVICES=0 \
 UNILAB_MUJOCO_NTHREADS=16 \
 python -u scripts/train_rsl_rl.py \
   task=dr002_joystick_rough_we11/mujoco \
-  training.device=cuda:0 \
   training.no_play=true \
   training.play_render_mode=none \
   training.logger=tensorboard \

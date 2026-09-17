@@ -1,6 +1,9 @@
 #include "aar/deployment_contract.hpp"
 #include "aar/npy.hpp"
 #include "aar/onnx_actor.hpp"
+#include "aar/pe02_observation.hpp"
+#include "aar/pe02_runtime.hpp"
+#include "aar/pe01_runtime.hpp"
 #include "aar/telemetry.hpp"
 
 #include <mujoco/mujoco.h>
@@ -158,10 +161,10 @@ struct Viewer {
                    &viewer->camera);
   }
 
-  void gamepad(const aar::DeploymentContract& contract,
+  bool gamepad(const aar::DeploymentContract& contract,
                std::vector<std::vector<float>>& inputs,
                std::vector<float>& command) {
-    if (!glfwJoystickPresent(GLFW_JOYSTICK_1)) return;
+    if (!glfwJoystickPresent(GLFW_JOYSTICK_1)) return false;
     int count = 0;
     const float* axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &count);
     if (command.size() >= 3 && count >= 2) {
@@ -178,6 +181,7 @@ struct Viewer {
         inputs[index][2] = count >= 4 ? axes[3] : 0.0F;
       }
     }
+    return count >= 2;
   }
 
   void draw(float action) {
@@ -429,11 +433,15 @@ int main(int argc, char** argv) {
       throw std::runtime_error("MuJoCo data allocation failed");
     }
     validate_model_contract(model, contract);
-    if (contract.observation_builder.rfind("we11_", 0) == 0) {
+    if (!contract.reset_keyframe.empty()) {
+      const int key = mj_name2id(model, mjOBJ_KEY, contract.reset_keyframe.c_str());
+      if (key < 0) throw std::runtime_error("release reset keyframe is missing: " + contract.reset_keyframe);
+      mj_resetDataKeyframe(model, data, key);
+    } else if (contract.observation_builder.rfind("we11_", 0) == 0) {
       const int home = mj_name2id(model, mjOBJ_KEY, "home");
       if (home >= 0) mj_resetDataKeyframe(model, data, home);
-      mj_forward(model, data);
     }
+    mj_forward(model, data);
     auto inputs = initial_inputs(options.release, contract);
     aar::OnnxActor actor(policy_path, contract);
     const auto initial_outputs = actor.run(inputs);
@@ -445,8 +453,19 @@ int main(int argc, char** argv) {
         1, static_cast<int>(std::llround(contract.physics_hz / contract.policy_hz)));
     std::vector<float> history;
     We11State we11;
-    if (contract.observation_builder == "pe01_v1") {
+    std::unique_ptr<aar::PE02Runtime> pe02;
+    std::unique_ptr<aar::PE01Runtime> pe01;
+    if (contract.observation_builder == "pe01_v1" || contract.observation_builder == "pe02_v1" ||
+        contract.observation_builder == "pe02_v2" || contract.observation_builder == "pe01_v2") {
       history = inputs[input_index(contract, "observation_history")];
+      if (contract.observation_builder == "pe02_v2") {
+        pe02 = std::make_unique<aar::PE02Runtime>(
+            (options.release / contract.scene_path).parent_path() / "pe02_runtime.json", model, contract);
+      }
+      if (contract.observation_builder == "pe01_v2") {
+        pe01 = std::make_unique<aar::PE01Runtime>(
+            (options.release / contract.scene_path).parent_path() / "pe01_runtime.json", model, contract);
+      }
     } else if (contract.observation_builder != "we11_v2_145" &&
                contract.observation_builder != "golden_inputs") {
       throw std::runtime_error("unknown observation builder: " + contract.observation_builder);
@@ -460,10 +479,19 @@ int main(int argc, char** argv) {
     for (int step = 0; step < options.steps; ++step) {
 #ifdef AAR_WITH_GLFW
       if (viewer && glfwWindowShouldClose(viewer->window)) break;
-      if (viewer) viewer->gamepad(contract, inputs, we11.command);
+      if (viewer && viewer->gamepad(contract, inputs, we11.command)) {
+        if (pe02) pe02->normalize_gamepad_command(contract, inputs);
+        if (pe01) pe01->normalize_gamepad_command(contract, inputs);
+      }
 #endif
       if (contract.observation_builder == "pe01_v1") {
         update_pe01_inputs(data, contract, inputs, history);
+      } else if (contract.observation_builder == "pe02_v1") {
+        aar::update_pe02_inputs(data, contract, inputs, history);
+      } else if (pe02) {
+        pe02->update_inputs(data, contract, inputs, history);
+      } else if (pe01) {
+        pe01->update_inputs(data, contract, inputs, history);
       } else if (contract.observation_builder.rfind("we11_", 0) == 0) {
         update_we11_inputs(model, data, contract, inputs, we11);
       }
@@ -472,7 +500,11 @@ int main(int argc, char** argv) {
       if (action.size() != contract.joint_order.size()) {
         throw std::runtime_error("actor output size differs from policy joint order");
       }
-      if (contract.observation_builder.rfind("we11_", 0) != 0) {
+      if (pe02) {
+        pe02->prepare_action(data, action, contract);
+      } else if (pe01) {
+        pe01->prepare_action(data, action, contract);
+      } else if (contract.observation_builder.rfind("we11_", 0) != 0) {
         for (std::size_t actuator = 0; actuator < action.size(); ++actuator) {
           const double clipped = std::clamp(static_cast<double>(action[actuator]),
                                             -contract.action_clip, contract.action_clip);
@@ -480,11 +512,17 @@ int main(int argc, char** argv) {
         }
       }
       for (int substep = 0; substep < substeps; ++substep) {
+        if (pe02) pe02->before_step(model, data);
+        if (pe01) pe01->before_step(model, data);
         if (contract.observation_builder.rfind("we11_", 0) == 0) {
           apply_we11_control(model, data, action, substep);
         }
         mj_step(model, data);
+        if (pe02) pe02->after_step(data);
+        if (pe01) pe01->after_step(data);
       }
+      if (pe02) pe02->end_policy_step();
+      if (pe01) pe01->end_policy_step();
       if (contract.observation_builder.rfind("we11_", 0) == 0) {
         we11.previous_action = action;
       }

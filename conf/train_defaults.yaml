@@ -1,0 +1,67 @@
+# 本机训练启动预设：bash tools/train.sh <profile>
+# 只控制启动资源与训练规模；奖励、控制、网络仍由各样机的 Hydra YAML 管理。
+# 查看最终设置：bash tools/train.sh pe02_walking --dry-run
+# 环境变量：终端已设置的同名变量优先（包括 CUDA_VISIBLE_DEVICES=""，表示隐藏 GPU）。
+environment:
+  CUDA_VISIBLE_DEVICES: "0"
+  UNILAB_MUJOCO_NTHREADS: 32
+  OPENBLAS_NUM_THREADS: 1
+  OMP_NUM_THREADS: 1
+  MKL_NUM_THREADS: 1
+  PYTHONNOUSERSITE: 1
+
+# 仅清理子进程，避免 ROS 的 Python 路径影响 SSD Conda 环境。
+unset_environment: [PYTHONPATH]
+
+# 优先级：命令行 key=value > 下方 profile.overrides > common > 原任务 YAML。
+common:
+  algo.num_envs: 4096
+  algo.num_steps_per_env: 24
+  algo.max_iterations: 1000
+  algo.save_interval: 100
+  training.logger: tensorboard
+
+profiles:
+  we11_getup:
+    selectors:
+      robot: we11
+      task: getup
+      observation: we11_v2_145
+      policy: we11_mlp
+      algorithm: rsl_rl_ppo
+      simulator: mujoco
+    overrides:
+      training.no_play: true
+      training.log_root: logs/we11_getup
+
+  pe01:
+    selectors:
+      robot: pe01
+      task: pe01_flat
+      observation: pe01_v2
+      policy: pe01_encoder_mlp
+      algorithm: pe01_custom_ppo
+      simulator: mujoco
+    overrides:
+      # 与上方线程设置同步。也可改成具体数字，为 PE01 单独设置。
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+      training.evaluation_interval: 100
+      training.log_root: logs/pe01_custom_ppo/pe01/pe01_flat
+
+  pe02_walking:
+    selectors:
+      robot: pe02
+      task: pe02_flat
+      observation: pe02_v2
+      policy: pe02_encoder_mlp
+      algorithm: pe02_custom_ppo
+      simulator: mujoco
+    overrides:
+      +experiment: walking
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+      training.evaluation_interval: 100
+      training.log_root: logs/pe02_walking

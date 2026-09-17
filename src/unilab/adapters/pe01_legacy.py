@@ -59,12 +59,18 @@ class PE01TrainResult:
 
 
 def train_minimal(
-    output_dir: Path, *, steps: int = 128, seed: int = 1, device: str = "cpu"
+    output_dir: Path,
+    *,
+    steps: int = 128,
+    seed: int = 1,
+    device: str = "cpu",
+    model_path: str | Path | None = None,
+    robot_id: str = "pe01",
 ) -> PE01TrainResult:
     """Run a bounded clipped-policy update to verify the PE01 training path."""
     torch.manual_seed(seed)
     np.random.seed(seed)
-    env = PE01Env()
+    env = PE01Env(model_path)
     policy = PE01EncoderPolicy().to(device)
     optimizer = torch.optim.Adam(policy.parameters(), lr=3e-4)
     current = env.reset()
@@ -96,14 +102,28 @@ def train_minimal(
     optimizer.step()
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = output_dir / "model_1.pt"
-    torch.save({"actor_state_dict": policy.state_dict(), "steps": steps, "seed": seed}, checkpoint)
+    torch.save(
+        {
+            "actor_state_dict": policy.state_dict(),
+            "steps": steps,
+            "seed": seed,
+            "robot_id": robot_id,
+        },
+        checkpoint,
+    )
     return PE01TrainResult(checkpoint, float(np.mean(rewards)), steps)
 
 
-def load_policy(checkpoint: Path, device: str = "cpu") -> PE01EncoderPolicy:
+def load_policy(
+    checkpoint: Path, device: str = "cpu", *, robot_id: str | None = None
+) -> PE01EncoderPolicy:
     policy = PE01EncoderPolicy()
     policy.to(device)
     state = torch.load(checkpoint, map_location=device, weights_only=True)
+    # Older checkpoints predate robot selection and belong to PE01.
+    checkpoint_robot = state.get("robot_id", "pe01")
+    if robot_id is not None and checkpoint_robot != robot_id:
+        raise ValueError(f"checkpoint robot={checkpoint_robot!r} does not match robot={robot_id!r}")
     policy.load_state_dict(state["actor_state_dict"])
     policy.eval()
     return policy

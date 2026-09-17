@@ -38,6 +38,10 @@ def validate_manifest(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"manifest.{key} must be an object")
     robot = payload["robot"]
     policy = payload["policy"]
+    if "reset_keyframe" in payload["task"]:
+        keyframe = payload["task"]["reset_keyframe"]
+        if not isinstance(keyframe, str) or not keyframe.strip():
+            raise ValueError("manifest.task.reset_keyframe must be a nonempty name")
     if not robot.get("id") or not isinstance(robot.get("joint_order"), list):
         raise ValueError("manifest.robot requires id and joint_order")
     for direction in ("inputs", "outputs"):
@@ -77,6 +81,7 @@ def create_release(
     runtime_config: str | Path,
     manifest: dict[str, Any],
     robot_files: Iterable[str | Path] = (),
+    robot_root: str | Path | None = None,
     golden_inputs: Mapping[str, np.ndarray] | None = None,
     golden_outputs: Mapping[str, np.ndarray] | None = None,
 ) -> Path:
@@ -91,7 +96,12 @@ def create_release(
     robot_dir = release_dir / "robot"
     for source_value in robot_files:
         source = Path(source_value)
-        target = robot_dir / source.name
+        relative = (
+            source.resolve().relative_to(Path(robot_root).resolve())
+            if robot_root
+            else Path(source.name)
+        )
+        target = robot_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied.append(target)

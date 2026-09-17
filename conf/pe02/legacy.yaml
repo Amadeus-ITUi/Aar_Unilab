@@ -1,0 +1,33 @@
+defaults:
+  - task: pe02_legacy
+  - _self_
+
+robot: pe02
+observation: pe02_v1
+policy: pe02_encoder_mlp
+algorithm: pe02_custom_ppo
+simulator: mujoco
+mode: train
+checkpoint: null
+
+training:
+  steps: 128
+  seed: 1
+  device: cpu
+  learning_rate: 0.0003
+  clip_ratio: 0.2
+  value_loss_coefficient: 0.5
+
+network:
+  command_size: 3
+  encoder_hidden_dims: [256]
+  latent_dim: 16
+  actor_hidden_dims: [256, 256]
+  critic_hidden_dims: [256]
+  initial_std: 1.0
+
+play:
+  steps: 1000
+  render: interactive
+  plot: true
+  telemetry: logs/play/pe02/pe02_flat/latest

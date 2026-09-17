@@ -4,6 +4,9 @@
 `simulate` 界面、Getup 状态机、手柄组合键、观测历史、PD、动作延迟和控制频率。
 源码已经并入本仓库，运行时不读取旧工作区。
 
+日常参数表见[使用指南](../../docs/DAILY_USAGE.md#cpp)；回放新训练的模型前，
+按[模型切换步骤](../../docs/DAILY_USAGE.md#export)将 ONNX 发布到本目录的策略位置。
+
 ## 构建与运行
 
 ```bash

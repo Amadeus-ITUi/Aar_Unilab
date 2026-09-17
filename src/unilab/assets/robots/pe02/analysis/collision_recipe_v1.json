@@ -1,0 +1,58 @@
+{
+  "version": "pe02-collision-v1",
+  "description": "CAD components ranked by surface area; left leg proxies mirrored in local y. All lengths in metres.",
+  "links": {
+    "body_link": {
+      "parts": [
+        {"name": "battery", "components": [0], "kind": "box"},
+        {"name": "electronics", "components": [1], "kind": "box"},
+        {"name": "top_module", "components": [6], "kind": "box"},
+        {"name": "cross_frame", "components": [3], "kind": "hull"},
+        {"name": "right_frame", "components": [4], "kind": "hull"},
+        {"name": "left_frame", "components": [5], "kind": "hull"},
+        {"name": "left_motor", "components": [7, 12, 13, 15, 18, 20, 21], "kind": "cylinder", "axis": 0},
+        {"name": "right_motor", "components": [8, 11, 14, 16, 17, 19, 22], "kind": "cylinder", "axis": 0},
+        {"name": "right_board", "components": [9], "kind": "hull"},
+        {"name": "left_board", "components": [10], "kind": "hull"},
+        {"name": "top_post_a", "components": [23], "kind": "cylinder", "axis": 2},
+        {"name": "top_post_b", "components": [24], "kind": "cylinder", "axis": 2},
+        {"name": "top_post_c", "components": [25], "kind": "cylinder", "axis": 2}
+      ]
+    },
+    "L_hip_Link": {
+      "mirror_to": "R_hip_Link",
+      "parts": [
+        {"name": "bracket", "components": [0], "kind": "hull"},
+        {"name": "motor", "components": [1, 2, 3, 5, 6, 7], "kind": "cylinder", "axis": 1}
+      ]
+    },
+    "L_thigh_Link": {
+      "mirror_to": "R_thigh_Link",
+      "parts": [
+        {"name": "outer_plate", "components": [0], "kind": "hull", "cut_axis": [0, 0, 1], "cuts": [0.08]},
+        {"name": "inner_plate", "components": [1], "kind": "hull", "cut_axis": [0, 0, 1], "cuts": [0.08]},
+        {"name": "motor", "components": [2, 4, 5, 6], "kind": "cylinder", "axis": 1},
+        {"name": "housing", "components": [3], "kind": "hull"},
+        {"name": "belt_plate", "components": [8], "kind": "hull"},
+        {"name": "rear_housing", "components": [7], "kind": "hull"},
+        {"name": "rear_cap", "components": [13, 26, 27, 28], "kind": "hull"},
+        {"name": "hip_bearing", "components": [20, 21], "kind": "cylinder", "axis": 1},
+        {"name": "knee_axle", "components": [12, 23, 25, 29, 30], "kind": "cylinder", "axis": 1},
+        {"name": "cross_rod_a", "components": [14], "kind": "cylinder", "axis": 1},
+        {"name": "cross_rod_b", "components": [15], "kind": "cylinder", "axis": 1},
+        {"name": "cross_rod_c", "components": [16], "kind": "cylinder", "axis": 1},
+        {"name": "cross_rod_d", "components": [17], "kind": "cylinder", "axis": 1}
+      ]
+    },
+    "L_calf_Link": {
+      "mirror_to": "R_calf_link",
+      "parts": [
+        {"name": "curve", "kind": "hull", "cut_axis": [-0.69399058, 0, -0.71998408], "cuts": [0.035, 0.07, 0.105, 0.14]}
+      ]
+    },
+    "L_foot_Link": {
+      "mirror_to": "R_foot_Link",
+      "parts": [{"name": "sole", "kind": "hull", "preserve_contact": true}]
+    }
+  }
+}

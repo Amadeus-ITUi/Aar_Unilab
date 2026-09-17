@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from unilab.catalog import catalog
+from unilab.catalog.registry import repository_path
 
 SELECTORS = ("robot", "task", "observation", "policy", "algorithm", "simulator")
 
@@ -32,8 +33,9 @@ def parse_selectors(argv: Sequence[str]) -> tuple[dict[str, str], list[str]]:
 def build_legacy_command(mode: str, argv: Sequence[str], root: Path) -> list[str]:
     values, passthrough = parse_selectors(argv)
     selection = catalog.resolve(values)
-    if selection.algorithm.id == "pe01_custom_ppo":
-        command = [sys.executable, str(root / "scripts" / "train_pe01.py")]
+    if selection.algorithm.entrypoint:
+        command = [sys.executable, str(repository_path(selection.algorithm.entrypoint, root))]
+        command.extend(f"{name}={values[name]}" for name in SELECTORS)
         if mode == "play":
             command.append("mode=play")
         command.extend(passthrough)

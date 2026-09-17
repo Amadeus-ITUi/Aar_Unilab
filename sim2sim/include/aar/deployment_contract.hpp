@@ -29,6 +29,7 @@ struct DeploymentContract {
   double policy_hz{0.0};
   double action_scale{1.0};
   double action_clip{1.0};
+  std::string reset_keyframe;
 };
 
 DeploymentContract load_contract(const std::filesystem::path& manifest_path);

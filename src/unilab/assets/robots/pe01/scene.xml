@@ -6,4 +6,8 @@
     <geom name="floor" type="plane" size="0 0 0.05" rgba="0.25 0.3 0.35 1"/>
     <camera name="follow" pos="1.2 -1.2 0.8" xyaxes="0.707 0.707 0 -0.3 0.3 0.906"/>
   </worldbody>
+  <keyframe>
+    <!-- Original PE01 init_state, in catalog joint order. Mechanical zero is unchanged. -->
+    <key name="home" qpos="0 0 0.32 1 0 0 0 -0.1 0.6 -1.2 0.1 0.6 -1.2"/>
+  </keyframe>
 </mujoco>

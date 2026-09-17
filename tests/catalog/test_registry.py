@@ -56,3 +56,21 @@ def test_cross_robot_task_is_rejected():
                 "simulator": "mujoco",
             }
         )
+
+
+@pytest.mark.parametrize(
+    "robot,observation",
+    [("pe01", "pe01_legacy"), ("pe01", "pe01_v2"), ("pe02", "pe02_v1"), ("pe02", "pe02_v2")],
+)
+def test_custom_entrypoint_keeps_explicit_observation_version(robot, observation):
+    selectors = [
+        f"robot={robot}",
+        f"task={robot}_flat",
+        f"observation={observation}",
+        f"policy={robot}_encoder_mlp",
+        f"algorithm={robot}_custom_ppo",
+        "simulator=mujoco",
+    ]
+    command = build_legacy_command("train", selectors, Path("/repo"))
+    assert command[1] == f"/repo/scripts/train_{robot}.py"
+    assert all(item in command for item in selectors)

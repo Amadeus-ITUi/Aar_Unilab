@@ -13,14 +13,21 @@ from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
+from omegaconf import OmegaConf
 
 from unilab.envs.locomotion.pe01 import PE01Env
+from unilab.envs.locomotion.pe01.play_env import make_play_env
 
 
 def python_trajectory(release: Path, steps: int) -> list[dict[str, float]]:
     manifest = json.loads((release / "deployment_manifest.json").read_text(encoding="utf-8"))
     session = ort.InferenceSession(str(release / "policy.onnx"), providers=["CPUExecutionProvider"])
-    env = PE01Env(release / manifest["artifacts"]["scene_path"])
+    model_path = release / manifest["artifacts"]["scene_path"]
+    env = (
+        make_play_env(OmegaConf.load(release / "runtime_config.yaml"), model_path)
+        if manifest["policy"]["observation_builder"] == "pe01_v2"
+        else PE01Env(model_path)
+    )
     observation = env.reset()
     command = np.load(release / "golden_inputs/command.npy", allow_pickle=False)
     result: list[dict[str, float]] = []
@@ -38,10 +45,10 @@ def python_trajectory(release: Path, steps: int) -> list[dict[str, float]]:
         observation, _, _, info = env.step(action)
         row = {"base_height": info["base_height"]}
         row.update({f"action_{index}": float(value) for index, value in enumerate(action)})
-        row.update(
-            {f"ctrl_{index}": float(value) for index, value in enumerate(env.data.ctrl)}
-        )
+        row.update({f"ctrl_{index}": float(value) for index, value in enumerate(env.data.ctrl)})
         result.append(row)
+    if hasattr(env, "close"):
+        env.close()
     return result
 
 

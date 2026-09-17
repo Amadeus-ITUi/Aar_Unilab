@@ -31,6 +31,12 @@ def native_pd_available() -> bool:
     return native_mixed_pd_available() or native_command_delay_pd_available()
 
 
+def native_joint_position_pd_available() -> bool:
+    return _unilab_batch_env is not None and hasattr(
+        _unilab_batch_env.BatchEnvPool, "step_joint_position_pd"
+    )
+
+
 def native_mixed_pd_import_error() -> ImportError | None:
     return _NATIVE_IMPORT_ERROR
 
