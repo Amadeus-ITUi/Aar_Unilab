@@ -1,0 +1,343 @@
+Walking Eagle UniLab / WE11 Conda 安装脚本使用说明
+==================================================
+
+文档版本：2026-08-01
+适用仓库：sar_unilab
+适用分支：Walking_Eagle-Unilab_final
+适用平台：Linux x86_64
+安装方式：Conda + pip
+
+
+一、安装脚本位置
+----------------
+
+安装脚本位于仓库内：
+
+    install_conda_environment.txt
+
+虽然文件扩展名是 .txt，但内容是 Bash 脚本，需要使用 bash 执行：
+
+    bash install_conda_environment.txt <环境名> <PyTorch变体>
+
+参数说明：
+
+    参数 1：新建或使用的 Conda 环境名。
+    参数 2：PyTorch 变体，只允许 cpu 或 cu128。
+
+不填写参数时，默认值是：
+
+    环境名：walking_eagle_we11_test
+    PyTorch：cpu
+
+
+二、新机器前置条件
+------------------
+
+建议系统：Ubuntu 22.04 或兼容的 Linux x86_64 系统。
+
+必须提前具备：
+
+1. Git；
+2. Miniconda 或 Miniforge；
+3. GCC/G++ 编译器；
+4. 可以访问 GitLab、Conda-Forge、PyPI 和 PyTorch 下载站；
+5. 使用 cu128 时，需要可用的 NVIDIA GPU 和兼容驱动。
+
+Ubuntu 可安装基础工具：
+
+    sudo apt update
+    sudo apt install -y git build-essential
+
+确认 Conda 可用：
+
+    conda --version
+
+确认编译器可用：
+
+    gcc --version
+    g++ --version
+
+确认显卡驱动（仅 cu128 环境需要）：
+
+    nvidia-smi
+
+
+三、克隆 sar_unilab
+-------------------
+
+推荐使用 GitLab SSH 地址：
+
+    git clone -b Walking_Eagle-Unilab_final \
+      git@git.esdyn.cn:walking-eagle/sar_unilab.git
+
+克隆完成后进入仓库：
+
+    cd sar_unilab
+
+说明：
+
+    git clone <远端仓库> <本地目录>
+
+命令末尾不填写本地目录时，Git 会自动创建 sar_unilab。无需把本地目录命名为
+其他历史工作区名称。
+
+如果已经存在 sar_unilab：
+
+    cd sar_unilab
+    git switch Walking_Eagle-Unilab_final
+    git pull
+
+如果 SSH 尚未配置，可先测试：
+
+    ssh -T git@git.esdyn.cn
+
+不建议使用 `git config http.sslVerify false` 绕过 HTTPS 证书检查；应优先配置 SSH
+密钥，或在系统中正确安装公司的 CA 证书。
+
+
+四、安装 CPU 测试环境
+--------------------
+
+CPU 环境下载量较小，适合在新机器上先验证代码是否可以完整安装和运行：
+
+    bash install_conda_environment.txt we11_test cpu
+
+安装结束后环境名为：
+
+    we11_test
+
+CPU 环境可以完成 MuJoCo、native PD、测试和最小 PPO 验证，但不适合 4096 环境
+正式训练。
+
+
+五、安装 CUDA 12.8 正式训练环境
+--------------------------------
+
+具备 NVIDIA GPU 和兼容驱动时执行：
+
+    bash install_conda_environment.txt unilab_cuda cu128
+
+安装结束后环境名为：
+
+    unilab_cuda
+
+cu128 安装需要下载数 GB 的 PyTorch/CUDA wheel。网络较慢时可能需要较长时间，
+不要在下载过程中关闭终端。
+
+
+六、脚本自动执行的内容
+----------------------
+
+安装脚本会依次执行：
+
+1. 检查 Linux x86_64、Conda 和宿主机 GCC/G++；
+2. 创建 Python 3.13 Conda 环境；
+3. 使用 pip 安装 PyTorch 2.7.0；
+4. 使用 pip editable 模式安装当前 sar_unilab 源码；
+5. 安装 pytest、ruff、mypy 等验证依赖；
+6. 执行 pip check，检查依赖是否完整；
+7. 从源码编译 native torque-FIFO / command-delay PD；
+8. 在 import torch 之后检查 native 扩展，避免 CXXABI 假通过；
+9. 运行全部非 slow 测试；
+10. 分别运行一轮 WE11 flat 和 rough 最小 PPO；
+11. 生成 checkpoint、run_config、run_summary 和 TensorBoard event。
+
+整个过程使用命名 Conda 环境，不在仓库中创建虚拟环境目录。
+
+
+七、成功判据
+------------
+
+安装成功时，终端末尾应出现类似信息：
+
+    WE11 纯 Conda/pip 环境安装与实跑验证完成
+    native_mixed_pd=true
+    native_command_delay_pd=true
+    环境管理器：Conda + pip
+
+测试应显示：
+
+    153 passed
+
+flat 和 rough 最小训练均应显示：
+
+    Learning iteration 0/1
+    Total steps: 64
+
+并在以下相对目录生成结果：
+
+    logs/conda_validation/DR002JoystickFlatWE11/
+    logs/conda_validation/DR002JoystickRoughWE11/
+
+
+八、安装完成后进入环境
+----------------------
+
+CPU 环境：
+
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate we11_test
+    cd sar_unilab
+
+CUDA 环境：
+
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate unilab_cuda
+    cd sar_unilab
+
+确认当前 Python 属于目标环境：
+
+    which python
+    python --version
+
+确认核心依赖：
+
+    python -c \
+      'import torch, mujoco, unilab; print(torch.__version__); print(mujoco.__version__); print(torch.cuda.is_available())'
+
+CUDA 环境预期最后输出 True；CPU 环境预期输出 False。
+
+
+九、开始 WE11 rough 正式训练
+---------------------------
+
+进入 unilab_cuda 环境后执行：
+
+    CUDA_VISIBLE_DEVICES=0 \
+    UNILAB_MUJOCO_NTHREADS=16 \
+    python -u scripts/train_rsl_rl.py \
+      task=dr002_joystick_rough_we11/mujoco \
+      training.device=cuda:0 \
+      training.no_play=true \
+      algo.max_iterations=99999 \
+      algo.save_interval=500
+
+    4096 个环境、每环境 24 步、TensorBoard、fresh run 和关闭 compile 已是 WE11
+    配置默认值，不需要在命令中重复。UNILAB_MUJOCO_NTHREADS 应按训练机器的 CPU
+    线程和实际吞吐调整。
+
+训练 flat 时只需将 task 改为：
+
+    task=dr002_joystick_flat_we11/mujoco
+
+
+十、打开 TensorBoard
+-------------------
+
+查看正式训练日志：
+
+    tensorboard --logdir logs/rsl_rl_ppo \
+      --port 6006 --bind_all --reload_interval 5
+
+查看安装脚本产生的验证日志：
+
+    tensorboard --logdir logs/conda_validation \
+      --port 6006 --bind_all --reload_interval 5
+
+浏览器访问：
+
+    http://<训练机器IP>:6006
+
+
+十一、非标准编译器路径
+--------------------
+
+安装脚本默认在激活 Conda 前自动查找 gcc 和 g++。如果编译器安装在非标准目录，
+使用 WE11_CC 和 WE11_CXX 指定：
+
+    WE11_CC=/opt/toolchain/bin/gcc \
+    WE11_CXX=/opt/toolchain/bin/g++ \
+    bash install_conda_environment.txt unilab_cuda cu128
+
+不要使用比目标机器系统 libstdc++ ABI 更新过多的独立编译器，否则 native PD 可能
+因为 CXXABI 版本不兼容而退回慢路径。脚本中的 Torch-first 检查会阻止这种环境被
+误判为成功。
+
+
+十二、常见问题
+--------------
+
+1. 提示同名 Conda 环境不是 Python 3.13
+
+   脚本不会自动删除已有环境。请更换环境名：
+
+       bash install_conda_environment.txt unilab_cuda_v2 cu128
+
+2. PyTorch/CUDA 下载很慢
+
+   保持网络连接并重新执行同一命令。pip 缓存位于 TMPDIR 下的
+   walking_eagle_we11_pip_cache，已经完整下载的包通常可以复用。
+
+3. torch.cuda.is_available() 为 False
+
+   检查：
+
+       nvidia-smi
+       echo "$CUDA_VISIBLE_DEVICES"
+       python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available())'
+
+   同时确认安装时第二个参数是 cu128，而不是 cpu。
+
+4. native PD 显示 unavailable 或出现 CXXABI 错误
+
+   不要复制其他机器生成的 .so。删除仓库中本机生成的 native .so 后，重新执行安装
+   脚本，让它使用当前机器的宿主机 GCC/G++ 编译。不要复制整个 Conda 环境替代
+   重建。
+
+5. GitLab HTTPS 证书报错
+
+   使用本文档中的 SSH 地址，或正确安装公司 CA 证书；不要全局关闭 SSL 校验。
+
+6. ROS Python 包污染环境
+
+   干净 Conda shell 不需要额外处理。如果 `echo "$PYTHONPATH"` 显示旧 ROS 或其他
+   工作区路径，并确认它污染了导入，可只对当次命令使用：
+
+       env -u PYTHONPATH PYTHONNOUSERSITE=1 python -u scripts/train_rsl_rl.py ...
+
+   这是一项排障措施，不是从干净 `sar_unilab` 安装和启动的必需前缀。
+
+
+十三、迁移到其他机器的规则
+--------------------------
+
+应该迁移：
+
+- sar_unilab Git 仓库；
+- 需要保留的 model_*.pt；
+- 对应 run_config.json、run_summary.json 和 TensorBoard event；
+- 未进入 Git 的实验数据或回放数据。
+
+不应该直接复制：
+
+- 旧机器的 Conda 环境目录；
+- 仓库内虚拟环境目录；
+- __pycache__；
+- 编译产生的 _unilab_batch_env*.so；
+- /tmp 下的 native build cache。
+
+在新机器应重新执行：
+
+    bash install_conda_environment.txt unilab_cuda cu128
+
+这样 Python ABI、MuJoCo、C++ ABI 和 GPU 运行库会按照新机器重新建立。
+
+
+十四、已验证基线
+----------------
+
+本机已经实际创建并验证：
+
+    Conda 环境：we11_conda_test_20260801
+    Python：3.13.14
+    PyTorch：2.7.0+cpu
+    MuJoCo-Uni：3.8.0
+    native mixed-PD：可用
+    native command-delay PD：可用
+    测试：153 passed
+    WE11 flat 最小 PPO：完成
+    WE11 rough 最小 PPO：完成
+
+详细证据：
+
+    docs/conda_validation_20260804.md

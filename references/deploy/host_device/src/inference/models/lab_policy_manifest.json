@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "kind": "we11_deploy_policy",
+  "created_at_utc": "2026-09-03T05:06:26.085206+00:00",
+  "runtime_model": "lab_policy.mnn",
+  "artifacts": {
+    "onnx": {
+      "file": "policy.onnx",
+      "sha256": "2b1fc26f4a101348c92886e9f308f70f71aa1765704f0c8c1abfeefb5451dc6b",
+      "size_bytes": 162827
+    },
+    "mnn": {
+      "file": "lab_policy.mnn",
+      "sha256": "1ce96d0f353d1d812af04c217ccbfa723efd4aad50f377f4607694ed4214eda3",
+      "size_bytes": 177772
+    }
+  },
+  "contract": {
+    "history_layout": "term-major",
+    "history_length": 5,
+    "history_term_dims": [
+      3,
+      3,
+      4,
+      6,
+      6,
+      2,
+      2,
+      3
+    ],
+    "input": {
+      "dtype": "tensor(float)",
+      "name": "obs",
+      "shape": [
+        1,
+        145
+      ]
+    },
+    "output": {
+      "dtype": "tensor(float)",
+      "name": "act",
+      "shape": [
+        1,
+        6
+      ]
+    }
+  },
+  "conversion": {
+    "command": [
+      "MNNConvert.sh",
+      "-f",
+      "ONNX",
+      "--modelFile",
+      "{source_onnx}",
+      "--MNNModel",
+      "{output_mnn}",
+      "--bizCode",
+      "PheonixWE11"
+    ],
+    "converter_sha256": "66767f3a8930b70f17b7c950e3995016e545a7a57215d32b8167380e203da659",
+    "wrapper_sha256": "cd21f4cf10ba73c8b59cc75239af45a28138d8d4f247112c59c3ed867121ef95",
+    "inspection": {
+      "input_dim": 145,
+      "output_dim": 6,
+      "finite_output": true
+    }
+  },
+  "source": {
+    "task": "DR002JoystickGetupWE11",
+    "run": "2026-09-02_20-55-44_mujoco",
+    "checkpoint": "model_3999.pt",
+    "checkpoint_iteration": 3999,
+    "checkpoint_sha256": "f34469ffd5b00f666848cc599601834f016ee43735734fe69161a244e5fde596",
+    "run_config_sha256": "56d8cc21d3ce6ec74d7a0e615e038317309675c9d928744501c63d585327f476",
+    "play_onnx_sha256": "2b1fc26f4a101348c92886e9f308f70f71aa1765704f0c8c1abfeefb5451dc6b"
+  }
+}

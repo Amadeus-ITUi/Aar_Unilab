@@ -1,0 +1,430 @@
+--- a/mujoco/batch_env.cc
++++ b/mujoco/batch_env.cc
+@@ -892,6 +892,223 @@
+   pool->WaitCount(njobs);
+ }
+ 
++// DR002 pre-controller command FIFO with a decimated, zero-order-held motor
++// controller. Policy targets and external inputs still arrive as one sample
++// per physics substep, but the FIFO and PD advance only on motor ticks.
++void _unsafe_step_command_delay_pd(
++    const std::vector<const raw::MjModel*>& m, raw::MjData* d,
++    int start_roll, int end_roll, int nstep, unsigned int control_spec,
++    const mjtNum* state0, const mjtNum* control, const mjtNum* kp,
++    const mjtNum* kd, const mjtNum* torque_scale,
++    const mjtNum* initial_joint_pos, const mjtNum* initial_joint_vel,
++    const int* position_mask, const int* pos_sensor_adr,
++    const int* vel_sensor_adr, const mjtNum* ctrl_lower,
++    const mjtNum* ctrl_upper, int motor_control_decimation,
++    int initial_motor_substep_index, const int* command_delay_steps,
++    int command_delay_depth, const mjtNum* initial_command_delay_buffer,
++    const mjtNum* initial_motor_ctrl, bool quantize_float32,
++    mjtNum* state_out, mjtNum* sensordata_out, mjtNum* motor_ctrl_out,
++    mjtNum* computed_motor_ctrl_out, mjtNum* command_delay_buffer_out) {
++  size_t nstate = static_cast<size_t>(mj_stateSize(m[0], mjSTATE_FULLPHYSICS));
++  size_t ncontrol = static_cast<size_t>(mj_stateSize(m[0], control_spec));
++  size_t nv = static_cast<size_t>(m[0]->nv);
++  size_t nsensordata = static_cast<size_t>(m[0]->nsensordata);
++  int nu = m[0]->nu;
++  int nbody = m[0]->nbody;
++  int neq = m[0]->neq;
++
++  std::vector<mjtNum> feedback_pos(nu);
++  std::vector<mjtNum> feedback_vel(nu);
++  std::vector<mjtNum> held_motor_ctrl(nu);
++  std::vector<mjtNum> computed_motor_ctrl(nu);
++  std::vector<mjtNum> command_delay_buffer(
++      static_cast<size_t>(command_delay_depth) * nu);
++  std::vector<mjtNum> state_scratch(nstate);
++
++  if (!(control_spec & mjSTATE_QFRC_APPLIED)) {
++    mju_zero(d->qfrc_applied, nv);
++  }
++  if (!(control_spec & mjSTATE_XFRC_APPLIED)) {
++    mju_zero(d->xfrc_applied, 6 * nbody);
++  }
++
++  for (size_t r = start_roll; r < static_cast<size_t>(end_roll); ++r) {
++    for (int i = 0; i < nbody; ++i) {
++      int id = m[r]->body_mocapid[i];
++      if (id >= 0) {
++        mju_copy3(d->mocap_pos + 3 * id, m[r]->body_pos + 3 * i);
++        mju_copy4(d->mocap_quat + 4 * id, m[r]->body_quat + 4 * i);
++      }
++    }
++    for (int i = 0; i < neq; ++i) {
++      d->eq_active[i] = m[r]->eq_active0[i];
++    }
++
++    mj_setState(m[r], d, state0 + r * nstate, mjSTATE_FULLPHYSICS);
++    for (int i = 0; i < nu; ++i) {
++      feedback_pos[i] = initial_joint_pos[r * nu + i];
++      feedback_vel[i] = initial_joint_vel[r * nu + i];
++      held_motor_ctrl[i] = initial_motor_ctrl[r * nu + i];
++      computed_motor_ctrl[i] = initial_motor_ctrl[r * nu + i];
++    }
++    size_t command_delay_offset =
++        r * static_cast<size_t>(command_delay_depth) * nu;
++    mju_copy(command_delay_buffer.data(),
++             initial_command_delay_buffer + command_delay_offset,
++             static_cast<size_t>(command_delay_depth) * nu);
++
++    for (int t = 0; t < nstep; ++t) {
++      size_t step = r * static_cast<size_t>(nstep) + t;
++      mj_setState(m[r], d, control + step * ncontrol, control_spec);
++      bool motor_tick =
++          (initial_motor_substep_index + t) % motor_control_decimation == 0;
++
++      if (motor_tick) {
++        for (int i = 0; i < nu; ++i) {
++          for (int age = command_delay_depth - 1; age > 0; --age) {
++            command_delay_buffer[static_cast<size_t>(age) * nu + i] =
++                command_delay_buffer[static_cast<size_t>(age - 1) * nu + i];
++          }
++          mjtNum target = d->ctrl[i];
++          if (quantize_float32) {
++            target = static_cast<mjtNum>(static_cast<float>(target));
++          }
++          command_delay_buffer[i] = target;
++        }
++
++        for (int i = 0; i < nu; ++i) {
++          size_t delay_index =
++              static_cast<size_t>(command_delay_steps[r * nu + i]) * nu + i;
++          mjtNum delayed_target = command_delay_buffer[delay_index];
++          mjtNum clipped_torque;
++          if (quantize_float32) {
++            float target = static_cast<float>(delayed_target);
++            float pos = static_cast<float>(feedback_pos[i]);
++            float vel = static_cast<float>(feedback_vel[i]);
++            float error = position_mask[i] ? target - pos : target - vel;
++            mjtNum raw_torque = position_mask[i]
++                                    ? kp[r * nu + i] * error -
++                                          kd[r * nu + i] * vel
++                                    : kd[r * nu + i] * error;
++            float torque = static_cast<float>(raw_torque);
++            torque = static_cast<float>(
++                static_cast<mjtNum>(torque) * torque_scale[r * nu + i]);
++            torque =
++                std::min(std::max(torque, static_cast<float>(ctrl_lower[i])),
++                         static_cast<float>(ctrl_upper[i]));
++            clipped_torque = static_cast<mjtNum>(torque);
++          } else {
++            mjtNum torque =
++                position_mask[i]
++                    ? kp[r * nu + i] * (delayed_target - feedback_pos[i]) -
++                          kd[r * nu + i] * feedback_vel[i]
++                    : kd[r * nu + i] * (delayed_target - feedback_vel[i]);
++            torque *= torque_scale[r * nu + i];
++            clipped_torque =
++                std::min(std::max(torque, ctrl_lower[i]), ctrl_upper[i]);
++          }
++          computed_motor_ctrl[i] = clipped_torque;
++          held_motor_ctrl[i] = clipped_torque;
++        }
++      }
++
++      for (int i = 0; i < nu; ++i) {
++        d->ctrl[i] = held_motor_ctrl[i];
++      }
++
++      mju_zero(d->qacc_warmstart, nv);
++      for (int i = 0; i < mjNWARNING; ++i) {
++        d->warning[i].number = 0;
++      }
++      mj_step(m[r], d);
++
++      if (quantize_float32) {
++        mj_getState(m[r], d, state_scratch.data(), mjSTATE_FULLPHYSICS);
++        for (size_t i = 0; i < nstate; ++i) {
++          state_scratch[i] =
++              static_cast<mjtNum>(static_cast<float>(state_scratch[i]));
++        }
++        mj_setState(m[r], d, state_scratch.data(), mjSTATE_FULLPHYSICS);
++      }
++
++      if (t + 1 < nstep) {
++        for (int i = 0; i < nu; ++i) {
++          mjtNum pos = d->sensordata[pos_sensor_adr[i]];
++          mjtNum vel = d->sensordata[vel_sensor_adr[i]];
++          if (quantize_float32) {
++            pos = static_cast<mjtNum>(static_cast<float>(pos));
++            vel = static_cast<mjtNum>(static_cast<float>(vel));
++          }
++          feedback_pos[i] = pos;
++          feedback_vel[i] = vel;
++        }
++      }
++    }
++
++    mj_getState(m[r], d, state_out + r * nstate, mjSTATE_FULLPHYSICS);
++    mju_copy(sensordata_out + r * nsensordata, d->sensordata, nsensordata);
++    mju_copy(motor_ctrl_out + r * nu, held_motor_ctrl.data(), nu);
++    mju_copy(computed_motor_ctrl_out + r * nu,
++             computed_motor_ctrl.data(), nu);
++    mju_copy(command_delay_buffer_out + command_delay_offset,
++             command_delay_buffer.data(),
++             static_cast<size_t>(command_delay_depth) * nu);
++  }
++}
++
++void _unsafe_step_command_delay_pd_threaded(
++    const std::vector<const raw::MjModel*>& m,
++    std::vector<raw::MjData*>& d, int nbatch, int nstep,
++    unsigned int control_spec, const mjtNum* state0, const mjtNum* control,
++    const mjtNum* kp, const mjtNum* kd, const mjtNum* torque_scale,
++    const mjtNum* initial_joint_pos, const mjtNum* initial_joint_vel,
++    const int* position_mask, const int* pos_sensor_adr,
++    const int* vel_sensor_adr, const mjtNum* ctrl_lower,
++    const mjtNum* ctrl_upper, int motor_control_decimation,
++    int initial_motor_substep_index, const int* command_delay_steps,
++    int command_delay_depth, const mjtNum* initial_command_delay_buffer,
++    const mjtNum* initial_motor_ctrl, bool quantize_float32,
++    mjtNum* state_out, mjtNum* sensordata_out, mjtNum* motor_ctrl_out,
++    mjtNum* computed_motor_ctrl_out, mjtNum* command_delay_buffer_out,
++    ThreadPool* pool, int chunk_size) {
++  int nfulljobs = nbatch / chunk_size;
++  int chunk_remainder = nbatch % chunk_size;
++  int njobs = chunk_remainder > 0 ? nfulljobs + 1 : nfulljobs;
++  pool->ResetCount();
++
++  for (int j = 0; j < nfulljobs; ++j) {
++    auto task = [=, &m, &d](void) {
++      int id = pool->WorkerId();
++      _unsafe_step_command_delay_pd(
++          m, d[id], j * chunk_size, (j + 1) * chunk_size, nstep,
++          control_spec, state0, control, kp, kd, torque_scale,
++          initial_joint_pos, initial_joint_vel, position_mask, pos_sensor_adr,
++          vel_sensor_adr, ctrl_lower, ctrl_upper, motor_control_decimation,
++          initial_motor_substep_index, command_delay_steps,
++          command_delay_depth, initial_command_delay_buffer,
++          initial_motor_ctrl, quantize_float32, state_out, sensordata_out,
++          motor_ctrl_out, computed_motor_ctrl_out, command_delay_buffer_out);
++    };
++    pool->Schedule(task);
++  }
++  if (chunk_remainder > 0) {
++    auto task = [=, &m, &d](void) {
++      _unsafe_step_command_delay_pd(
++          m, d[pool->WorkerId()], nfulljobs * chunk_size,
++          nfulljobs * chunk_size + chunk_remainder, nstep, control_spec,
++          state0, control, kp, kd, torque_scale, initial_joint_pos,
++          initial_joint_vel, position_mask, pos_sensor_adr, vel_sensor_adr,
++          ctrl_lower, ctrl_upper, motor_control_decimation,
++          initial_motor_substep_index, command_delay_steps,
++          command_delay_depth, initial_command_delay_buffer,
++          initial_motor_ctrl, quantize_float32, state_out, sensordata_out,
++          motor_ctrl_out, computed_motor_ctrl_out, command_delay_buffer_out);
++    };
++    pool->Schedule(task);
++  }
++  pool->WaitCount(njobs);
++}
++
+ // Subset reset kernel. Iterates over env_ids[start, end), applies per-env
+ // setup (clears controls/wrench, copies mocap, resets eq_active), then sets
+ // the caller's initial state, optionally runs mj_setConst for envs flagged
+@@ -1694,6 +1911,181 @@
+   }
+ 
+   // -----------------------------------------------------------------
++  // Multi-step decimated PD with a persistent pre-controller command FIFO.
++  // The FIFO and PD advance only on motor ticks; actuator torque is held on
++  // intervening physics steps.
++  // -----------------------------------------------------------------
++  py::tuple step_command_delay_pd(
++      int nstep, unsigned int control_spec, const PyCArray state0,
++      const PyCArray control, const PyCArray kp, const PyCArray kd,
++      const PyCArray torque_scale, const PyCArray initial_joint_pos,
++      const PyCArray initial_joint_vel, const PyIArray position_mask,
++      const PyIArray pos_sensor_adr, const PyIArray vel_sensor_adr,
++      const PyCArray ctrl_lower, const PyCArray ctrl_upper,
++      int motor_control_decimation, int initial_motor_substep_index,
++      const PyIArray command_delay_steps,
++      const PyCArray initial_command_delay_buffer,
++      const PyCArray initial_motor_ctrl, bool quantize_float32,
++      std::optional<int> chunk_size) {
++    if (nstep < 1) {
++      throw py::value_error("nstep must be >= 1");
++    }
++    if (!(control_spec & mjSTATE_CTRL)) {
++      throw py::value_error("step_command_delay_pd requires mjSTATE_CTRL");
++    }
++    if (state0.shape(0) != nbatch_) {
++      std::ostringstream msg;
++      msg << "state0.shape[0]=" << state0.shape(0)
++          << " does not match pool nbatch=" << nbatch_;
++      throw py::value_error(msg.str());
++    }
++    if (motor_control_decimation < 1) {
++      throw py::value_error("motor_control_decimation must be positive");
++    }
++    if (initial_motor_substep_index < 0 ||
++        initial_motor_substep_index >= motor_control_decimation) {
++      throw py::value_error(
++          "initial_motor_substep_index must be inside the motor decimation");
++    }
++    if (chunk_size.has_value() && *chunk_size <= 0) {
++      throw py::value_error("chunk_size must be positive");
++    }
++
++    int nu = models_[0]->nu;
++    int ncontrol = mj_stateSize(models_[0], control_spec);
++    size_t batch_actuator_size = static_cast<size_t>(nbatch_) * nu;
++    size_t control_size =
++        static_cast<size_t>(nbatch_) * nstep * ncontrol;
++
++    std::optional<PyCArray> state0_opt = state0;
++    mjtNum* state0_ptr = optional_array_ptr(
++        state0_opt, "state0", static_cast<size_t>(nbatch_) * nstate_);
++    mjtNum* control_ptr = required_array_ptr(control, "control", control_size);
++    mjtNum* kp_ptr = required_array_ptr(kp, "kp", batch_actuator_size);
++    mjtNum* kd_ptr = required_array_ptr(kd, "kd", batch_actuator_size);
++    mjtNum* torque_scale_ptr = required_array_ptr(
++        torque_scale, "torque_scale", batch_actuator_size);
++    mjtNum* initial_joint_pos_ptr = required_array_ptr(
++        initial_joint_pos, "initial_joint_pos", batch_actuator_size);
++    mjtNum* initial_joint_vel_ptr = required_array_ptr(
++        initial_joint_vel, "initial_joint_vel", batch_actuator_size);
++    mjtNum* initial_motor_ctrl_ptr = required_array_ptr(
++        initial_motor_ctrl, "initial_motor_ctrl", batch_actuator_size);
++    mjtNum* ctrl_lower_ptr =
++        required_array_ptr(ctrl_lower, "ctrl_lower", nu);
++    mjtNum* ctrl_upper_ptr =
++        required_array_ptr(ctrl_upper, "ctrl_upper", nu);
++
++    py::buffer_info position_mask_info = position_mask.request();
++    py::buffer_info pos_sensor_info = pos_sensor_adr.request();
++    py::buffer_info vel_sensor_info = vel_sensor_adr.request();
++    py::buffer_info command_delay_steps_info = command_delay_steps.request();
++    py::buffer_info command_delay_buffer_info =
++        initial_command_delay_buffer.request();
++    if (position_mask_info.size != nu || pos_sensor_info.size != nu ||
++        vel_sensor_info.size != nu ||
++        command_delay_steps_info.size != batch_actuator_size) {
++      throw py::value_error(
++          "position_mask, pos_sensor_adr, and vel_sensor_adr must have size nu; "
++          "command_delay_steps must have size nbatch*nu");
++    }
++    if (command_delay_buffer_info.ndim != 3 ||
++        command_delay_buffer_info.shape[0] != nbatch_ ||
++        command_delay_buffer_info.shape[2] != nu) {
++      throw py::value_error(
++          "initial_command_delay_buffer must have shape (nbatch, depth, nu)");
++    }
++    int command_delay_depth =
++        static_cast<int>(command_delay_buffer_info.shape[1]);
++    if (command_delay_depth < 1) {
++      throw py::value_error("command-delay FIFO depth must be positive");
++    }
++    const int* position_mask_ptr =
++        static_cast<const int*>(position_mask_info.ptr);
++    const int* pos_sensor_ptr = static_cast<const int*>(pos_sensor_info.ptr);
++    const int* vel_sensor_ptr = static_cast<const int*>(vel_sensor_info.ptr);
++    const int* command_delay_steps_ptr =
++        static_cast<const int*>(command_delay_steps_info.ptr);
++    for (int i = 0; i < nu; ++i) {
++      if (position_mask_ptr[i] != 0 && position_mask_ptr[i] != 1) {
++        throw py::value_error("position_mask entries must be 0 or 1");
++      }
++      if (pos_sensor_ptr[i] < 0 || pos_sensor_ptr[i] >= nsensordata_ ||
++          vel_sensor_ptr[i] < 0 || vel_sensor_ptr[i] >= nsensordata_) {
++        throw py::value_error("joint sensor address is out of range");
++      }
++      if (ctrl_lower_ptr[i] > ctrl_upper_ptr[i]) {
++        throw py::value_error("ctrl_lower must not exceed ctrl_upper");
++      }
++    }
++    for (size_t i = 0; i < batch_actuator_size; ++i) {
++      if (command_delay_steps_ptr[i] < 0 ||
++          command_delay_steps_ptr[i] >= command_delay_depth) {
++        throw py::value_error(
++            "command_delay_steps entries must index the command FIFO depth");
++      }
++    }
++    size_t command_delay_buffer_size =
++        static_cast<size_t>(nbatch_) * command_delay_depth * nu;
++    mjtNum* initial_command_delay_buffer_ptr = required_array_ptr(
++        initial_command_delay_buffer, "initial_command_delay_buffer",
++        command_delay_buffer_size);
++
++    PyCArray state_out({nbatch_, nstate_});
++    PyCArray sensordata_out({nbatch_, nsensordata_});
++    PyCArray motor_ctrl_out({nbatch_, nu});
++    PyCArray computed_motor_ctrl_out({nbatch_, nu});
++    PyCArray command_delay_buffer_out(
++        {nbatch_, command_delay_depth, nu});
++    mjtNum* state_ptr = static_cast<mjtNum*>(state_out.request().ptr);
++    mjtNum* sensor_ptr =
++        static_cast<mjtNum*>(sensordata_out.request().ptr);
++    mjtNum* motor_ctrl_ptr =
++        static_cast<mjtNum*>(motor_ctrl_out.request().ptr);
++    mjtNum* computed_motor_ctrl_ptr =
++        static_cast<mjtNum*>(computed_motor_ctrl_out.request().ptr);
++    mjtNum* command_delay_buffer_ptr =
++        static_cast<mjtNum*>(command_delay_buffer_out.request().ptr);
++
++    std::vector<const raw::MjModel*> cmodels(nbatch_);
++    for (int i = 0; i < nbatch_; ++i) cmodels[i] = models_[i];
++
++    {
++      py::gil_scoped_release no_gil;
++      if (nthread_ > 0 && nbatch_ > 1) {
++        int chunk = chunk_size.has_value()
++                        ? *chunk_size
++                        : std::max(1, nbatch_ / (10 * nthread_));
++        InterceptMjErrors(_unsafe_step_command_delay_pd_threaded)(
++            cmodels, worker_data_, nbatch_, nstep, control_spec, state0_ptr,
++            control_ptr, kp_ptr, kd_ptr, torque_scale_ptr,
++            initial_joint_pos_ptr, initial_joint_vel_ptr, position_mask_ptr,
++            pos_sensor_ptr, vel_sensor_ptr, ctrl_lower_ptr, ctrl_upper_ptr,
++            motor_control_decimation, initial_motor_substep_index,
++            command_delay_steps_ptr, command_delay_depth,
++            initial_command_delay_buffer_ptr, initial_motor_ctrl_ptr,
++            quantize_float32, state_ptr, sensor_ptr, motor_ctrl_ptr,
++            computed_motor_ctrl_ptr, command_delay_buffer_ptr, pool_.get(),
++            chunk);
++      } else {
++        InterceptMjErrors(_unsafe_step_command_delay_pd)(
++            cmodels, worker_data_[0], 0, nbatch_, nstep, control_spec,
++            state0_ptr, control_ptr, kp_ptr, kd_ptr, torque_scale_ptr,
++            initial_joint_pos_ptr, initial_joint_vel_ptr, position_mask_ptr,
++            pos_sensor_ptr, vel_sensor_ptr, ctrl_lower_ptr, ctrl_upper_ptr,
++            motor_control_decimation, initial_motor_substep_index,
++            command_delay_steps_ptr, command_delay_depth,
++            initial_command_delay_buffer_ptr, initial_motor_ctrl_ptr,
++            quantize_float32, state_ptr, sensor_ptr, motor_ctrl_ptr,
++            computed_motor_ctrl_ptr, command_delay_buffer_ptr);
++      }
++    }
++    return py::make_tuple(
++        state_out, sensordata_out, motor_ctrl_out, computed_motor_ctrl_out,
++        command_delay_buffer_out);
++  }
++
++  // -----------------------------------------------------------------
+   // Single mj_forward over all envs (no patching, no env_ids).
+   //   sensordata output: (nbatch, nsensordata)
+   // Equivalent to the old mujoco.batch_forward path, just owned by the
+@@ -2199,6 +2591,21 @@
+            py::arg("initial_torque_delay_buffer"),
+            py::arg("quantize_float32") = true,
+            py::arg("chunk_size") = py::none())
++      .def("step_command_delay_pd",
++           &BatchEnvPool::step_command_delay_pd, py::kw_only(),
++           py::arg("nstep"), py::arg("control_spec"), py::arg("state0"),
++           py::arg("control"), py::arg("kp"), py::arg("kd"),
++           py::arg("torque_scale"), py::arg("initial_joint_pos"),
++           py::arg("initial_joint_vel"), py::arg("position_mask"),
++           py::arg("pos_sensor_adr"), py::arg("vel_sensor_adr"),
++           py::arg("ctrl_lower"), py::arg("ctrl_upper"),
++           py::arg("motor_control_decimation"),
++           py::arg("initial_motor_substep_index"),
++           py::arg("command_delay_steps"),
++           py::arg("initial_command_delay_buffer"),
++           py::arg("initial_motor_ctrl"),
++           py::arg("quantize_float32") = true,
++           py::arg("chunk_size") = py::none())
+       .def("forward", &BatchEnvPool::forward, py::kw_only(),
+            py::arg("state0"), py::arg("warmstart0") = py::none(),
+            py::arg("skipsensor") = false, py::arg("chunk_size") = py::none())

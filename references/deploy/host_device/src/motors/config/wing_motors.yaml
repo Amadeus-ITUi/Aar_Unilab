@@ -1,0 +1,38 @@
+wing_motor_node:
+    ros__parameters:
+        can_interface: "can0"
+        motor_ids: [7, 8]
+        motor_type: "RS00"
+        master_id: 0
+        publish_topic: "/policy/wing_angles"
+        publish_frequency: 200.0
+
+        # 启动时只把 7/8 号摆到编码器坐标下的镜像物理 90 deg，
+        # 不写电机硬件零点。软件目标走完后直接放行，不判定实际到位误差。
+        startup_target_positions_deg: [90.0, -90.0]
+        startup_kp: 10.0
+        startup_kd: 1.0
+        startup_return_speed: 0.35
+
+        # Flydigi 右摇杆纵向 axes[4] 控制翼速度；实机 8 号方向反转以形成镜像扑打。
+        joy_rc_enabled: true
+        joy_velocity_axis: 4
+        joy_axis_deadzone: 0.10
+        joy_axis_sign: 1.0
+        wing_velocity_signs: [1.0, -1.0]  # [motor7, motor8]
+        wing_max_velocity_rad_s: 0.7853981634  # pi/4，与 Play 一致
+        # 与训练/Play 一致: wing_velocity_cmd.kp=10.0, kd=0.5
+        wing_rc_kp: 10.0
+        wing_rc_kd: 0.5
+        joy_command_timeout_seconds: 0.5
+        # 期望的物理定义：水平为 0 deg、向上旋转为正；实机仍须确认编码器 0 确实对应水平。
+        # motor8 的编码器方向与 motor7 镜像。
+        # 控制目标软件限位；顺序为 [motor7_min,max,motor8_min,max]。
+        position_limits_deg: [0.0, 90.0, -90.0, 0.0]
+        # 实际反馈只有超出这个更宽的范围才退出节点。
+        shutdown_position_limits_deg: [-10.0, 100.0, -100.0, 10.0]
+
+        feedback_timeout_seconds: 2.0
+        runtime_feedback_timeout_seconds: 0.5
+        offline_threshold: 40
+        disable_on_shutdown: true

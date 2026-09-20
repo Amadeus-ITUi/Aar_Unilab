@@ -1,0 +1,5 @@
+int32 motor_id      # 电机ID（1-6）
+int32 master_id     # 新的 master_id 值（例如：13）
+---
+bool success        # 是否成功
+string message      # 返回消息

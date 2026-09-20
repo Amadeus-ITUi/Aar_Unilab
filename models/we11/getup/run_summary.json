@@ -1,0 +1,21 @@
+{
+  "status": "completed",
+  "completed_iterations": 9999,
+  "total_env_steps": 983040000,
+  "final_mean_reward": 38.87290909051895,
+  "best_mean_reward": 54.48030471801758,
+  "mean_episode_length": 1099.79,
+  "last_checkpoint": "/ssd/Pheonix/UniLab/logs/rsl_rl_ppo/DR002JoystickGetupWE11/2026-09-14_18-57-31_mujoco/model_9999.pt",
+  "training_wall_time_sec": 20738.056553840637,
+  "algo": "ppo",
+  "task": "DR002JoystickGetupWE11",
+  "sim_backend": "mujoco",
+  "log_dir": "/ssd/Pheonix/UniLab/logs/rsl_rl_ppo/DR002JoystickGetupWE11/2026-09-14_18-57-31_mujoco",
+  "start_time_utc": "2026-09-14T10:57:31.278530+00:00",
+  "end_time_utc": "2026-09-14T16:43:09.900638+00:00",
+  "wall_time_sec": 20738.794274257005,
+  "wandb_run_url": null,
+  "configured_seed": 1,
+  "configured_seed_source": "algo.seed",
+  "effective_seed": 1
+}

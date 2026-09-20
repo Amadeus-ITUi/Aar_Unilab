@@ -1,0 +1,248 @@
+# @package _global_
+# Self-contained WE11 network, observation, disturbance, control, and reward contract.
+training:
+  play_steps: 500
+  play_env_num: 1
+  play_start_pose: getup
+  render_spacing: 0.0
+  cam_tracking: true
+  cam_tracking_env_idx: 0
+
+interactive:
+  action_mode: policy
+  policy_obs_mode: actor
+  camera_follow_body: true
+  use_env_visual_model: false
+
+algo:
+  num_envs: 4096
+  num_steps_per_env: 24
+  max_iterations: 50000
+  save_interval: 100
+  empirical_normalization: false
+  obs_groups:
+    actor:
+      - actor
+    critic:
+      - critic
+  actor:
+    class_name: unilab.algos.torch.dr002_mlp_adapt:MlpAdaptModel
+    activation: elu
+    obs_normalization: false
+    distribution_cfg:
+      class_name: rsl_rl.modules.distribution.GaussianDistribution
+      init_std: 0.5
+      std_type: scalar
+    max_length: 5
+    cmd_dim: 3
+    latent_dim: 3
+    privileged_target_key: privileged_target
+    privileged_target_dim: 3
+    history_term_dims: [3, 3, 4, 6, 6, 2, 2, 3]
+    mlp_hidden_dims: [128, 64]
+    actor_hidden_dims: [128, 64, 32]
+  critic:
+    class_name: rsl_rl.models.MLPModel
+    hidden_dims: [256, 128, 64]
+    activation: elu
+    obs_normalization: false
+  algorithm:
+    learning_rate: 1.0e-3
+    entropy_coef: 5.0e-3
+    desired_kl: 1.2e-2
+    adaptive_kl_threshold_factor: 1.5
+    adaptive_lr_decay_factor: 1.1
+    adaptive_lr_growth_factor: 1.2
+    adaptive_lr_update_mode: iteration
+    adaptation_loss_coef: 1.0
+
+env:
+  max_episode_seconds: 23.0
+  sim_dt: 0.0025
+  ctrl_dt: 0.02
+  reset_pose:
+    mode: mixed
+    getup_probability: 0.30
+    getup_keyframe: getup_start_v2
+    getup_termination_grace_seconds: 3.0
+  control_config:
+    action_scale: 0.5
+    wheel_action_scale: 10.0
+    clip_actions: 100.0
+    wheel_clip_actions: 3.5
+    simulate_action_latency: true
+    action_delay_semantics: pre_controller_command_fifo
+    torque_delay_steps: null
+    motor_control_hz: 200.0
+    action_delay_steps_by_joint: null
+    torque_delay_steps_by_joint: [0, 0, 0, 0, 0, 0]
+    # One shared FIFO depth per environment, sampled at reset. One step is 5 ms.
+    action_delay_min_steps: 2
+    action_delay_max_steps: 8
+    resample_action_delay: true
+    use_native_batched_pd: false
+    use_native_command_delay_pd: true
+    # [left thigh, left calf, left wheel, right thigh, right calf, right wheel]
+    Kp: [2.0, 7.59, 0.0, 2.0, 7.59, 0.0]
+    Kd: [0.080, 0.682, 0.05, 0.080, 0.682, 0.05]
+  wing_angle_obs:
+    # Wing hinge position, read from sim jointpos sensors and normalized by
+    # rad/pi (== deg/180) to match the Deploy path.
+    enabled: true
+    force_zero_output: false
+    normalization_deg: 180.0
+    zero_offsets_deg: [0.0, 0.0]
+    noise_half_range_deg: 0.0
+    gaussian_noise_relative_std: 0.05
+  wing_velocity_obs:
+    # Wing hinge angular velocity, scaled by 0.1 to match the leg dof_vel term.
+    enabled: true
+    force_zero_output: false
+    scale: 0.1
+    noise_half_range_rad_s: 0.0
+    gaussian_noise_relative_std: 0.05
+  wing_velocity_cmd:
+    # Env-owned RC-shaped wing velocity command. The env integrates the sampled
+    # velocity into a position setpoint every ctrl step; when the velocity is
+    # zero the setpoint is frozen and the position PD holds the wing at that
+    # angle instead of letting gravity pull it. Max speed matches the hardware
+    # safety limit (pi/4 rad/s == rotate 45 deg in one second).
+    enabled: true
+    max_rad_per_s: 0.7853981633974483
+    resample_period_s: [1.0, 5.0]
+    per_side_independent: true
+    kp: 10.0
+    kd: 0.5
+  commands:
+    lin_vel_x: [-0.5, 0.5]
+    ang_vel_z: [-1.0, 1.0]
+    height: [0.24, 0.24]
+    resampling_time: 5.0
+    startup_stand_seconds: 3.0
+    rel_standing_envs: 0.2
+    standing_envs_episode_persistent: true
+    curriculum: true
+    range_multiplier: [1.0, 2.0]
+    ang_vel_z_range_multiplier: [0.3, 1.0]
+    curriculum_threshold: 0.7
+    curriculum_demote_threshold: 0.4
+    curriculum_step: 0.1
+    curriculum_min_episode_fraction: 0.8
+    curriculum_moving_command_threshold: 0.05
+    curriculum_allow_demotion: false
+  domain_rand:
+    randomize_init_yaw: true
+    randomize_base_mass: true
+    added_mass_range: [0.0, 0.5]
+    couple_base_inertia_to_added_mass: true
+    randomize_body_mass: true
+    body_mass_multiplier_range: [0.9, 1.2]
+    body_mass_share_bilateral_scale: false
+    body_mass_resample_on_reset: false
+    randomize_body_inertia: true
+    body_inertia_multiplier_range: [0.9, 1.2]
+    random_com: true
+    com_offset_x: [-0.04, 0.04]
+    com_offset_y: [-0.04, 0.04]
+    com_offset_z: [-0.04, 0.04]
+    randomize_ground_friction: true
+    ground_friction_multiplier_range: [0.8, 1.2]
+    randomize_robot_geom_friction: true
+    robot_geom_friction_multiplier_range: [0.8, 1.2]
+    randomize_dof_armature: false
+    dof_armature_multiplier_range: [0.8, 1.2]
+    randomize_kp: true
+    kp_multiplier_range: [0.8, 1.2]
+    randomize_kd: true
+    kd_multiplier_range: [0.8, 1.2]
+    # Do not stack independent per-motor output scaling on top of Kp/Kd randomization.
+    randomize_torque_scale: false
+    torque_scale_range: [0.8, 1.2]
+    randomize_default_joint_pos: true
+    default_joint_pos_offset_range: [-0.02, 0.02]
+    push_robots: true
+    # At 50 Hz, independently sample one trigger time inside every 5-second
+    # window after startup. Each event applies one control step of body-frame
+    # planar force, with X/Y sampled independently in [-10, +10] N. No base
+    # velocity jump is used, and initial yaw does not change the body axes.
+    push_interval: 250
+    push_randomize_within_interval: true
+    push_linear_velocity_delta_limit: null
+    push_force_limit: [10.0, 10.0, 0.0]
+    # csv_force disturbance is disabled: the new wing hinges replace the
+    # high-frequency flapping wrench that ancient_link approximated. The
+    # csv_force_* keys are kept in this file so the code path can be
+    # re-enabled by flipping csv_force_enabled back to true.
+    csv_force_enabled: false
+    csv_force_curriculum: false
+    csv_force_observation_include_measured_moment: false
+    push_body_name: base_link
+  noise_config:
+    level: 1.0
+    scale_gyro: 0.1
+    scale_joint_angle: 0.001
+    scale_joint_vel: 0.2
+    scale_wheel_vel: 0.3
+    scale_gravity: 0.0
+    gravity_noise_mode: tilt
+    gravity_installation_bias_max_deg: 5.0
+    gravity_dynamic_noise_max_deg: 1.0
+    gravity_dynamic_noise_time_constant_s: 3.0
+    # Keep actor observation noise at full amplitude for every force level.
+    # Domain randomization already samples its configured full ranges independently.
+    curriculum: false
+    curriculum_levels: [1.0, 1.0, 1.0, 1.0]
+
+reward:
+  scales:
+    alive: 0.0
+    track_lin_vel_x: 4
+    track_ang_vel_z: 2.0
+    track_lin_vel_x_enhance: 4
+    lin_vel_z: -2.0
+    ang_vel_xy: -0.2
+    orientation: -10.0
+    base_height: -0.4
+    joint_torques_l2: -1.0e-4
+    joint_torques_wheel_l2: -1.0e-4
+    joint_vel_l2: -5.0e-5
+    joint_acc_l2: -2.5e-4
+    # Stronger wheel-acceleration regularization for smoother wheel commands.
+    joint_acc_wheel_l2: -2.5e-4
+    joint_pos_limits: -1.0
+    nominal_state_lingzu: -300.0
+    action_rate_l2: -0.2
+    action_smooth_lingzu: -0.03
+    undesired_contacts: -10.0
+    zero_cmd_stationary_vx: -20
+    # Preserve the previous effective yaw slope: -4 scale * 3 yaw weight.
+    zero_cmd_stationary_yaw: -20
+  # Keep the established yaw-tracking width unchanged.
+  tracking_sigma: 0.25
+  # Moderate tracking width avoids demanding an unsafe instantaneous response
+  # during command transitions while retaining useful velocity precision.
+  track_lin_vel_x_std: 0.25
+  # Clip vx and yaw independently so one large error cannot hide the other.
+  zero_cmd_stationary_vx_term_clip: 2.0
+  zero_cmd_stationary_yaw_term_clip: 2.0
+  # 顺便还有两个阈值可控制何时启用该惩罚:
+  # zero_cmd_stationary_gate_vx: 0.05
+  # zero_cmd_stationary_gate_wz: 0.05
+  # A wider auxiliary error curve supplies recovery signal without immediately
+  # saturating on ordinary acceleration/deceleration transients.
+  track_lin_vel_x_enhance_std: 0.6
+  track_lin_vel_x_term_clip: 2.0
+  # scale=2 needs a 2/s cap; the generic 1/s cap creates a flat yaw-reward
+  # plateau below about 0.208 rad/s and permits slow zero-command rotation.
+  track_ang_vel_z_term_clip: 2.0
+  # Continue penalizing tilt beyond the old ~18-degree saturation point.
+  orientation_term_clip: 3.0
+  base_height_std: 0.05
+  base_height_clip: 4.0
+  only_positive_rewards: false
+  undesired_contact_threshold: 0.1
+  termination_contact_threshold: 5.0
+  # ctrl_dt=0.02 s, so 25 consecutive control steps are 0.5 s.
+  termination_contact_fail_steps: 25
+  termination_gravity_z_threshold: 0.7
+  termination_fail_time_s: 0.5

@@ -1,0 +1,61 @@
+# Guided direct-CAN MIT velocity sweep for wheel motors 3/6.
+# Motors 1/2/4/5 hold the sweep pose. Motors 7/8 are never accessed.
+
+swept_motor_ids: [3, 6]
+hold_motor_ids: [1, 2, 4, 5]
+motor_ids: [1, 2, 3, 4, 5, 6]
+
+# Keep the same physical sweep pose and changed zero-reference compensation as
+# the motor 1/4 and 2/5 sweeps.
+sweep_base_def_pos_policy_rad: [-0.42, 0.50, 0.0, -0.42, 0.50, 0.0]
+# [-0.92020, 0.98338] - [-0.82, 1.07] = [-0.10020, -0.08662].
+zero_reference_offset_policy_rad: [-0.10020, -0.08662, 0.0, -0.10020, -0.08662, 0.0]
+# Final policy target: [-0.52020, 0.41338, 0, -0.52020, 0.41338, 0].
+# Final raw target:    [+0.52020, 0.41338, 0, -0.52020, -0.41338, 0].
+flipped_motors: [true, false, true, false, true, false]
+
+can:
+  channel: can0
+  master_id: 0
+  initial_status_timeout_sec: 1.0
+  require_initial_feedback: true
+  enable_motors: true
+  enable_retries: 5
+  disable_on_exit: true
+
+joy:
+  # Xbox A (/joy.buttons[0]) is used for all three gates.
+  confirm_button: 0
+  timeout_sec: 120.0
+
+return_to_def_pos:
+  # Before the sweep, wheels use Kp=0 and target velocity 0 rad/s.
+  # These gains also move/hold motors 1/2/4/5 at the sweep pose.
+  kp: 1.0
+  kd: 0.1
+  speed_rad_s: 0.10
+  min_duration_sec: 1.0
+
+hold:
+  # Order follows hold_motor_ids: [motor1, motor2, motor4, motor5].
+  kp: [1.0, 1.0, 1.0, 1.0]
+  kd: [0.1, 0.1, 0.1, 0.1]
+
+sweep:
+  control_mode: velocity
+  # Policy wheel directions are equal. With the mirrored raw motor mapping:
+  # motor3 receives -sin velocity and motor6 receives +sin velocity.
+  signs: [1.0, 1.0]
+  # The CAN control loop is intentionally fixed at 200 Hz.
+  publish_rate_hz: 200.0
+  record_rate_hz: 200.0
+  start_frequency_hz: 0.1
+  end_frequency_hz: 5.0
+  velocity_amplitude_rad_s: 5.0
+  duration_sec: 40.0
+  # MIT D-only velocity control: torque = Kd * (v_target - v_actual).
+  kp: 0.0
+  kd: 0.1
+  torque_nm: 0.0
+  restore_gains_on_exit: true
+  output_file: logs/sweep_motor36_{timestamp}.csv

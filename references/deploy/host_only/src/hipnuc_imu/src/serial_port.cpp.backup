@@ -1,0 +1,466 @@
+#include <iostream>
+#include <sensor_msgs/msg/imu.hpp>
+#include "rclcpp/rclcpp.hpp"
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <termios.h>
+#include <thread>
+#include <atomic>
+#include <cmath>
+#include <cstring>
+
+#ifdef __cplusplus
+extern "C"{
+#endif
+#include <poll.h>
+#ifdef __cplusplus
+}
+#endif
+
+#define GRA_ACC     (9.8)
+#define DEG_TO_RAD  (M_PI / 180.0)
+#define BUF_SIZE (256)
+
+// WIT IMU 协议常量
+#define WIT_HEADER      0x55
+#define WIT_ACC_TYPE    0x51
+#define WIT_GYR_TYPE    0x52
+#define WIT_ANG_TYPE    0x53
+#define WIT_MAG_TYPE    0x54
+#define WIT_PACKET_SIZE 11
+
+using namespace std::chrono_literals;
+using namespace std;
+
+static const struct {
+    int rate;
+    speed_t constant;
+} baud_map[] = {
+    {4800, B4800}, {9600, B9600}, {19200, B19200}, {38400, B38400},
+    {57600, B57600}, {115200, B115200}, {230400, B230400}, {460800, B460800}, {921600, B921600},
+    {0, B0}  // Sentinel
+};
+
+// WIT IMU 数据结构
+struct WitImuData {
+    float acceleration[3] = {0.0f, 0.0f, 0.0f};
+    float angular_velocity[3] = {0.0f, 0.0f, 0.0f};
+    float angle_degree[3] = {0.0f, 0.0f, 0.0f};
+    float magnetometer[3] = {0.0f, 0.0f, 0.0f};
+    bool has_angle_data = false;
+};
+
+// WIT 协议解析器
+class WitProtocolParser {
+private:
+    uint8_t buff[WIT_PACKET_SIZE];
+    int key = 0;
+    WitImuData imu_data_;
+
+    // 将两个字节转换为有符号短整型（小端序）
+    int16_t hex_to_short(uint8_t low, uint8_t high) {
+        return static_cast<int16_t>((static_cast<uint16_t>(high) << 8) | low);
+    }
+
+    // 校验和检查
+    bool check_sum(uint8_t* data, int len, uint8_t checksum) {
+        uint8_t sum = 0;
+        for (int i = 0; i < len; i++) {
+            sum += data[i];
+        }
+        return (sum & 0xFF) == checksum;
+    }
+
+public:
+    // 处理一个字节，返回 true 表示解析到完整数据包
+    bool process_byte(uint8_t byte) {
+        buff[key] = byte;
+        key++;
+
+        // 检查起始字节
+        if (buff[0] != WIT_HEADER) {
+            key = 0;
+            return false;
+        }
+
+        // 等待完整数据包
+        if (key < WIT_PACKET_SIZE) {
+            return false;
+        }
+
+        // 数据包完整，开始解析
+        bool angle_flag = false;
+        uint8_t data_type = buff[1];
+
+        // 校验和检查
+        if (!check_sum(buff, 10, buff[10])) {
+            key = 0;
+            return false;
+        }
+
+        // 根据数据类型解析
+        switch (data_type) {
+            case WIT_ACC_TYPE:  // 加速度计
+                imu_data_.acceleration[0] = hex_to_short(buff[2], buff[3]) / 32768.0f * 16.0f * GRA_ACC;
+                imu_data_.acceleration[1] = hex_to_short(buff[4], buff[5]) / 32768.0f * 16.0f * GRA_ACC;
+                imu_data_.acceleration[2] = hex_to_short(buff[6], buff[7]) / 32768.0f * 16.0f * GRA_ACC;
+                break;
+
+            case WIT_GYR_TYPE:  // 陀螺仪
+                imu_data_.angular_velocity[0] = hex_to_short(buff[2], buff[3]) / 32768.0f * 2000.0f * DEG_TO_RAD;
+                imu_data_.angular_velocity[1] = hex_to_short(buff[4], buff[5]) / 32768.0f * 2000.0f * DEG_TO_RAD;
+                imu_data_.angular_velocity[2] = hex_to_short(buff[6], buff[7]) / 32768.0f * 2000.0f * DEG_TO_RAD;
+                break;
+
+            case WIT_ANG_TYPE:  // 角度
+                imu_data_.angle_degree[0] = hex_to_short(buff[2], buff[3]) / 32768.0f * 180.0f;
+                imu_data_.angle_degree[1] = hex_to_short(buff[4], buff[5]) / 32768.0f * 180.0f;
+                imu_data_.angle_degree[2] = hex_to_short(buff[6], buff[7]) / 32768.0f * 180.0f;
+                angle_flag = true;
+                imu_data_.has_angle_data = true;
+                break;
+
+            case WIT_MAG_TYPE:  // 磁力计
+                imu_data_.magnetometer[0] = hex_to_short(buff[2], buff[3]) / 10.0f;
+                imu_data_.magnetometer[1] = hex_to_short(buff[4], buff[5]) / 10.0f;
+                imu_data_.magnetometer[2] = hex_to_short(buff[6], buff[7]) / 10.0f;
+                break;
+
+            default:
+                key = 0;
+                return false;
+        }
+
+        key = 0;
+        return angle_flag;  // 只有角度数据包返回 true，触发发布
+    }
+
+    const WitImuData& get_data() const {
+        return imu_data_;
+    }
+};
+
+// 从欧拉角计算四元数
+void euler_to_quaternion(double roll, double pitch, double yaw, 
+                         double& qx, double& qy, double& qz, double& qw) {
+    double cr = cos(roll * 0.5);
+    double sr = sin(roll * 0.5);
+    double cp = cos(pitch * 0.5);
+    double sp = sin(pitch * 0.5);
+    double cy = cos(yaw * 0.5);
+    double sy = sin(yaw * 0.5);
+
+    qw = cr * cp * cy + sr * sp * sy;
+    qx = sr * cp * cy - cr * sp * sy;
+    qy = cr * sp * cy + sr * cp * sy;
+    qz = cr * cp * sy - sr * sp * cy;
+}
+
+class IMUNode : public rclcpp::Node
+{
+	public:
+		int fd = 0;
+		rclcpp::TimerBase::SharedPtr publish_timer_;
+		IMUNode() : Node("imu_node")	
+		{
+			this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
+			this->declare_parameter<int>("baud_rate", 115200);
+			this->declare_parameter<std::string>("frame_id", "imu_link");
+			this->declare_parameter<std::string>("imu_topic", "/IMU_data");
+            this->declare_parameter<int>("publish_rate", 100);
+
+			this->get_parameter("serial_port", serial_port);
+			this->get_parameter("baud_rate", baud_rate);
+			this->get_parameter("frame_id", frame_id);
+			this->get_parameter("imu_topic", imu_topic);
+            this->get_parameter("publish_rate", publish_rate);
+
+			RCLCPP_INFO(this->get_logger(),"serial_port: %s", serial_port.c_str());
+			RCLCPP_INFO(this->get_logger(), "baud_rate: %d", baud_rate);
+			RCLCPP_INFO(this->get_logger(), "frame_id: %s", frame_id.c_str());
+			RCLCPP_INFO(this->get_logger(), "imu_topic: %s", imu_topic.c_str());
+            RCLCPP_INFO(this->get_logger(), "publish_rate: %d Hz", publish_rate);
+			write_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
+			write_buffer_->header.frame_id = frame_id;
+			read_buffer_ = std::make_shared<sensor_msgs::msg::Imu>();
+			read_buffer_->header.frame_id = frame_id;
+			auto sensor_data_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile();
+			imu_pub = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic, sensor_data_qos);
+
+			fd = open_serial(serial_port, baud_rate);
+
+            if (fd > 0) {
+                decode_thread_ = std::thread(&IMUNode::decode_thread, this);
+            }
+
+			publish_timer_ = this->create_wall_timer(
+			    std::chrono::milliseconds(1000 / publish_rate),
+			    std::bind(&IMUNode::publish_data, this)
+			);
+		}
+
+        ~IMUNode()
+        {
+            if (decode_thread_.joinable()) {
+                decode_thread_.join();
+            }
+            if (fd > 0) {
+                close(fd);
+            }
+        }
+
+	private: 
+		void decode_thread(void)
+		{
+			pthread_setname_np(pthread_self(), "serial_rx");
+        	struct sched_param sp{}; sp.sched_priority = 60;
+        	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+            uint8_t buf[BUF_SIZE] = {0};
+            WitProtocolParser parser;
+            
+			while(rclcpp::ok())
+            {
+			    int total_read = 0;
+    		    int ret;
+
+    		    // Setup for select() timeout
+    		    struct timeval tv;
+    		    fd_set readfds;
+			    int timeout_ms = 1;
+    		    while (total_read < BUF_SIZE)
+    		    {
+    		        // Reset select() parameters for each iteration
+    		        FD_ZERO(&readfds);
+    		        FD_SET(fd, &readfds);
+
+    		        // Configure timeout for this iteration
+    		        tv.tv_sec = timeout_ms / 1000;
+    		        tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    		        // Wait for data or timeout
+    		        ret = select(fd + 1, &readfds, NULL, NULL, &tv);
+
+    		        if (ret < 0)
+    		        {
+    		            // Handle interruption by signal
+    		            if (errno == EINTR)
+    		                continue;
+    		            perror("select");
+    		            return;
+    		        }
+    		        else if (ret == 0)
+    		        {
+    		            // No data received within timeout period
+    		            break;
+    		        }
+
+    		        // Data is available, read it
+    		        ret = read(fd, buf + total_read, BUF_SIZE - total_read);
+    		        if (ret < 0)
+    		        {
+    		            // Handle non-blocking operations
+    		            if (errno == EAGAIN || errno == EWOULDBLOCK)
+    		                continue;
+    		            perror("read");
+    		            return;
+    		        }
+    		        else if (ret == 0)
+    		        {
+    		            // Port closed or disconnected
+    		            break;
+    		        }
+
+    		        // Update total bytes read
+    		        total_read += ret;
+    		    }
+                
+                if(total_read > 0)
+                {
+                    static int total_bytes_received = 0;
+                    static int packets_decoded = 0;
+                    static int angle_packets = 0;
+                    total_bytes_received += total_read;
+                    
+                    // 调试：打印前几个数据包的原始字节（仅前5次）
+                    static int debug_count = 0;
+                    if (debug_count < 5 && total_read > 0) {
+                        RCLCPP_INFO(this->get_logger(), "Received %d bytes, first bytes: %02X %02X %02X %02X %02X", 
+                                   total_read, buf[0], buf[1], buf[2], buf[3], buf[4]);
+                        debug_count++;
+                    }
+                    
+                    // 逐个字节处理 WIT 协议
+                    for (int i = 0; i < total_read; i++) {
+                        if (parser.process_byte(buf[i])) {
+                            // 收到角度数据包，更新 IMU 消息
+                            angle_packets++;
+                            packets_decoded++;
+                            
+                            if (angle_packets <= 3) {
+                                RCLCPP_INFO(this->get_logger(), "Decoded angle packet #%d", angle_packets);
+                            }
+                            
+                            const WitImuData& data = parser.get_data();
+                            
+                            // 转换欧拉角到四元数
+                            double roll_rad = data.angle_degree[0] * DEG_TO_RAD;
+                            double pitch_rad = data.angle_degree[1] * DEG_TO_RAD;
+                            double yaw_rad = data.angle_degree[2] * DEG_TO_RAD;
+                            
+                            double qx, qy, qz, qw;
+                            euler_to_quaternion(roll_rad, pitch_rad, yaw_rad, qx, qy, qz, qw);
+                            
+                            // 更新消息
+                            write_buffer_->orientation.w = qw;
+                            write_buffer_->orientation.x = qx;
+                            write_buffer_->orientation.y = qy;
+                            write_buffer_->orientation.z = qz;
+                            
+                            write_buffer_->angular_velocity.x = data.angular_velocity[0];
+                            write_buffer_->angular_velocity.y = data.angular_velocity[1];
+                            write_buffer_->angular_velocity.z = data.angular_velocity[2];
+                            
+                            write_buffer_->linear_acceleration.x = data.acceleration[0];
+                            write_buffer_->linear_acceleration.y = data.acceleration[1];
+                            write_buffer_->linear_acceleration.z = data.acceleration[2];
+                            
+                            write_buffer_->header.stamp = rclcpp::Clock().now();
+                            write_buffer_ = std::atomic_exchange(&read_buffer_, write_buffer_);
+                        }
+                    }
+                    
+                    // 每10000字节输出一次统计
+                    if (total_bytes_received > 10000) {
+                        RCLCPP_INFO(this->get_logger(), "Stats: %d bytes received, %d angle packets decoded", 
+                                   total_bytes_received, angle_packets);
+                        total_bytes_received = 0;
+                        angle_packets = 0;
+                    }
+                    
+                    memset(buf, 0, sizeof(buf));
+                }
+            }
+        }
+
+        void publish_data(void)
+        {
+            auto data = std::atomic_load(&read_buffer_);
+            
+            // 检查数据是否有效（时间戳不为0表示有数据更新过）
+            static bool first_publish = true;
+            if (first_publish && data->header.stamp.sec == 0 && data->header.stamp.nanosec == 0) {
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                    "No IMU data received yet. Check serial connection and device.");
+                first_publish = false;
+            }
+            
+            imu_pub->publish(*data);
+        }
+
+        int open_serial(std::string port, int baud) {
+            const char* port_device = port.c_str();
+            
+            // 检查设备文件是否存在
+            if (access(port_device, F_OK) != 0) {
+                RCLCPP_ERROR(this->get_logger(), "Serial port device not found: %s", port_device);
+                RCLCPP_INFO(this->get_logger(), "Please check:");
+                RCLCPP_INFO(this->get_logger(), "  1. USB device is connected");
+                RCLCPP_INFO(this->get_logger(), "  2. Run: ls -la /dev/ttyUSB* to find available devices");
+                RCLCPP_INFO(this->get_logger(), "  3. If device exists but not accessible, check permissions");
+                RCLCPP_INFO(this->get_logger(), "  4. If CH340 device detected but no /dev/ttyUSB*, disable brltty:");
+                RCLCPP_INFO(this->get_logger(), "     sudo systemctl stop brltty-udev.service");
+                RCLCPP_INFO(this->get_logger(), "     sudo systemctl disable brltty-udev.service");
+                return -1;
+            }
+            
+            int fd = open(port_device, O_RDWR | O_NOCTTY | O_NDELAY);
+
+            if (fd == -1) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to open serial port: %s", port_device);
+                perror("unable to open serial port");
+                if (errno == EACCES) {
+                    RCLCPP_ERROR(this->get_logger(), "Permission denied. Try: sudo chmod 666 %s", port_device);
+                    RCLCPP_INFO(this->get_logger(), "Or add user to dialout group: sudo usermod -a -G dialout $USER");
+                }
+                return -1;
+            }
+
+            struct termios options;
+            memset(&options, 0, sizeof(options));
+            tcgetattr(fd, &options);
+
+            // Set baud rate
+            speed_t baud_constant = B0;
+            for (int i = 0; baud_map[i].rate != 0; i++) {
+                if (baud_map[i].rate == baud) {
+                    baud_constant = baud_map[i].constant;
+    		        break;
+                }
+            }
+
+            if (baud_constant == B0) {
+                fprintf(stderr, "Unsupported baud rate: %d\n", baud);
+    		    return -1;
+            }
+
+            if (cfsetispeed(&options, baud_constant) < 0 || 
+    		    cfsetospeed(&options, baud_constant) < 0) {
+    		    perror("Error setting baud rate");
+    		    return -1;
+    		}
+
+			 // Configure other port settings
+    		options.c_cflag &= ~PARENB;  // No parity
+    		options.c_cflag &= ~CSTOPB;  // 1 stop bit
+    		options.c_cflag &= ~CSIZE;
+    		options.c_cflag |= CS8;      // 8 data bits
+    		options.c_cflag |= (CLOCAL | CREAD);  // Enable receiver, ignore modem control lines
+		
+    		// Disable hardware flow control
+    		options.c_cflag &= ~CRTSCTS;
+		
+    		// Set input mode (non-canonical, no echo,...)
+    		options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    		options.c_iflag &= ~(IXON | IXOFF | IXANY);  // Disable software flow control
+    		options.c_iflag &= ~(INLCR | ICRNL);  // Disable newline & carriage return translation
+		
+    		// Set output mode (raw output)
+    		options.c_oflag &= ~OPOST;
+		
+    		// Set read timeout and minimum character count
+    		options.c_cc[VMIN] = 0;  // Minimum number of characters
+    		options.c_cc[VTIME] = 0;  // Timeout in deciseconds
+		
+    		// Apply the new settings
+    		if (tcsetattr(fd, TCSANOW, &options) != 0) {
+    		    perror("Error setting port attributes");
+    		    return -1;
+    		}
+		
+    		// Flush the buffer
+    		tcflush(fd, TCIOFLUSH);
+
+			return fd;
+        }
+
+        std::string serial_port;
+        int baud_rate;
+        int publish_rate;
+        std::string frame_id;
+        std::string imu_topic;
+		std::shared_ptr<sensor_msgs::msg::Imu> write_buffer_, read_buffer_;
+        rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
+        std::thread decode_thread_;
+};
+
+
+int main(int argc, const char * argv[])
+{
+	rclcpp::init(argc, argv);
+	rclcpp::spin(std::make_shared<IMUNode>());
+	rclcpp::shutdown();
+
+	return 0;
+}

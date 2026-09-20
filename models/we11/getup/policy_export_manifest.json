@@ -1,0 +1,56 @@
+{
+  "artifact": {
+    "file": "policy.onnx",
+    "sha256": "01074758699760f458a4f34163490059b86adb83f2cfaa28913b4caad824bdff",
+    "size_bytes": 162827
+  },
+  "contract": {
+    "history_layout": "term-major",
+    "history_length": 5,
+    "history_term_dims": [
+      3,
+      3,
+      4,
+      6,
+      6,
+      2,
+      2,
+      3
+    ],
+    "input": {
+      "dtype": "tensor(float)",
+      "name": "obs",
+      "shape": [
+        1,
+        145
+      ]
+    },
+    "output": {
+      "dtype": "tensor(float)",
+      "name": "act",
+      "shape": [
+        1,
+        6
+      ]
+    }
+  },
+  "created_at_utc": "2026-09-15T02:36:09.397568+00:00",
+  "kind": "we11_policy_export",
+  "provenance_mode": "export",
+  "schema_version": 1,
+  "source": {
+    "checkpoint": "model_9999.pt",
+    "checkpoint_iteration": 9999,
+    "checkpoint_sha256": "540db946698be8b3fe5c1c9186755ec6d64889b0bd7c3bc1ab5c8ed9f7e5c1dd",
+    "run": "2026-09-14_18-57-31_mujoco",
+    "run_config_sha256": "0de7fd6259ca11a44fe42a62f07f495bdb728d3b551b0df89a06929c9550b62b",
+    "run_path": "models/we11/getup",
+    "run_summary_sha256": "4eaac60cdb865736b9d1895bf527eb7732aff96df742f9259cc27b4179c4c929",
+    "task": "DR002JoystickGetupWE11",
+    "training_git": {
+      "branch": "pheonix-we11/unilab-bringup",
+      "commit": "0c0a42997e5cd1f93a5dba91f55b6ab98d6ce7eb",
+      "dirty": true
+    }
+  }
+}

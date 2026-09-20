@@ -1,0 +1,202 @@
+{
+  "model_sha256": "99739a53874d469832627505eda492a1cdad7d6a844db914aee72ff374902ef1",
+  "mass_kg": 3.26689,
+  "collision_geom_count": 26,
+  "mirrored_support_error_m": {
+    "L_hip_Link": 5.551115123125783e-17,
+    "L_thigh_Link": 1.1102230246251565e-16,
+    "L_calf_Link": 1.942890293094024e-16,
+    "L_foot_Link": 3.469446951953614e-17
+  },
+  "home_clearance_m": {
+    "body_link_collision_battery_0": 0.14731479477028386,
+    "body_link_collision_electronics_0": 0.20438291173319356,
+    "body_link_collision_top_module_0": 0.289582916711299,
+    "body_link_collision_cross_frame_0": 0.2712602634851677,
+    "body_link_collision_right_frame_0": 0.204382918651012,
+    "body_link_collision_left_frame_0": 0.20438291802709802,
+    "body_link_collision_left_motor_0": 0.2268044349103033,
+    "body_link_collision_right_motor_0": 0.22680443216649757,
+    "L_hip_Link_collision_bracket_0": 0.2296415756866588,
+    "L_hip_Link_collision_motor_0": 0.22687613754894798,
+    "L_thigh_Link_collision_outer_plate_0": 0.137437504479357,
+    "L_thigh_Link_collision_inner_plate_0": 0.1387987518008008,
+    "L_thigh_Link_collision_assembly_0": 0.13836728641130175,
+    "L_calf_Link_collision_curve_0": 0.10567393551697181,
+    "L_calf_Link_collision_curve_1": 0.06941884676342869,
+    "L_calf_Link_collision_curve_2": 0.034858257228434275,
+    "L_foot_Link_collision_sole_0": -5.226878027619897e-10,
+    "R_hip_Link_collision_bracket_0": 0.2296415756866588,
+    "R_hip_Link_collision_motor_0": 0.22687613754894798,
+    "R_thigh_Link_collision_outer_plate_0": 0.13743608102839605,
+    "R_thigh_Link_collision_inner_plate_0": 0.1387973204258039,
+    "R_thigh_Link_collision_assembly_0": 0.13836580162395842,
+    "R_calf_link_collision_curve_0": 0.10567393551697365,
+    "R_calf_link_collision_curve_1": 0.0694188467634306,
+    "R_calf_link_collision_curve_2": 0.034858257228436204,
+    "R_foot_Link_collision_sole_0": -5.226878374564592e-10
+  },
+  "calf_old_convex_volume_m3": 0.00012984747473192705,
+  "calf_split_volume_m3": 7.494632135758079e-05,
+  "calf_convex_filled_volume_removed_fraction": 0.42281263834888505,
+  "calf_preserved_gap_example_local_m": [
+    -0.0996,
+    -0.015,
+    -0.08120000000000001
+  ],
+  "gap_distance_lower_bound_m": 0.016646802512896304,
+  "near_home_new": {
+    "poses": 500,
+    "poses_with_self_contact": 0,
+    "worst": {
+      "depth_m": 0.0
+    }
+  },
+  "near_home_old": {
+    "poses": 500,
+    "poses_with_self_contact": 0,
+    "worst": {
+      "depth_m": 0.0
+    }
+  },
+  "legal_range_new": {
+    "poses": 1000,
+    "poses_with_self_contact": 329,
+    "worst": {
+      "depth_m": 0.014087046419518388,
+      "bodies": [
+        "body_link",
+        "R_thigh_Link"
+      ],
+      "joint_angles_rad": [
+        0.579031015121718,
+        -0.9019771195388481,
+        -1.7423593696191668,
+        -1.5383876603584745,
+        1.6482019988738785,
+        1.7445479172215725
+      ]
+    }
+  },
+  "legal_range_old": {
+    "poses": 1000,
+    "poses_with_self_contact": 400,
+    "worst": {
+      "depth_m": 0.035091033773648854,
+      "bodies": [
+        "body_link",
+        "R_calf_link"
+      ],
+      "joint_angles_rad": [
+        0.5844607688093727,
+        -1.5388977859816768,
+        -1.551939150336141,
+        -0.837624503966529,
+        1.6421531326581842,
+        1.9825674752488756
+      ]
+    }
+  },
+  "source_surface_coverage": {
+    "body_link": {
+      "samples": 5000,
+      "inside_fraction": 0.9954,
+      "outside_distance_p99_mm": 0.0,
+      "outside_distance_max_mm": 0.40295586019396984,
+      "worst_point_local_m": [
+        0.015484957122413691,
+        -0.08559867317132237,
+        -0.02486416968557619
+      ]
+    },
+    "L_hip_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.973,
+      "outside_distance_p99_mm": 0.1653673090469418,
+      "outside_distance_max_mm": 0.40391445091406447,
+      "worst_point_local_m": [
+        -0.0534967403170455,
+        0.025390382304916782,
+        0.011128265673623301
+      ]
+    },
+    "R_hip_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.9748,
+      "outside_distance_p99_mm": 0.16526365815340094,
+      "outside_distance_max_mm": 0.3530637999384712,
+      "worst_point_local_m": [
+        -0.03452143688555912,
+        -0.021257742704523113,
+        0.028625224440454976
+      ]
+    },
+    "L_thigh_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.9822,
+      "outside_distance_p99_mm": 0.03843202427491798,
+      "outside_distance_max_mm": 0.3477619430262319,
+      "worst_point_local_m": [
+        -0.052883738345455615,
+        0.020681906948164953,
+        0.03839357786479459
+      ]
+    },
+    "R_thigh_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.984,
+      "outside_distance_p99_mm": 0.04259472479193375,
+      "outside_distance_max_mm": 0.39962097691845627,
+      "worst_point_local_m": [
+        0.0042139515749611235,
+        0.048256534495447916,
+        -0.008759951252442676
+      ]
+    },
+    "L_calf_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.9112,
+      "outside_distance_p99_mm": 0.36378599971589815,
+      "outside_distance_max_mm": 0.4794738787715439,
+      "worst_point_local_m": [
+        0.006786094855117183,
+        -4.172184264739087e-10,
+        0.0022995048280562975
+      ]
+    },
+    "R_calf_link": {
+      "samples": 5000,
+      "inside_fraction": 0.9136,
+      "outside_distance_p99_mm": 0.3435216033760268,
+      "outside_distance_max_mm": 0.4701666956905928,
+      "worst_point_local_m": [
+        0.003863353021565792,
+        4.172200636315531e-10,
+        0.005414250785967087
+      ]
+    },
+    "L_foot_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.5694,
+      "outside_distance_p99_mm": 0.4182499761034941,
+      "outside_distance_max_mm": 0.4727185254840279,
+      "worst_point_local_m": [
+        -0.03282356694136237,
+        0.005694955118650606,
+        0.011771844384917296
+      ]
+    },
+    "R_foot_Link": {
+      "samples": 5000,
+      "inside_fraction": 0.574,
+      "outside_distance_p99_mm": 0.41640266304772566,
+      "outside_distance_max_mm": 0.47226802318154004,
+      "worst_point_local_m": [
+        -0.018023296165907497,
+        -0.01776504298142374,
+        0.012386004996068088
+      ]
+    }
+  },
+  "coverage_note": "Area-weighted source surface samples, including internal CAD surfaces; coverage is not an outer overfill error bound. Broad-range contacts may be physically valid and are not excluded."
+}

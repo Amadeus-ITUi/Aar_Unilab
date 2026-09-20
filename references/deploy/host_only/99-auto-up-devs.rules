@@ -1,0 +1,11 @@
+SUBSYSTEM=="tty", ACTION=="add", KERNEL=="ttyACM*", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="117e", ATTRS{serial}=="20A033AA3630", SYMLINK+="canable0", TAG+="systemd", ENV{SYSTEMD_WANTS}+="canable-can0@%k.service"
+
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", KERNELS=="5-1.4.1", KERNEL=="can*", NAME="can0", RUN+="/sbin/ip link set can0 up type can bitrate 1000000", RUN+="/sbin/ip link set can0 txqueuelen 1000"
+
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", KERNEL=="can*", NAME="can0", RUN+="/sbin/ip link set can0 up type can bitrate 1000000", RUN+="/sbin/ip link set can0 txqueuelen 1000"
+
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", KERNELS=="5-1.4.3", KERNEL=="can*", NAME="can2", RUN+="/sbin/ip link set can2 up type can bitrate 1000000", RUN+="/sbin/ip link set can2 txqueuelen 1000"
+
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", KERNELS=="5-1.4.4", KERNEL=="can*", NAME="can3", RUN+="/sbin/ip link set can3 up type can bitrate 1000000", RUN+="/sbin/ip link set can3 txqueuelen 1000"
+
+SUBSYSTEM=="tty", ACTION=="add", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="4-1", MODE="0666", SYMLINK+="ttyUSB0"

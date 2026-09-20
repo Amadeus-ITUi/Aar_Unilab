@@ -1,0 +1,5 @@
+robot: pe01
+task: pe01_flat
+simulator: mujoco
+physics_hz: 400
+policy_hz: 50

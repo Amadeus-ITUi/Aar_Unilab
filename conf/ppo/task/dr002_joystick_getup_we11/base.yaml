@@ -1,0 +1,124 @@
+# @package _global_
+# Getup keeps Flat dynamics, expands vx to the hardware-safe deployment target, and adds its
+# own reset curriculum and recovery-aware reward shaping.
+defaults:
+  - /task/dr002_joystick_flat_we11/base
+  - _self_
+
+training:
+  play_start_pose: getup
+  play_getup_difficulty: 1.0
+
+env:
+  commands:
+    # Hardware motor/wheel limits do not support reliable 3 m/s-span tracking.
+    # Train and deploy within the verified +/-1 m/s envelope.
+    lin_vel_x: [-1.0, 1.0]
+    ang_vel_z: [-1.0, 1.0]
+    # Before Enhance this is the fixed target. Enhance integrates a sampled
+    # height velocity into the same command slot.
+    height: [0.25, 0.25]
+    # Policy-only normalization: 0.20/0.25/0.30 m maps to -1/0/+1. The env
+    # command and height reward continue to use physical metres.
+    height_observation_center: 0.25
+    height_observation_scale: 20.0
+    startup_stand_seconds: 0.0
+    rel_standing_envs: 0.30
+    standing_envs_episode_persistent: true
+    curriculum: false
+  reset_pose:
+    mode: getup
+    getup_probability: 1.0
+    getup_keyframe: getup_start_v2
+    getup_termination_grace_seconds: 1.0
+  getup_curriculum:
+    easy_keyframe: home
+    hard_keyframe: getup_start_v2
+    initial_difficulty: 0.0
+    difficulty_step: 0.05
+    frontier_width: 0.05
+    replay_fraction: 0.20
+    hard_anchor_fraction: 0.10
+    window_episodes: 2048
+    promote_success_rate: 0.80
+    demote_success_rate: 0.50
+    # Training uses only the verified Home-to-Getup path, exact Home/Getup, and
+    # dynamic Home balance recovery. Front/Back stay in the offline pose bank
+    # for inspection but are never sampled by training.
+    pose_bank_file: src/unilab/assets/robots/dr002/we11/getup_pose_bank_v3.npz
+    exact_getup_fraction: 0.80
+    exact_getup_path_fraction: 0.20
+    getup_with_home_getup_fraction: 0.60
+    getup_with_home_home_fraction: 0.30
+    getup_with_home_path_fraction: 0.10
+    balance_getup_fraction: 0.40
+    balance_home_fraction: 0.20
+    balance_recovery_fraction: 0.30
+    balance_path_fraction: 0.10
+    balance_episode_seconds: 5.0
+    # Mixed consolidates all learned reset families before robustness training.
+    mixed_getup_fraction: 0.50
+    mixed_home_fraction: 0.20
+    mixed_balance_fraction: 0.20
+    mixed_path_fraction: 0.10
+    # Enhance is the final deployment-robustness stage. It retains enough
+    # get-up/path replay to prevent forgetting while emphasizing stable starts.
+    enhance_getup_fraction: 0.20
+    enhance_home_fraction: 0.30
+    enhance_balance_fraction: 0.40
+    enhance_path_fraction: 0.10
+    enhance_startup_stand_seconds: 1.0
+    enhance_command_resampling_time: 2.5
+    enhance_height_command_range: [0.20, 0.30]
+    enhance_height_command_initial: 0.25
+    enhance_height_velocity_max_m_s: 0.03
+    enhance_height_velocity_zero_fraction: 0.30
+    enhance_push_episode_fraction: 0.20
+    enhance_push_force_scale_range: [0.5, 1.0]
+    enhance_push_duration_s: [0.04, 0.10]
+    enhance_tracking_tilt_start_deg: 10.0
+    enhance_tracking_tilt_full_deg: 25.0
+    enhance_tracking_min_multiplier: 0.20
+    # Both wings are independently uniform across their full mechanical range.
+    # D=1 now matches the former D=0.65 physical disturbance.
+    balance_max_pitch_deg: 16.25
+    balance_max_pitch_rate_rad_s: 0.13
+    # Wheel-axis midpoint relative to base_link in the exact home keyframe.
+    balance_wheel_pivot_offset_body: [0.02543588, 0.0, -0.24231853]
+    forced_difficulty: null
+    forced_stage: null
+  # Preserve Getup's deterministic reset placement while inheriting Flat's
+  # non-pose domain randomization.
+  domain_rand:
+    randomize_init_yaw: false
+    init_xy_range: [0.0, 0.0]
+    init_qvel_range: [0.0, 0.0]
+
+reward:
+  scales:
+    getup_workspace: -0.5
+    # Reward dispatch multiplies by ctrl_dt=0.02, so this is a one-time +0.1.
+    getup_success_bonus: 5.0
+  # Getup's reward override clears the 0.20 m floor while continuously ramping
+  # in absolute command tracking. null selects command tracking.
+  base_height_range: null
+  base_height_std: 0.025
+  # Keep a quadratic signal through 0.05 m error; the inherited value 4 clips
+  # at about 0.035 m with scale=-2.
+  base_height_clip: 8.0
+  getup_success_gravity_z_threshold: 0.90
+  getup_success_base_height_range: [0.20, .inf]
+  # Workspace is reward shaping only; leaving it does not invalidate success.
+  getup_workspace_half_extent: 0.50
+  getup_success_workspace_half_extent: null
+  # Cap the unweighted quadratic workspace penalty before applying its scale.
+  getup_workspace_penalty_clip: 0.5
+  getup_success_hold_time_s: 1.0
+  getup_tracking_gate_min_height: 0.14285
+  getup_tracking_gate_full_height: 0.20
+  getup_lin_vel_z_min_multiplier: 0.10
+  getup_leg_regularization_min_multiplier: 0.20
+  # At 50 Hz, 50 consecutive control steps are one second.
+  termination_contact_fail_steps: 50
+  termination_gravity_z_threshold: 0.4
+  termination_fail_time_s: 1.0

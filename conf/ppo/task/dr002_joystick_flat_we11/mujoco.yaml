@@ -1,0 +1,10 @@
+# @package _global_
+# WE11 MuJoCo owner. All network, observation, disturbance, control, and reward
+# settings live in the WE11-local base; there is no WE9/WE10 task dependency.
+defaults:
+  - /task/dr002_joystick_flat_we11/base
+  - _self_
+
+training:
+  task_name: DR002JoystickFlatWE11
+  sim_backend: mujoco

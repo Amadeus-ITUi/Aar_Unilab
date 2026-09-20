@@ -1,0 +1,6 @@
+# Preserve the CAD-exported source URDF byte-for-byte; the reviewed URDF is the
+# normalized human-readable contract.
+src/unilab/assets/robots/dr002/we11/urdf/we11_source.urdf binary
+
+# Unified-diff context lines intentionally contain their required prefix space.
+third_party/mujoco_uni_mixed_pd/command_delay_pd.patch whitespace=-blank-at-eol

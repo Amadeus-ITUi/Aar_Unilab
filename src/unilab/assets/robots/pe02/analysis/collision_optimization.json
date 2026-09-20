@@ -1,0 +1,42 @@
+{
+  "unchanged_dynamics_fields": [
+    "body_mass",
+    "body_inertia",
+    "body_ipos",
+    "body_iquat",
+    "body_pos",
+    "body_quat",
+    "jnt_axis",
+    "jnt_range",
+    "jnt_pos",
+    "dof_armature",
+    "dof_damping",
+    "dof_frictionloss",
+    "actuator_gear",
+    "actuator_ctrlrange",
+    "key_qpos"
+  ],
+  "source_and_visual_meshes_unchanged": true,
+  "home_scene_unchanged": true,
+  "collision_rebuild_identical": true,
+  "urdf_mjcf_roundtrip": true,
+  "model_buffer_bytes": 666388,
+  "mesh_vertices": 1260,
+  "mesh_faces": 2444,
+  "collision_geoms": 26,
+  "collision_meshes": 19,
+  "sole_sections_mm2": {
+    "baseline": {
+      "0.0001": 29.02858702060181,
+      "0.00025": 66.84356717381303,
+      "0.0005": 130.9946766225698,
+      "0.001": 253.30662930321307
+    },
+    "compact": {
+      "0.0001": 29.02858702060181,
+      "0.00025": 66.84356717381303,
+      "0.0005": 130.9946766225698,
+      "0.001": 239.6882837886698
+    }
+  }
+}

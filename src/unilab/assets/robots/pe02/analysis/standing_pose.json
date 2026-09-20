@@ -1,0 +1,158 @@
+{
+  "method": "level torso, mirrored joints; largest near-plane area among lower hull facets in the 45\u201356 deg knee-to-contact band",
+  "near_plane_depth_m": 0.0005,
+  "near_plane_area_is_not_physical_contact_area": true,
+  "mass_kg": 3.22689,
+  "joint_order": [
+    "L_hip_",
+    "L_thigh_",
+    "L_calf_",
+    "R_hip_",
+    "R_thigh_",
+    "R_calf_"
+  ],
+  "joint_angles_rad": [
+    0.02315985986731155,
+    -0.3314323546333668,
+    -1.235085918713446,
+    -0.02315985986731155,
+    0.3314323546333668,
+    1.235085918713446
+  ],
+  "joint_angles_deg": [
+    1.3269622245113666,
+    -18.989675114575093,
+    -70.76521047831832,
+    -1.3269622245113666,
+    18.989675114575093,
+    70.76521047831832
+  ],
+  "qpos": [
+    0.0,
+    0.0,
+    0.29361627128274914,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.02315985986731155,
+    -0.3314323546333668,
+    -1.235085918713446,
+    -0.02315985986731155,
+    0.3314323546333668,
+    1.235085918713446
+  ],
+  "com_world_m": [
+    -0.04655858353591448,
+    -0.0004890600592622357,
+    0.21829488409816536
+  ],
+  "support_centers_world_m": [
+    [
+      -0.04655858353596214,
+      0.06993571247425914,
+      7.474576513288866e-14
+    ],
+    [
+      -0.046558583535937885,
+      -0.07017571247425161,
+      9.194034422677078e-14
+    ]
+  ],
+  "com_minus_support_midpoint_xy_m": [
+    3.5534075681908917e-14,
+    -0.00036906005926600144
+  ],
+  "sole_normals_local": [
+    [
+      -0.9997226897339726,
+      -0.023157789486171896,
+      -0.004273220938068451
+    ],
+    [
+      -0.9997226897339726,
+      0.023157789486171896,
+      -0.004273220938068451
+    ]
+  ],
+  "sole_centers_local_m": [
+    [
+      -0.035424222548802696,
+      -0.0005453385723133882,
+      -0.0006062477477826178
+    ],
+    [
+      -0.035424222548802696,
+      0.0005453385723133882,
+      -0.0006062477477826178
+    ]
+  ],
+  "sole_normals_world": [
+    [
+      1.9432806058761187e-13,
+      2.5838484130069617e-11,
+      -0.9999999999999998
+    ],
+    [
+      1.9432806058761187e-13,
+      -2.5838484130069617e-11,
+      -0.9999999999999998
+    ]
+  ],
+  "knee_to_support_angle_deg": [
+    51.23373146661082,
+    51.23373146661
+  ],
+  "rigid_support_triangle_area_mm2_per_foot": 2.174572095576625,
+  "near_plane_area_mm2_per_foot": {
+    "0.1": 29.02858702060181,
+    "0.25": 66.84356717381303,
+    "0.5": 130.9946766225698,
+    "1.0": 253.30662930321307,
+    "2.0": 473.45444844776534
+  },
+  "runtime_collision_ground_clearance_m": {
+    "body_link_collision_battery_0": 0.14954814937265393,
+    "body_link_collision_electronics_0": 0.20661626633556363,
+    "body_link_collision_top_module_0": 0.29181627131366905,
+    "body_link_collision_cross_frame_0": 0.27349361808753775,
+    "body_link_collision_right_frame_0": 0.20661627325338205,
+    "body_link_collision_left_frame_0": 0.20661627262946808,
+    "body_link_collision_left_motor_0": 0.22903778951267337,
+    "body_link_collision_right_motor_0": 0.22903778676886763,
+    "L_hip_Link_collision_bracket_0": 0.23187493028960926,
+    "L_hip_Link_collision_motor_0": 0.22910949215075513,
+    "L_thigh_Link_collision_outer_plate_0": 0.13744620160897575,
+    "L_thigh_Link_collision_inner_plate_0": 0.1387949517165456,
+    "L_thigh_Link_collision_assembly_0": 0.13827912076258062,
+    "L_calf_Link_collision_curve_0": 0.10551183175022162,
+    "L_calf_Link_collision_curve_1": 0.06925674255020536,
+    "L_calf_Link_collision_curve_2": 0.03485825699744373,
+    "L_foot_Link_collision_sole_0": -5.225973230549297e-10,
+    "R_hip_Link_collision_bracket_0": 0.23187493028960926,
+    "R_hip_Link_collision_motor_0": 0.22910949215075513,
+    "R_thigh_Link_collision_outer_plate_0": 0.13744620160897575,
+    "R_thigh_Link_collision_inner_plate_0": 0.1387949517165456,
+    "R_thigh_Link_collision_assembly_0": 0.13827912076258064,
+    "R_calf_link_collision_curve_0": 0.10551183175023686,
+    "R_calf_link_collision_curve_1": 0.0692567425502206,
+    "R_calf_link_collision_curve_2": 0.03485825699745897,
+    "R_foot_Link_collision_sole_0": -5.225801284758358e-10
+  },
+  "self_contacts": [],
+  "estimated_static_joint_torque_nm": [
+    -0.025578303595725327,
+    0.4906516352004646,
+    1.8617003905065084,
+    0.026390510006061504,
+    -0.4924546360981402,
+    -1.8828311425140998
+  ],
+  "estimated_static_torque_is_not_a_controller": true,
+  "source_sha256": {
+    "urdf/pe02.urdf": "58bc45ef676a2a568d064d480484a5b38dedb4a31859a6b9a85bc2abc683dab1",
+    "pe02.xml": "dab94c17ffeafa67c035159483cb42115832a0f5aea8d608fd760986d30cf3d3",
+    "meshes/L_foot_Link.STL": "430b3cde9639837b04380b5ca1f79bc0c8f90c508a567344bf1ca84d2ab40d6f",
+    "meshes/R_foot_Link.STL": "b8b3c96abc748a06f64262d1795f8ddb9061b0a2087d8ac65ab5486f9edd4aef"
+  }
+}

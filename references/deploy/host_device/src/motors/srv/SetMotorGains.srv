@@ -1,0 +1,10 @@
+# Request
+bool restore_defaults  # true: restore gains loaded from motors.yaml at motors_node startup
+int32[] motor_ids      # empty means current motor order; otherwise physical motor ids
+float32[] kp           # same length as motor_ids, or all motors if motor_ids is empty
+float32[] kd           # same length as kp
+
+---
+# Response
+bool success
+string message

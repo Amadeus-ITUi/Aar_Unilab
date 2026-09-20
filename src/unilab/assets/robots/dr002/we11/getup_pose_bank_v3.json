@@ -1,0 +1,63 @@
+{
+  "schema_version": 3,
+  "pose_types": {
+    "0": "front",
+    "1": "back",
+    "2": "home",
+    "3": "getup",
+    "4": "getup_to_front",
+    "5": "home_to_getup"
+  },
+  "anchor_keyframes": {
+    "home": "home",
+    "getup": "getup_start_v2"
+  },
+  "scene": "scene_flat_we11.xml",
+  "scene_sha256": "9dc8ec5ab0377ab98a89fb30e6046f1cadd26aa9b89b59da919f72fe3dcd2e9f",
+  "nq": 15,
+  "angle_grid": {
+    "thigh_step": 0.02,
+    "calf_step": 0.02,
+    "home_to_getup_progress_step": 0.01
+  },
+  "calf_joint_range_rad": [
+    -2.522524368,
+    -1.28578406
+  ],
+  "measured_knee_internal_angle_range_deg": [
+    35.47,
+    106.33
+  ],
+  "contact": {
+    "depth": 0.0005,
+    "tolerance": 0.001,
+    "max_penetration": 0.002,
+    "home_ground_clearance": 0.015
+  },
+  "attempted_leg_configs": 2640,
+  "attempted_wing_checks": 52400,
+  "valid_poses": 624,
+  "family_counts": {
+    "front": 44,
+    "back": 395,
+    "home": 1,
+    "getup": 1,
+    "getup_to_front": 84,
+    "home_to_getup": 99
+  },
+  "wing_reset": {
+    "mode": "independent_uniform",
+    "joint_lower": [
+      -1.5708,
+      -1.5708
+    ],
+    "joint_upper": [
+      0.0,
+      0.0
+    ],
+    "offline_grid_samples_per_joint": 9
+  },
+  "rejected": {
+    "wing_sweep_other_geom_penetration": 2018
+  }
+}

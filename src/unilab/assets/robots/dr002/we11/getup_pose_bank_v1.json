@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scene": "scene_flat_we11.xml",
+  "scene_sha256": "267a70c1d237dc63cf245bb74b2f5c693bb58290b965c050695894063ec81181",
+  "nq": 15,
+  "angle_grid": {
+    "thigh_step": 0.02,
+    "calf_step": 0.02
+  },
+  "contact": {
+    "depth": 0.0005,
+    "tolerance": 0.001,
+    "max_penetration": 0.002
+  },
+  "attempted_leg_configs": 4797,
+  "attempted_full_poses": 28782,
+  "valid_poses": 15365,
+  "family_counts": {
+    "front": 288,
+    "back": 15077
+  },
+  "wing_mode_counts": {
+    "horizontal": 2561,
+    "vertical": 2560,
+    "random": 10244
+  },
+  "rejected": {
+    "other_geom_penetration": 13417
+  },
+  "seed": 1
+}

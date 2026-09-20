@@ -1,0 +1,39 @@
+# @package _global_
+defaults:
+  - override /task: pe03_gait_flat
+
+observation: pe03_v4
+policy: pe03_history_velocity_mlp
+network:
+  command_size: 6
+  latent_dim: 3
+  encoder_output_detach: true
+algo:
+  num_envs: 4096
+  num_steps_per_env: 24
+  max_iterations: 1000
+  save_interval: 100
+training:
+  mujoco_threads: 32
+  evaluation_episodes: 64
+  evaluation_interval: 100
+  evaluation_conditions: randomized
+  evaluation_joint_noise: 0.0
+  evaluation_velocity_noise: 0.0
+  evaluation_height_tolerance: 0.01
+  stage_from: null
+  visual_review: null
+  acceptance:
+    consecutive: 3
+    success_rate: 0.95
+    contact_accuracy: 0.9
+    fixed_clearance_mae: 0.005
+    variable_clearance_mae: 0.01
+    height_p95: 0.01
+    duty_error: 0.05
+    max_nonfoot_fraction: 0.01
+    max_limit_fraction: 0.01
+    max_slip_speed: 0.05
+play:
+  gait: [2.0, 0.6, 0.03]
+  delay_ms: 0.0

@@ -1,0 +1,65 @@
+# @package _global_
+# Deterministic first-stage standing validation for PE02.
+# Select explicitly with +experiment=standing; the locomotion baseline is retained.
+env:
+  joint_reset_range: [0.0, 0.0]
+  base_velocity_reset_range: [0.0, 0.0]
+  penalized_bodies: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, R_hip_Link, R_thigh_Link, R_calf_link]
+  termination_bodies: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, R_hip_Link, R_thigh_Link, R_calf_link]
+  consecutive_failure: true
+  fail_to_terminal_time_s: 0.2
+  failure_contact_force: 1.0
+  failure_gravity_z: -0.8191520442889918  # 35 degrees from upright
+
+commands:
+  heading_command: false
+  zero_probability: 1.0
+  ranges:
+    lin_vel_x: [0.0, 0.0]
+    lin_vel_y: [0.0, 0.0]
+    ang_vel_yaw: [0.0, 0.0]
+    heading: [0.0, 0.0]
+
+gait:
+  frequencies: [0.0, 0.0]
+  offsets: [0.0, 0.0]
+  durations: [0.5, 0.5]
+  swing_height: [0.0, 0.0]
+
+noise:
+  enabled: false
+
+domain_rand:
+  enabled: false
+  push_enabled: false
+  delay_ms_range: [0.0, 0.0]
+  default_joint_offset_range: [0.0, 0.0]
+
+reward:
+  scales:
+    base_height: -200.0
+    orientation: -10.0
+    tracking_contacts_shaped_force: 0.0
+    tracking_contacts_shaped_vel: 0.0
+
+algo:
+  num_envs: 4096
+  max_iterations: 1000
+  save_interval: 50
+  entropy_coefficient: 0.005
+
+network:
+  initial_std: 0.3
+
+training:
+  experiment_name: standing
+  mujoco_threads: 32
+  log_root: logs/pe02_standing
+  evaluation_interval: 50
+  evaluation_joint_noise: 0.0
+  evaluation_velocity_noise: 0.0
+
+play:
+  command: [0.0, 0.0, 0.0]
+  gait: [0.0, 0.0, 0.5, 0.0]
+  delay_ms: 0.0

@@ -1,0 +1,83 @@
+{
+  "format": "walking_eagle_we11_pace_runtime_v1",
+  "source_model": "robots/dr002/we11/we11.xml",
+  "source_fit": "outputs/we11_pace_fit/20260910_211720_001_esd_groupA_resource_adapted/pace_best_params.json",
+  "source_fit_sha256": "8641d7c5829b98cd6faa9e46b979052e7340e5c8071026c6d41f1a6ab1ed13e3",
+  "source_wheel_fit_summary": "outputs/we11_wheel_pace_fit/20260910_214100_001_esd_wheel_consistency_resource_adapted/wheel_fit_consistency.json",
+  "source_wheel_fit_summary_sha256": "b34c037c20b58a0690235f57190cc7480c1bd8f37ec1eb57c5e36ee895d0b0fd",
+  "wheel_aggregation": "Arithmetic mean across independent Kd=0.05, 0.1, and 0.2 fits.",
+  "source_pd_fit": "outputs/we11_paired_kp_kd_fit/combined_esd_groupA_expanded_final_best_kp_kd.json",
+  "source_pd_fit_sha256": "186150113abbfd56ac4d2e1f5d4e92afff145d4fc6859f05f2ff37f62090a6e6",
+  "fit_frequency_range_hz": [
+    0.5,
+    4.5
+  ],
+  "joint_order": [
+    "left_thigh_joint",
+    "left_calf_joint",
+    "left_foot_joint",
+    "right_thigh_joint",
+    "right_calf_joint",
+    "right_foot_joint"
+  ],
+  "armature": [
+    0.008677222203964018,
+    0.030286671302744577,
+    0.004881044618994038,
+    0.008677222203964018,
+    0.030286671302744577,
+    0.004881044618994038
+  ],
+  "damping": [
+    0.003964611000548929,
+    0.9333306854823012,
+    0.01824383576670055,
+    0.003964611000548929,
+    0.9333306854823012,
+    0.01824383576670055
+  ],
+  "frictionloss": [
+    0.01165612207571664,
+    0.07282249089084407,
+    0.08020703598415967,
+    0.01165612207571664,
+    0.07282249089084407,
+    0.08020703598415967
+  ],
+  "encoder_bias": [
+    -0.042022490330845,
+    -0.08996326065392665,
+    0.05380915425111789,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "fit_command_delay_steps": 4,
+  "fit_command_delay_s": 0.02,
+  "identified_command_delay_steps_by_source": {
+    "leg_group_a": 4,
+    "wheel_kd0p05": 7,
+    "wheel_kd0p1": 8,
+    "wheel_kd0p2": 6
+  },
+  "runtime_delay_contract": "One shared randomized pre-controller command FIFO with 4-8 motor ticks, spanning the current leg and wheel fits.",
+  "kp": [
+    1.86,
+    9.6,
+    0.0,
+    1.86,
+    9.6,
+    0.0
+  ],
+  "kd": [
+    0.058,
+    0.11,
+    0.05,
+    0.058,
+    0.11,
+    0.05
+  ],
+  "integrator": "RK4",
+  "sim_hz": 400.0,
+  "motor_control_hz": 200.0
+}

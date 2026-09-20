@@ -1,0 +1,220 @@
+Walking_Eagle-Deploy 实机启动问题总结
+=====================================
+
+更新时间：2026-06-29
+
+
+一、这次启动的核心问题
+--------------------
+
+这次不是单纯的 CAN 映射错误，也不是 can0 单侧先断。
+
+日志显示：
+
+1. motors_node 启动时 6 个电机都能检测在线。
+2. CAN 映射正确：
+   can1 -> motor 1/2/3
+   can0 -> motor 4/5/6
+3. Lab policy 开始下发后，所有电机 response_count 都接近或超过阈值。
+4. 首个 offline 是 motor 2 / can1，不是 can0。
+5. 后续 motor 1、motor 2 等反复 offline，所有电机都进入 0kp0kd 安全模式。
+
+因此这次现象更像是：
+
+策略开始控制后，电机没有持续回正常的 0x02 状态反馈，导致 response_count 无法清零。
+
+
+二、策略第一帧看到的状态不对
+--------------------------
+
+当前 motors.yaml 里的默认站姿：
+
+joint_default_angle = [-0.77, 1.07, 0.0, -0.77, 1.07, 0.0]
+
+/set_zeros 后，电机当前位置被清为 0。
+
+motors_node 发布给策略的 /policy/joint_states.position 逻辑是：
+
+position = 当前电机角度 - joint_default_angle
+
+所以清零后如果电机还停在机械零点，策略第一帧看到的不是 0，而是：
+
+[0.77, -1.07, 0.0, 0.77, -1.07, 0.0]
+
+这次 lab_inference_node 第一帧日志就是：
+
+gravity   = [0.498, -0.017, -0.867]
+joint_pos = [0.770, -1.070, -0.000, 0.770, -1.070, -0.000]
+
+然后 MNN 输出：
+
+motor_cmd = [0.433, -0.154, -25.000, 0.489, -0.178, -25.000]
+
+这说明策略一开始就认为机器人离默认站姿很远，并且轮子速度直接打到 -25 rad/s 限幅。
+
+
+三、IMU 姿态也没有和训练坐标完全对齐
+--------------------------------
+
+训练/MuJoCo 里，机器人站平时 projected_gravity 应该接近：
+
+[0, 0, -1]
+
+这次第一帧是：
+
+[0.498, -0.017, -0.867]
+
+这相当于策略认为机身已经明显倾斜。
+
+如果实机当时是正常站平的，这说明真实 IMU frame 和训练里的 base_link frame 没有完全对齐。
+
+这会让策略输出额外纠偏动作，放大启动瞬间的控制冲击。
+
+
+四、CAN / 反馈问题
+----------------
+
+这次 CAN 问题的表象是：
+
+1. 启动检查阶段正常：
+   6 个电机都能 online。
+
+2. 进入策略控制后异常：
+   response_count 不再被正常清零。
+
+3. 第一次 offline：
+   Motor ID 2 is offline
+   response_count=601/600
+   can=can1
+
+4. 当时所有电机 response_count 都接近阈值：
+   motor_1(can1)=597
+   motor_2(can1)=601
+   motor_3(can1)=596
+   motor_4(can0)=597
+   motor_5(can0)=600
+   motor_6(can0)=597
+
+这表示不是单个电机的问题，也不是单个 CAN 口的问题。
+
+更像是策略控制开始后，正常 0x02 状态反馈整体变少、消失，或者电机进入了非正常反馈状态。
+
+
+五、0x15 帧说明什么
+------------------
+
+日志里出现：
+
+RS00 Motor 2: comm_type expected 0x02, got 0x15
+RS00 Motor 5: comm_type expected 0x02, got 0x15
+
+当前驱动只把 0x02 当作正常电机状态反馈。
+
+0x15 不是正常 MIT 状态反馈，所以被过滤，不会清零 response_count。
+
+这不是解析 bug 本身，而是重要信号：
+
+电机在策略控制后回了非正常类型的帧，可能是故障、保护、状态异常或协议状态切换。
+
+后续应该单独解码 0x15 帧的数据域，不要只打印 Frame filtered。
+
+
+六、为什么会触发 CAN/反馈异常
+----------------------------
+
+当前最可能的链路是：
+
+1. /set_zeros 后，电机还在机械零点。
+2. 但 joint_default_angle 表示默认站姿是 [-0.77, 1.07, 0]。
+3. 策略第一帧看到 joint_pos = [0.77, -1.07, 0, ...]。
+4. IMU gravity 也不是 [0, 0, -1]。
+5. MNN 输出大动作，轮子直接饱和到 ±25 rad/s。
+6. 腿部命令撞 joint_position_limits。
+7. 电机反馈变成非正常帧或停止正常 0x02 反馈。
+8. response_count 无法清零。
+9. motors_node 判定 offline，进入 0kp0kd 安全模式。
+
+
+七、不是主要原因的点
+------------------
+
+1. 不是启动时 CAN 映射错误：
+   启动检测阶段 6 个电机在线。
+
+2. 不是单纯 can0 故障：
+   这次首个 offline 是 can1 上的 motor 2。
+
+3. 不是 DDS 没发策略：
+   lab_inference_node 有持续 50Hz policy output 日志。
+
+4. 不是实时优先级失败：
+   本次日志显示主线程 RT priority 设置成功。
+
+5. 不是策略预热没有结束：
+   预热 2s 正常完成，之后才开始触发问题。
+
+
+八、建议的修复顺序
+----------------
+
+1. 不要 /set_zeros 后直接放行 policy。
+
+2. /set_zeros 后先让电机回到 joint_default_angle 对应的默认站姿。
+
+3. 确认 /policy/joint_states.position 接近：
+   [0, 0, 0, 0, 0, 0]
+
+4. 再启动或放行 MNN policy。
+
+5. IMU 需要做 base_link 坐标对齐：
+   静止站平时 projected_gravity 应接近 [0, 0, -1]。
+
+6. 解码并记录 0x15 帧：
+   需要知道 0x15 具体代表什么故障或状态。
+
+7. 在 policy 真正控制前，增加一段安全检查：
+   - CAN 两侧持续有 0x02 feedback
+   - joint_states 接近 0
+   - projected_gravity 合理
+   - policy 第一帧输出不过大
+   - 轮子命令不直接饱和
+
+
+九、推荐的启动前检查
+------------------
+
+启动 Lab policy 前应满足：
+
+1. CAN 映射：
+   can1 可以读到 motor 1/2/3
+   can0 可以读到 motor 4/5/6
+
+2. 电机状态：
+   6 个电机都有连续 0x02 状态反馈。
+
+3. 零点/默认站姿：
+   /policy/joint_states.position 约等于 [0,0,0,0,0,0]。
+
+4. IMU：
+   projected_gravity 约等于 [0,0,-1]。
+
+5. 策略第一帧：
+   腿部命令不能直接撞限位。
+   轮子命令不能在静止输入下直接长期 ±25 rad/s。
+
+
+十、相关日志
+------------
+
+本次 motors_node 日志：
+
+/home/esd/.ros/log/motors_node_13933_1782677496908.log
+
+本次 Lab inference 日志：
+
+/home/esd/.ros/log/lab_inference_node_15404_1782677552847.log
+
+附件原始片段：
+
+/home/esd/.codex/attachments/885946dc-484f-47a5-a0de-1133e860d262/pasted-text.txt
+

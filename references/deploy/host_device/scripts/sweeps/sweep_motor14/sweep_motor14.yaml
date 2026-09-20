@@ -1,0 +1,66 @@
+# Guided direct-CAN motor 1/4 sweep.
+# This script is for motors 1..6. The no-enable/no-detection restriction for
+# motors 7/8 does not apply here.
+
+swept_motor_ids: [1, 4]
+# Hold gains are intentionally limited to non-swept motors in 1..6.
+hold_motor_ids: [2, 3, 5, 6]
+motor_ids: [1, 2, 3, 4, 5, 6]
+
+# Original sweep pose plus the changed zero-reference offset. Keeping these
+# separate preserves the original physical sweep pose while making the new
+# zero-reference compensation explicit.
+sweep_base_def_pos_policy_rad: [-0.42, 0.08662, 0.0, -0.42, 0.08662, 0.0]
+# New normal def-pos minus the previous zero reference:
+# [-0.92020, 0.98338] - [-0.82, 1.07] = [-0.10020, -0.08662].
+zero_reference_offset_policy_rad: [-0.10020, -0.08662, 0.0, -0.10020, -0.08662, 0.0]
+# The old P2/P5 target +0.41338 exceeds the confirmed mechanical endpoints.
+# Final safe policy target: [-0.52020, 0, 0, -0.52020, 0, 0].
+# Final raw target:         [+1.44040, +0.98338, 0, -1.44040, -0.98338, 0].
+flipped_motors: [true, false, true, false, true, false]
+
+can:
+  channel: can0
+  master_id: 0
+  # One initial 0x02 request pass prints positions and checks motors 1..6.
+  initial_status_timeout_sec: 1.0
+  require_initial_feedback: true
+  enable_motors: true
+  enable_retries: 5
+  disable_on_exit: true
+
+joy:
+  # Xbox A in the current Joy mapping. The same key is used for all 3 gates.
+  confirm_button: 0
+  timeout_sec: 120.0
+
+return_to_def_pos:
+  # The return target is the sweep-specific def-pos derived above.
+  kp: 1.0
+  kd: 0.1
+  speed_rad_s: 0.10
+  min_duration_sec: 1.0
+
+hold:
+  # Order follows hold_motor_ids: [motor2, motor3, motor5, motor6].
+  kp: [20.0, 20.0, 20.0, 20.0]
+  kd: [1, 1, 1, 1]
+
+sweep:
+  control_mode: position
+  # Keep the historically verified motor 4 direction (+sin) and flip motor 1.
+  # Policy: motor1=+sin, motor4=+sin. After encoder-direction conversion:
+  # raw motor1=-sin, raw motor4=+sin, compensating the mirrored installation.
+  signs: [1.0, 1.0]
+  publish_rate_hz: 200.0
+  record_rate_hz: 200.0
+  start_frequency_hz: 0.1
+  end_frequency_hz: 5.0
+  amplitude_rad: 0.2
+  duration_sec: 40.0
+  kp: 2.0
+  kd: 0.1
+  # MIT 0x01 torque field; zero Nm encodes to uint16 midpoint 0x7fff.
+  torque_nm: 0.0
+  restore_gains_on_exit: true
+  output_file: logs/sweep_motor14_{timestamp}.csv

@@ -1,0 +1,186 @@
+{
+  "method": "level torso, independently solved joint angles in original assembly frames; largest near-plane area among lower hull facets in the 45\u201356 deg knee-to-contact band",
+  "near_plane_depth_m": 0.0005,
+  "near_plane_area_is_not_physical_contact_area": true,
+  "mass_kg": 3.26689,
+  "joint_order": [
+    "L_hip_",
+    "L_thigh_",
+    "L_calf_",
+    "R_hip_",
+    "R_thigh_",
+    "R_calf_"
+  ],
+  "joint_angles_rad": [
+    0.02315985984147312,
+    -0.3123935666467531,
+    -1.2541283799049432,
+    -0.023159859841472955,
+    0.31240563765456797,
+    1.2541126356920291
+  ],
+  "joint_angles_deg": [
+    1.3269622230309335,
+    -17.898832915897753,
+    -71.85626313613277,
+    -1.3269622230309241,
+    17.899524533700014,
+    71.85536105918104
+  ],
+  "qpos": [
+    0.0,
+    0.0,
+    0.29138291668037913,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.02315985984147312,
+    -0.3123935666467531,
+    -1.2541283799049432,
+    -0.023159859841472955,
+    0.31240563765456797,
+    1.2541126356920291
+  ],
+  "com_world_m": [
+    -0.048336363114794056,
+    -0.00048453242896332724,
+    0.21566985375663272
+  ],
+  "support_centers_world_m": [
+    [
+      -0.04833852552507241,
+      0.06988399549123486,
+      3.615163723935666e-15
+    ],
+    [
+      -0.048334200704482626,
+      -0.07012396258522498,
+      3.5318969970887792e-15
+    ]
+  ],
+  "com_minus_support_midpoint_xy_m": [
+    -1.6542323066914832e-14,
+    -0.00036454888196826976
+  ],
+  "sole_normals_local": [
+    [
+      -0.9997226897339726,
+      -0.023157789486171896,
+      -0.004273220938068451
+    ],
+    [
+      -0.9997226897339726,
+      0.023157789486171896,
+      -0.004273220938068451
+    ]
+  ],
+  "sole_centers_local_m": [
+    [
+      -0.035424222548802696,
+      -0.0005453385723133882,
+      -0.0006062477477826178
+    ],
+    [
+      -0.035424222548802696,
+      0.0005453385723133882,
+      -0.0006062477477826178
+    ]
+  ],
+  "sole_normals_world": [
+    [
+      -2.1582441609282227e-14,
+      4.85722573273506e-17,
+      -1.0
+    ],
+    [
+      -2.1084696488760102e-14,
+      1.1449174941446927e-16,
+      -0.9999999999999999
+    ]
+  ],
+  "knee_to_support_angle_deg": [
+    51.241724706597,
+    51.24172470659906
+  ],
+  "rigid_support_triangle_area_mm2_per_foot": 2.174572095576625,
+  "near_plane_area_mm2_per_foot": {
+    "0.1": 29.02858702060181,
+    "0.25": 66.84356717381303,
+    "0.5": 130.9946766225698,
+    "1.0": 253.30662930321307,
+    "2.0": 473.45444844776534
+  },
+  "runtime_collision_ground_clearance_m": {
+    "body_link_collision_battery_0": 0.14731479477028392,
+    "body_link_collision_electronics_0": 0.20438291173319362,
+    "body_link_collision_top_module_0": 0.28958291671129904,
+    "body_link_collision_cross_frame_0": 0.27126026348516774,
+    "body_link_collision_right_frame_0": 0.20438291865101205,
+    "body_link_collision_left_frame_0": 0.20438291802709807,
+    "body_link_collision_left_motor_0": 0.22680443491030336,
+    "body_link_collision_right_motor_0": 0.22680443216649762,
+    "L_hip_Link_collision_bracket_0": 0.22964157568665886,
+    "L_hip_Link_collision_motor_0": 0.22687613754894803,
+    "L_thigh_Link_collision_outer_plate_0": 0.13743750447935704,
+    "L_thigh_Link_collision_inner_plate_0": 0.13879875180080087,
+    "L_thigh_Link_collision_assembly_0": 0.1383672864113018,
+    "L_calf_Link_collision_curve_0": 0.10567393551697186,
+    "L_calf_Link_collision_curve_1": 0.06941884676342877,
+    "L_calf_Link_collision_curve_2": 0.03485825722843436,
+    "L_foot_Link_collision_sole_0": -5.22687705617475e-10,
+    "R_hip_Link_collision_bracket_0": 0.22964157568665886,
+    "R_hip_Link_collision_motor_0": 0.22687613754894803,
+    "R_thigh_Link_collision_outer_plate_0": 0.1374360810283961,
+    "R_thigh_Link_collision_inner_plate_0": 0.13879732042580395,
+    "R_thigh_Link_collision_assembly_0": 0.13836580162395848,
+    "R_calf_link_collision_curve_0": 0.10567393551697371,
+    "R_calf_link_collision_curve_1": 0.06941884676343066,
+    "R_calf_link_collision_curve_2": 0.03485825722843626,
+    "R_foot_Link_collision_sole_0": -5.22687781945308e-10
+  },
+  "self_contacts": [],
+  "estimated_static_joint_torque_nm": [
+    -0.025494703742581643,
+    0.4907661294828277,
+    1.8827035759311113,
+    0.026298867102579476,
+    -0.49233431461530325,
+    -1.9038503855347944
+  ],
+  "estimated_vertical_support_force_n": [
+    15.94064924935389,
+    16.107541650646112
+  ],
+  "static_floating_base_residual": [
+    0.0,
+    0.0,
+    0.0,
+    5.898059818321144e-17,
+    3.608903764718008e-07,
+    0.0
+  ],
+  "actuator_torque_limits_nm": [
+    5.5,
+    5.5,
+    14.0,
+    5.5,
+    5.5,
+    14.0
+  ],
+  "static_torque_limit_fraction": [
+    0.00463540068046939,
+    0.08923020536051413,
+    0.13447882685222223,
+    0.004781612200468996,
+    0.08951532993005513,
+    0.1359893132524853
+  ],
+  "estimated_static_torque_is_not_a_controller": true,
+  "source_sha256": {
+    "urdf/pe03.urdf": "9c97f7640dfc80081285d8bea19797c148f6dec34a7e7d07b15cf27642bf34ad",
+    "pe03.xml": "99739a53874d469832627505eda492a1cdad7d6a844db914aee72ff374902ef1",
+    "meshes/L_foot_Link.STL": "c2831cb286815cd0cfcddd44d594543d9574b3f7a04e4ff74e56474e2e464eb9",
+    "meshes/R_foot_Link.STL": "29c6e4faffdf4b428c40fb9887c3e7aaeb9eeec2b5d145397520985dfe42d311"
+  }
+}

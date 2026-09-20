@@ -1,0 +1,25 @@
+motors_node:
+    ros__parameters:
+        can_interfaces: ["can0"]
+        motors_type: "RS00"
+        motor_ids: [5]
+        motor_types: ["RS00"]
+        master_id: 0
+        kp: [4.0]
+        kd: [0.2]
+        # 单电机扫频会先调用 /set_zeros；这里用 0.0 让 command/actual 都以刚清的零点为原点。
+        joint_default_angle: [0.0]
+        flipped_motors: [true]
+        vel_only_mode: [false]
+        joint_position_limits: [-1.33, 1.08]
+        debug_mode: False
+        auto_zero_on_start: False
+        enable_per_motor_topics: False
+        publish_joint_commands: False
+        use_gazebo_states: False
+        control_frequency: 200.0
+        publish_rate_policy_joint_states: 200.0
+        publish_rate_per_motor: 50.0
+        publish_rate_joint_commands: 20.0
+        policy_frequency: 50.0
+        enable_interpolation: false

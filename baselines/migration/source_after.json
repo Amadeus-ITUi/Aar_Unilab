@@ -1,0 +1,45 @@
+{
+  "captured_at_utc": "2026-09-15T07:17:19.566767+00:00",
+  "sources": {
+    "unilab": {
+      "path": "/ssd/Pheonix/UniLab",
+      "git_commit": "0c0a42997e5cd1f93a5dba91f55b6ab98d6ce7eb",
+      "git_branch": "pheonix-we11/unilab-bringup",
+      "git_status_short": "M README.md\n M conf/ppo/task/dr002_joystick_flat_we11/base.yaml\n M conf/ppo/task/dr002_joystick_getup_we11/base.yaml\n M docs/handover.md\n M docs/interface.md\n M scripts/pace/README.md\n M scripts/pace/fit_mujoco_pace_params.py\n M scripts/pace/mujoco_dr002_common.py\n M scripts/pace/sweep_we11_paired_leg_pd.py\n M src/unilab/assets/robots/dr002/we11/README.md\n M src/unilab/assets/robots/dr002/we11/we11_pace_params.json\n M src/unilab/envs/locomotion/dr002/getup.py\n M src/unilab/envs/locomotion/dr002/joystick.py\n M tests/envs/locomotion/dr002/test_joystick_critic_obs.py\n M tests/envs/locomotion/dr002/test_we11_getup_training.py\n M tests/envs/locomotion/dr002/test_we11_pace_training.py\n M tests/pace/test_fit_mujoco_pace_params.py\n?? scripts/pace/import_esd_link_sweeps.py\n?? scripts/pace/summarize_esd_link_wheel_fits.py\n?? scripts/pace/validate_mujoco_pace_params.py\n?? tests/pace/test_import_esd_link_sweeps.py",
+      "selected_file_count": 211,
+      "selected_tree_sha256": "9f90e7c1e14d4107ab27e0b2ddee742924c2b88193a909b3bc984c4b003e7654"
+    },
+    "play": {
+      "path": "/ssd/Pheonix/Play",
+      "git_commit": "d73e5317b69ecc0744497450cec66c3111363c12",
+      "git_branch": "pheonix-we11/play-bringup",
+      "git_status_short": "M README.md\n M SHA256SUMS\n M policy/dr002/we11/SOURCE.md\n M policy/dr002/we11/config.yaml\n M policy/dr002/we11/deployment_manifest.json\n M policy/dr002/we11/policy.onnx\n M scripts/joystick_calibrate.py\n M scripts/publish_we11_from_play.py\n M src/rl_sar/include/rl_sim_mujoco.hpp\n M src/rl_sar/library/core/rl_sdk/rl_sdk.cpp\n M src/rl_sar/library/thirdparty/mujoco_simulate/simulate.cc\n M src/rl_sar/library/thirdparty/mujoco_simulate/simulate.h\n M src/rl_sar/src/rl_sim_mujoco.cpp\n M src/rl_sar_zoo/dr002_description/mjcf/we11/we11_pace_params.json\n?? src/rl_sar_zoo/dr002_description/mjcf/we11/scene_hardware_zero_display.xml\n?? src/rl_sar_zoo/dr002_description/mjcf/we11/we11_hardware_encoder_zero.png\n?? src/rl_sar_zoo/dr002_description/mjcf/we11/we11_hardware_zero_display.xml",
+      "selected_file_count": 98,
+      "selected_tree_sha256": "766629961bde7d9c33d19a5694eb7876f0a7e4d0ff1672197bce236b134d5184"
+    },
+    "deploy_host_only": {
+      "path": "/ssd/Pheonix/DeployHostOnly/Deploy",
+      "git_commit": null,
+      "git_branch": null,
+      "git_status_short": null,
+      "selected_file_count": 217,
+      "selected_tree_sha256": "c827c3179391b6b9ac0571e3d89dcbb9f3f1c7e996d06484ab25401558df4faa"
+    },
+    "deploy_host_device": {
+      "path": "/ssd/Pheonix/DeployHostDevice/Deploy",
+      "git_commit": "0d5a910d8678d243c736972e77dd49be3d52790c",
+      "git_branch": "main",
+      "git_status_short": "M README_CN.md\n M docs/ESD_LINK_MIGRATION_STATUS.md\n M docs/WE11_DAILY_STATE_MACHINE.md\n M src/deploy_tools/CMakeLists.txt\n M src/deploy_tools/package.xml\n M src/deploy_tools/scripts/control/we11_state.py\n M src/deploy_tools/scripts/control/we11_supervisor.py\n M src/deploy_tools/test/test_we11_state.py\n M src/deploy_tools/test/test_we11_supervisor_ros.py\n M src/esd_link_bridge/src/esd_link_bridge_node.cpp\n M src/esd_link_bridge/test/test_bridge_pty.py\n M src/remote_controller/launch/joy_cmd.launch.py\n M src/remote_controller/src/remote_controller/joy_cmd_node.py\n M src/xbox/README.md\n M src/xbox/launch/xbox.launch.py\n M src/xbox/src/xbox_vel_publisher.cpp\n M src/xbox/test_interface.sh\n M start_readonly_foxglove.sh\n?? scripts/run_angle_compare_hold.sh\n?? scripts/run_policy_imu_monitor.sh\n?? src/deploy_tools/scripts/control/esd_angle_compare_hold.py\n?? src/deploy_tools/scripts/diagnostics/esd_policy_imu_monitor.py\n?? src/deploy_tools/test/test_esd_angle_compare_hold.py\n?? src/deploy_tools/test/test_esd_policy_imu_monitor.py",
+      "selected_file_count": 265,
+      "selected_tree_sha256": "fc55c4ec8c8b8f15992cdf9e17fa8acdc4b427c345bd666f9742a358bf3e1bde"
+    },
+    "pe01_predecessor": {
+      "path": "/home/angela/ssd/Point_Phoenix/point-legged",
+      "git_commit": "17a4b93a7480233de07d52ccb5c790cfdb1d0286",
+      "git_branch": "Xiong",
+      "git_status_short": "M leggedgym/legged_gym/__pycache__/__init__.cpython-38.pyc\n M leggedgym/legged_gym/algorithm/__pycache__/actor_critic.cpython-38.pyc\n M leggedgym/legged_gym/algorithm/__pycache__/mlp_encoder.cpython-38.pyc\n M leggedgym/legged_gym/algorithm/__pycache__/on_policy_runner.cpython-38.pyc\n M leggedgym/legged_gym/algorithm/__pycache__/ppo.cpython-38.pyc\n M leggedgym/legged_gym/algorithm/__pycache__/rollout_storage.cpython-38.pyc\n M leggedgym/legged_gym/envs/__pycache__/__init__.cpython-38.pyc\n M leggedgym/legged_gym/envs/__pycache__/vec_env.cpython-38.pyc\n M leggedgym/legged_gym/envs/base/__pycache__/base_config.cpython-38.pyc\n M leggedgym/legged_gym/envs/base/__pycache__/base_task.cpython-38.pyc\n M leggedgym/legged_gym/envs/dragon_flat/__pycache__/dragon_flat.cpython-38.pyc\n M leggedgym/legged_gym/envs/dragon_flat/__pycache__/dragon_flat_config.cpython-38.pyc\n M leggedgym/legged_gym/scripts/train.py\n M leggedgym/legged_gym/utils/__pycache__/__init__.cpython-38.pyc\n M leggedgym/legged_gym/utils/__pycache__/helpers.cpython-38.pyc\n M leggedgym/legged_gym/utils/__pycache__/logger.cpython-38.pyc\n M leggedgym/legged_gym/utils/__pycache__/math.cpython-38.pyc\n M leggedgym/legged_gym/utils/__pycache__/task_registry.cpython-38.pyc\n M leggedgym/legged_gym/utils/__pycache__/terrain.cpython-38.pyc\n M leggedgym/logs/dragon_flat/DRAGON/exported/policies/encoder.onnx\n M leggedgym/logs/dragon_flat/DRAGON/exported/policies/policy.onnx\n M leggedgym/logs/dragon_flat/DRAGON/exported/policies/policy.pt\n?? leggedgym/data/inference_obs_20260910_132235.csv\n?? leggedgym/data/inference_obs_20260910_144825.csv\n?? leggedgym/data/inference_obs_20260910_180245.csv\n?? leggedgym/data/inference_obs_20260910_185845.csv\n?? leggedgym/logs/dragon_flat/DRAGON/Sep10_14-20-13_/\n?? leggedgym/logs/dragon_flat/DRAGON/Sep10_14-21-36_/\n?? leggedgym/logs/dragon_flat/DRAGON/Sep10_15-12-34_/",
+      "selected_file_count": 35,
+      "selected_tree_sha256": "263d2612327b5f0c073968c2c7253e3e6d3bb4dc1ce7aedebbfc75a6d06455be"
+    }
+  }
+}

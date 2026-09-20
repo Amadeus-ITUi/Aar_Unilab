@@ -1,0 +1,131 @@
+# Python
+__pycache__/
+dist/
+.eggs/
+*.egg-info/
+*.so
+*.dylib
+
+# uv
+.venv/
+.python-version
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.netrc
+.npmrc
+.pypirc
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.cursor/
+.vscode/
+.idea/
+.kiro/
+
+# Project specific
+logs/
+runs/
+checkpoints/*
+!checkpoints/README.md
+# Release trees are generated. Selected release artifacts must be force-added.
+releases/*
+!releases/examples/
+!releases/examples/**
+run_config.json
+run_summary.json
+.worktrees/
+.tmp/
+*.log
+.DS_Store
+.ipynb_checkpoints/
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.temp
+*.tmp
+*~
+
+benchmark/outputs/
+outputs/
+build/
+install/
+log/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+src/unilab/algos/torch/rsl_rl
+
+third-party
+temp/
+agent/
+
+# Local environments and dependency caches (all live below /ssd/conda).
+.conda/
+/envs/
+pkgs/
+pip-cache/
+
+# Nested source provenance is recorded as text, never as nested repositories.
+references/**/.git/
+references/**/build/
+references/**/install/
+references/**/log/
+references/**/logs/
+references/**/.pytest_cache/
+references/**/__pycache__/
+references/**/*.pyc
+references/**/*.pyo
+references/**/*.bag
+references/**/*.mkv
+references/**/*.mp4
+references/**/sweep_results_*/
+
+# Motion assets (downloaded from HF at runtime)
+src/unilab/assets/motions/g1/*.npz
+src/unilab/assets/motions/g1/*.csv
+src/unilab/assets/motions/g1/flip
+src/unilab/assets/motions/g1/flip_npz
+
+# Grasp cache assets (downloaded from HF at runtime)
+src/unilab/assets/caches/*.npy
+
+# Scene assets (downloaded from HF at runtime)
+src/unilab/assets/scenes/teaser/
+cache/
+
+# Locally generated demo checkpoints
+src/unilab/assets/checkpoints/**/*.pt
+src/unilab/assets/checkpoints/**/*.onnx
+
+# Generated Python playback videos beside formal checkpoints
+models/**/play_video.mp4
+
+
+# Local tool/runtime artifacts (any subfolder)
+.codex
+**/.codex/
+**/._*
+**/MUJOCO_LOG.TXT
+
+# Backend temp XML emitted next to robot.xml (motrix/mujoco scene materialization)
+src/unilab/assets/robots/**/tmp*.xml

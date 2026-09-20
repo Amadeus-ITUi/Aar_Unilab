@@ -1,0 +1,79 @@
+defaults:
+  - task: pe02_flat
+  - _self_
+
+robot: pe02
+observation: pe02_v2
+policy: pe02_encoder_mlp
+algorithm: pe02_custom_ppo
+simulator: mujoco
+mode: train
+# Play: explicit model path, or -1 for the newest run/model under training.log_root.
+checkpoint: null
+
+# Original PE01 defaults. See docs/PE02_COLLISION_OPTIMIZATION.md for measured sizing.
+algo:
+  num_envs: 8192
+  num_steps_per_env: 24
+  max_iterations: 15000
+  save_interval: 400
+  num_learning_epochs: 5
+  num_mini_batches: 4
+  gamma: 0.99
+  lam: 0.95
+  learning_rate: 0.001
+  encoder_learning_rate: 0.001
+  clip_ratio: 0.2
+  value_loss_coefficient: 1.0
+  use_clipped_value_loss: true
+  entropy_coefficient: 0.01
+  max_grad_norm: 1.0
+  desired_kl: 0.01
+  schedule: adaptive
+
+training:
+  seed: 1
+  device: auto
+  cpu_threads: 1
+  mujoco_threads: 16
+  native_pd: true
+  log_root: logs/pe02_custom_ppo/pe02/pe02_flat
+  logger: tensorboard
+  # TensorBoard run name: robot__task-simulator__experiment__training-start-time.
+  experiment_name: baseline
+  resume: null
+  export: true
+  evaluation_episodes: 8
+  evaluation_interval: 100
+  evaluation_joint_noise: 0.01
+  evaluation_velocity_noise: 0.02
+  evaluation_height_tolerance: 0.03
+  evaluation_tilt_deg: 10.0
+  evaluation_speed_tolerance: 0.1
+
+network:
+  command_size: 3
+  encoder_hidden_dims: [256, 128]
+  latent_dim: 3
+  encoder_output_detach: true
+  actor_hidden_dims: [512, 256, 128]
+  critic_hidden_dims: [512, 256, 128]
+  initial_std: 1.0
+
+play:
+  # -1 runs until the viewer is closed or playback is interrupted.
+  steps: -1
+  render: interactive
+  paused: false
+  plot: false
+  telemetry: logs/play/pe02/pe02_flat/latest
+  # Gamepad controls [vx, vy, vyaw]; fixed uses play.command, including headless runs.
+  command_source: gamepad
+  command: [0.0, 0.0, 0.0]
+  gamepad:
+    index: 0
+    deadzone: 0.12
+    # Full-stick velocity [m/s, m/s, rad/s].
+    scale: [1.0, 1.0, 1.0]
+  gait: [2.0, 0.5, 0.5, 0.06]
+  delay_ms: 0.0

@@ -1,0 +1,653 @@
+{
+  "robot": "pe02",
+  "source_asset_name": "dianzu23",
+  "meshes": [
+    {
+      "source": "meshes/body_link.STL",
+      "source_sha256": "8be374559a0e4299d9a2a622460b11cedc0414b28d547e9cb4a3795226ca5d84",
+      "source_faces": 377070,
+      "runtime": "runtime_meshes/body_link.obj",
+      "runtime_sha256": "a2771fcee903421b062a1bbc2f3838b84665cc048474cf474635781889a5e06c",
+      "runtime_faces": 377070
+    },
+    {
+      "source": "meshes/L_hip_Link.STL",
+      "source_sha256": "d73f3c194b4746a4618e7555d912207b422673aafeed096629480e23746b2523",
+      "source_faces": 185862,
+      "runtime": "runtime_meshes/L_hip_Link.obj",
+      "runtime_sha256": "73431b7556af5b46f3d68ee3120282b3bdbc4191f32229c2aafb684fa3cf2315",
+      "runtime_faces": 185862
+    },
+    {
+      "source": "meshes/L_thigh_Link.STL",
+      "source_sha256": "ef0fb109be4d9e2a8a3a8fa3e8ead43059842d7b88e77e1945435424d3299180",
+      "source_faces": 168226,
+      "runtime": "runtime_meshes/L_thigh_Link.obj",
+      "runtime_sha256": "9c1ac47d1a330f3f6e821f9ecb59ed26e498b89fcdc8839727c0b9bf75917c67",
+      "runtime_faces": 168226
+    },
+    {
+      "source": "meshes/L_calf_Link.STL",
+      "source_sha256": "1511a6d65684b4d6ea5970721e4a293cd394a25d71802341c559f2304923f575",
+      "source_faces": 1484,
+      "runtime": "runtime_meshes/L_calf_Link.obj",
+      "runtime_sha256": "3514dca658dfddc58d51ccfc3270b3c5b5158dc3bd88904cfcaa5202f1b24a11",
+      "runtime_faces": 1484
+    },
+    {
+      "source": "meshes/L_foot_Link.STL",
+      "source_sha256": "430b3cde9639837b04380b5ca1f79bc0c8f90c508a567344bf1ca84d2ab40d6f",
+      "source_faces": 9948,
+      "runtime": "runtime_meshes/L_foot_Link.obj",
+      "runtime_sha256": "8733210e6e66707df42f3273f88aeb3ce50aa5492f7dee7e6e74b09c3f25eb9b",
+      "runtime_faces": 9948
+    },
+    {
+      "source": "meshes/R_hip_Link.STL",
+      "source_sha256": "dd2310ac499e234473253f9220cf9ef8bcc4b911242aca2aad6254d65f04cfa5",
+      "source_faces": 185854,
+      "runtime": "runtime_meshes/R_hip_Link.obj",
+      "runtime_sha256": "794df41bec841a7c148b275e49df9c5a17ec92a28d35e3ee24a496ca1b067631",
+      "runtime_faces": 185854
+    },
+    {
+      "source": "meshes/R_thigh_Link.STL",
+      "source_sha256": "2d9157bf5eeab54e124628b92ee734e364f39e76db3d39d9ea163346ed564501",
+      "source_faces": 168308,
+      "runtime": "runtime_meshes/R_thigh_Link.obj",
+      "runtime_sha256": "ab78013274981cbb1b47a2ab5558f03134b4d864ef3821e5a9d1853fe701b093",
+      "runtime_faces": 168308
+    },
+    {
+      "source": "meshes/R_calf_link.STL",
+      "source_sha256": "5f10c014e9798ea7d272588d950b5a509c907ada5fdd34b184934cfad4ad3a83",
+      "source_faces": 1464,
+      "runtime": "runtime_meshes/R_calf_link.obj",
+      "runtime_sha256": "3490bb6a365cef9faefc1bf25fc9b6373f9178eec6f81d860578caaa43652239",
+      "runtime_faces": 1464
+    },
+    {
+      "source": "meshes/R_foot_Link.STL",
+      "source_sha256": "b8b3c96abc748a06f64262d1795f8ddb9061b0a2087d8ac65ab5486f9edd4aef",
+      "source_faces": 9986,
+      "runtime": "runtime_meshes/R_foot_Link.obj",
+      "runtime_sha256": "117b27109501b3d2004be7909ac8ea6c05267399725ef361aa4feaee30e3c139",
+      "runtime_faces": 9986
+    }
+  ],
+  "collision": {
+    "version": "pe02-collision-v2",
+    "recipe_sha256": "e8b555e699184105d8ee8b7c550b1551914cfbf7a19cdf4ede45f81053eb3b72",
+    "links": {
+      "body_link": {
+        "source": "meshes/body_link.STL",
+        "source_sha256": "8be374559a0e4299d9a2a622460b11cedc0414b28d547e9cb4a3795226ca5d84",
+        "mirrored": false,
+        "parts": [
+          {
+            "name": "body_link_collision_battery_0",
+            "kind": "box",
+            "source_components": [
+              0
+            ],
+            "position_m": [
+              0.05461849272251129,
+              -1.9984319806098938e-05,
+              -0.07206812162257847
+            ],
+            "size": "0.03424999862909317 0.02325000055134296 0.07200000028751674"
+          },
+          {
+            "name": "body_link_collision_electronics_0",
+            "kind": "box",
+            "source_components": [
+              1
+            ],
+            "position_m": [
+              -0.0046315062791109085,
+              -1.9983388483524323e-05,
+              -0.046000002417713404
+            ],
+            "size": "0.04000000096857548 0.01499999966472387 0.04100000252947211"
+          },
+          {
+            "name": "body_link_collision_top_module_0",
+            "kind": "box",
+            "source_components": [
+              6,
+              23,
+              24,
+              25
+            ],
+            "position_m": [
+              0.002868492156267166,
+              -1.9984319806098938e-05,
+              0.017199999070726335
+            ],
+            "size": "0.03400000184774399 0.02950000017881393 0.01899999903980643"
+          },
+          {
+            "name": "body_link_collision_cross_frame_0",
+            "kind": "hull",
+            "source_components": [
+              3,
+              9,
+              10
+            ],
+            "simplification": {
+              "original_vertices": 67,
+              "maximum_surface_error_m": 0.0003854712206415741,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/body_link_cross_frame_0.STL",
+            "sha256": "01bf4939cf8724c51d59e624bfa65034bb6366c5a54c2943143ca252dd89e63d",
+            "faces": 64,
+            "vertices": 34,
+            "volume_m3": 0.000253677164124025
+          },
+          {
+            "name": "body_link_collision_right_frame_0",
+            "kind": "hull",
+            "source_components": [
+              4
+            ],
+            "simplification": {
+              "original_vertices": 129,
+              "maximum_surface_error_m": 0.0004890543636588033,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/body_link_right_frame_0.STL",
+            "sha256": "0b1a0f0bf8392ea785ddef4f052c33409691c142c61026bbc5e1413cf619ee33",
+            "faces": 98,
+            "vertices": 51,
+            "volume_m3": 0.00025755184181207877
+          },
+          {
+            "name": "body_link_collision_left_frame_0",
+            "kind": "hull",
+            "source_components": [
+              5
+            ],
+            "simplification": {
+              "original_vertices": 131,
+              "maximum_surface_error_m": 0.0004250369967612291,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/body_link_left_frame_0.STL",
+            "sha256": "b0f2c03e3400ca47d8f24fb5bdcbaff2ab30f0b8502aba152f69639ffbac66b9",
+            "faces": 106,
+            "vertices": 55,
+            "volume_m3": 0.00025800382759850435
+          },
+          {
+            "name": "body_link_collision_left_motor_0",
+            "kind": "cylinder",
+            "source_components": [
+              7,
+              12,
+              13,
+              15,
+              18,
+              20,
+              21
+            ],
+            "position_m": [
+              -0.004781507886946201,
+              0.06498001515865326,
+              -0.041000000201165676
+            ],
+            "size": "0.0235784815689101 0.02200000081211329"
+          },
+          {
+            "name": "body_link_collision_right_motor_0",
+            "kind": "cylinder",
+            "source_components": [
+              8,
+              11,
+              14,
+              16,
+              17,
+              19,
+              22
+            ],
+            "position_m": [
+              -0.0044815074652433395,
+              -0.06521998345851898,
+              -0.04100000113248825
+            ],
+            "size": "0.02357848338139327 0.02199999988079071"
+          }
+        ]
+      },
+      "L_hip_Link": {
+        "source": "meshes/L_hip_Link.STL",
+        "source_sha256": "d73f3c194b4746a4618e7555d912207b422673aafeed096629480e23746b2523",
+        "mirrored": false,
+        "parts": [
+          {
+            "name": "L_hip_Link_collision_bracket_0",
+            "kind": "hull",
+            "source_components": [
+              0
+            ],
+            "simplification": {
+              "original_vertices": 276,
+              "maximum_surface_error_m": 0.0004834199071777755,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_hip_Link_bracket_0.STL",
+            "sha256": "15e8a57d9e3067c9d587a4316372a5cb2ef602845bf3f69c86346234544986b3",
+            "faces": 118,
+            "vertices": 61,
+            "volume_m3": 9.93154091840422e-05
+          },
+          {
+            "name": "L_hip_Link_collision_motor_0",
+            "kind": "cylinder",
+            "source_components": [
+              1,
+              2,
+              3,
+              5,
+              6,
+              7
+            ],
+            "position_m": [
+              -0.03000000026077032,
+              -0.00014999974519014359,
+              0.0
+            ],
+            "size": "0.02300000216602247 0.02200000081211329"
+          }
+        ]
+      },
+      "R_hip_Link": {
+        "source": "meshes/L_hip_Link.STL",
+        "source_sha256": "d73f3c194b4746a4618e7555d912207b422673aafeed096629480e23746b2523",
+        "mirrored": true,
+        "parts": [
+          {
+            "name": "R_hip_Link_collision_bracket_0",
+            "kind": "hull",
+            "source_components": [
+              0
+            ],
+            "simplification": {
+              "original_vertices": 276,
+              "maximum_surface_error_m": 0.0004834199071777755,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_hip_Link_bracket_0.STL",
+            "sha256": "56907f23897f149e5f272cdbfc1cc7c121db750ed6df2c6c3f077956f83d81ef",
+            "faces": 118,
+            "vertices": 61,
+            "volume_m3": 9.93154091840422e-05
+          },
+          {
+            "name": "R_hip_Link_collision_motor_0",
+            "kind": "cylinder",
+            "source_components": [
+              1,
+              2,
+              3,
+              5,
+              6,
+              7
+            ],
+            "position_m": [
+              -0.03000000026077032,
+              0.00014999974519014359,
+              0.0
+            ],
+            "size": "0.02300000216602247 0.02200000081211329"
+          }
+        ]
+      },
+      "L_thigh_Link": {
+        "source": "meshes/L_thigh_Link.STL",
+        "source_sha256": "ef0fb109be4d9e2a8a3a8fa3e8ead43059842d7b88e77e1945435424d3299180",
+        "mirrored": false,
+        "parts": [
+          {
+            "name": "L_thigh_Link_collision_outer_plate_0",
+            "kind": "hull",
+            "source_components": [
+              0
+            ],
+            "simplification": {
+              "original_vertices": 89,
+              "maximum_surface_error_m": 0.00036010033169208387,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_thigh_Link_outer_plate_0.STL",
+            "sha256": "cc32ad07e9784c69ba72680e8a9c161417d23b7d2a01bc50f778a0f9b65cf0dd",
+            "faces": 102,
+            "vertices": 53,
+            "volume_m3": 5.967353271146594e-05
+          },
+          {
+            "name": "L_thigh_Link_collision_inner_plate_0",
+            "kind": "hull",
+            "source_components": [
+              1
+            ],
+            "simplification": {
+              "original_vertices": 84,
+              "maximum_surface_error_m": 0.0004974915604858726,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_thigh_Link_inner_plate_0.STL",
+            "sha256": "a3297a9a562c4819e37b0a27def540f0ecbf74b5eed60496f6f1eb99c678e11c",
+            "faces": 100,
+            "vertices": 52,
+            "volume_m3": 6.597884316670075e-05
+          },
+          {
+            "name": "L_thigh_Link_collision_assembly_0",
+            "kind": "hull",
+            "source_components": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              20,
+              21,
+              23,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30
+            ],
+            "simplification": {
+              "original_vertices": 175,
+              "maximum_surface_error_m": 0.0004783695191374291,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_thigh_Link_assembly_0.STL",
+            "sha256": "5ed6aedafcd61b96ac22e3cd94bbcdab9aa45927e256b20ccaa8fa05dfe013b7",
+            "faces": 124,
+            "vertices": 64,
+            "volume_m3": 0.0004765863231463231
+          }
+        ]
+      },
+      "R_thigh_Link": {
+        "source": "meshes/L_thigh_Link.STL",
+        "source_sha256": "ef0fb109be4d9e2a8a3a8fa3e8ead43059842d7b88e77e1945435424d3299180",
+        "mirrored": true,
+        "parts": [
+          {
+            "name": "R_thigh_Link_collision_outer_plate_0",
+            "kind": "hull",
+            "source_components": [
+              0
+            ],
+            "simplification": {
+              "original_vertices": 89,
+              "maximum_surface_error_m": 0.00036010033169208387,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_thigh_Link_outer_plate_0.STL",
+            "sha256": "41b92ca5e16557f5a94aab0a95f675b2ce9b9e78b80e4639db2c9f7c974c3b1c",
+            "faces": 102,
+            "vertices": 53,
+            "volume_m3": 5.967353271146594e-05
+          },
+          {
+            "name": "R_thigh_Link_collision_inner_plate_0",
+            "kind": "hull",
+            "source_components": [
+              1
+            ],
+            "simplification": {
+              "original_vertices": 84,
+              "maximum_surface_error_m": 0.0004974915604858726,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_thigh_Link_inner_plate_0.STL",
+            "sha256": "f640787527cacc43919239d7ddb4441a7375a7d3ec93b9e9a8c9824f65ef96a6",
+            "faces": 100,
+            "vertices": 52,
+            "volume_m3": 6.597884316670075e-05
+          },
+          {
+            "name": "R_thigh_Link_collision_assembly_0",
+            "kind": "hull",
+            "source_components": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              20,
+              21,
+              23,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30
+            ],
+            "simplification": {
+              "original_vertices": 175,
+              "maximum_surface_error_m": 0.0004783695191374291,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_thigh_Link_assembly_0.STL",
+            "sha256": "dbd02b4d8bd08783c567285d3a243bbc3a29fef99fa170bb6170cd1e1fd22c40",
+            "faces": 124,
+            "vertices": 64,
+            "volume_m3": 0.0004765863231463231
+          }
+        ]
+      },
+      "L_calf_Link": {
+        "source": "meshes/L_calf_Link.STL",
+        "source_sha256": "1511a6d65684b4d6ea5970721e4a293cd394a25d71802341c559f2304923f575",
+        "mirrored": false,
+        "parts": [
+          {
+            "name": "L_calf_Link_collision_curve_0",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 61,
+              "maximum_surface_error_m": 0.00046281092368658585,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_calf_Link_curve_0.STL",
+            "sha256": "101a08895c9dbfa724e74d53f0bebaec6d5e3dc1d5b5605e931e7d24ab46d72a",
+            "faces": 70,
+            "vertices": 37,
+            "volume_m3": 5.5404969917125314e-05
+          },
+          {
+            "name": "L_calf_Link_collision_curve_1",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 40,
+              "maximum_surface_error_m": 0.00041148643383901357,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_calf_Link_curve_1.STL",
+            "sha256": "caa402750a4a8f25060323526dc67e184f04194d0af46439833dff0758269ac8",
+            "faces": 46,
+            "vertices": 25,
+            "volume_m3": 5.962049795749202e-05
+          },
+          {
+            "name": "L_calf_Link_collision_curve_2",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 111,
+              "maximum_surface_error_m": 0.00044796408333869355,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_calf_Link_curve_2.STL",
+            "sha256": "cddc343cdbf4a9fd703e27f4ce8c6a0a004b127dc359351ac8b6e67d5bb447e2",
+            "faces": 72,
+            "vertices": 38,
+            "volume_m3": 4.340470494682179e-05
+          }
+        ]
+      },
+      "R_calf_link": {
+        "source": "meshes/L_calf_Link.STL",
+        "source_sha256": "1511a6d65684b4d6ea5970721e4a293cd394a25d71802341c559f2304923f575",
+        "mirrored": true,
+        "parts": [
+          {
+            "name": "R_calf_link_collision_curve_0",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 61,
+              "maximum_surface_error_m": 0.00046281092368658585,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_calf_link_curve_0.STL",
+            "sha256": "337b27c01e4f395f46d85d2e657f2b621668ab29c0be22a25d690bc00198eabf",
+            "faces": 70,
+            "vertices": 37,
+            "volume_m3": 5.5404969917125314e-05
+          },
+          {
+            "name": "R_calf_link_collision_curve_1",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 40,
+              "maximum_surface_error_m": 0.00041148643383901357,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_calf_link_curve_1.STL",
+            "sha256": "5040bb36ff12fc0decda97c3d3fb66bdf55df19c88e2d77a0243a449102fdec0",
+            "faces": 46,
+            "vertices": 25,
+            "volume_m3": 5.9620497957492035e-05
+          },
+          {
+            "name": "R_calf_link_collision_curve_2",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 111,
+              "maximum_surface_error_m": 0.00044796408333869355,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 0,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_calf_link_curve_2.STL",
+            "sha256": "6833e73a76404e6d86452a08ea20704524d15221ffc02aba555fe543d3c1383b",
+            "faces": 72,
+            "vertices": 38,
+            "volume_m3": 4.340470494682179e-05
+          }
+        ]
+      },
+      "L_foot_Link": {
+        "source": "meshes/L_foot_Link.STL",
+        "source_sha256": "430b3cde9639837b04380b5ca1f79bc0c8f90c508a567344bf1ca84d2ab40d6f",
+        "mirrored": false,
+        "parts": [
+          {
+            "name": "L_foot_Link_collision_sole_0",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 2351,
+              "maximum_surface_error_m": 0.0004979230773759128,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 106,
+              "inscribed": true
+            },
+            "file": "collision_meshes/L_foot_Link_sole_0.STL",
+            "sha256": "a02dfd7a2d1df6e0fc4141bedfd82a0060207657a6900b353e61539013a6142b",
+            "faces": 456,
+            "vertices": 230,
+            "volume_m3": 5.989149105185525e-05
+          }
+        ]
+      },
+      "R_foot_Link": {
+        "source": "meshes/L_foot_Link.STL",
+        "source_sha256": "430b3cde9639837b04380b5ca1f79bc0c8f90c508a567344bf1ca84d2ab40d6f",
+        "mirrored": true,
+        "parts": [
+          {
+            "name": "R_foot_Link_collision_sole_0",
+            "kind": "hull",
+            "source_components": "all",
+            "simplification": {
+              "original_vertices": 2351,
+              "maximum_surface_error_m": 0.0004979230773759128,
+              "error_limit_m": 0.0005,
+              "protected_vertices": 106,
+              "inscribed": true
+            },
+            "file": "collision_meshes/R_foot_Link_sole_0.STL",
+            "sha256": "6cc1b63822a3cc6505522cfb26d4b07a69e86696d71c9562aa200adfa9e66361",
+            "faces": 456,
+            "vertices": 230,
+            "volume_m3": 5.989149105185525e-05
+          }
+        ]
+      }
+    }
+  },
+  "visual_mode": "original_obj"
+}

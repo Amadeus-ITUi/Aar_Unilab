@@ -1,0 +1,29 @@
+# Shared DR002 timing and joint metadata loaded before the WE11 selector.
+
+dr002:
+  dt: 0.0025
+  decimation: 8
+  fixed_kp: [3.5, 3.7, 0.0, 3.5, 3.7, 0.0]
+  fixed_kd: [0.15, 0.25, 0.05, 0.15, 0.25, 0.05]
+  default_command_x: 0.0
+  default_command_yaw: 0.0
+  default_command_height: 0.24
+  command_x_random_enabled: false
+  command_x_random_min: 0.0
+  command_x_random_max: 1.0
+  command_x_resampling_time: 5.0
+  command_x_accel_limit: 0.5
+  startup_stand_seconds: 3.0
+  num_of_dofs: 6
+  wheel_indices: [2, 5]
+  torque_limits: [5.5, 14.0, 5.5, 5.5, 14.0, 5.5]
+  default_dof_pos: [0.8, -1.6, 0.0, 0.8, -1.6, 0.0]
+  initial_dof_pos: [0.8, -1.6, 0.0, 0.8, -1.6, 0.0]
+  initial_base_z: 0.30
+  initial_base_quat: [1.0, 0.0, 0.0, 0.0]
+  joint_names: ["left_thigh_joint", "left_calf_joint", "left_foot_joint",
+                "right_thigh_joint", "right_calf_joint", "right_foot_joint"]
+  joint_controller_names: ["left_thigh_controller", "left_calf_controller", "left_foot_controller",
+                           "right_thigh_controller", "right_calf_controller", "right_foot_controller"]
+  joint_mapping: [0, 1, 2, 3, 4, 5]
+

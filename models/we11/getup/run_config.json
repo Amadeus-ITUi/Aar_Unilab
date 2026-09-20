@@ -1,0 +1,631 @@
+{
+  "run": {
+    "algo": "ppo",
+    "task": "DR002JoystickGetupWE11",
+    "sim_backend": "mujoco",
+    "device": "cuda",
+    "collector_device": null,
+    "log_dir": "/ssd/Pheonix/UniLab/logs/rsl_rl_ppo/DR002JoystickGetupWE11/2026-09-14_18-57-31_mujoco",
+    "start_time_utc": "2026-09-14T10:57:31.278530+00:00",
+    "hostname": "angela-Legion-R9000P-ARX8",
+    "user": "angela",
+    "git": {
+      "commit": "0c0a42997e5cd1f93a5dba91f55b6ab98d6ce7eb",
+      "branch": "pheonix-we11/unilab-bringup",
+      "dirty": true
+    },
+    "hardware": {
+      "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+      "chip": "x86_64",
+      "cpu_total_cores": "32",
+      "gpu_name": "unknown",
+      "memory": "unknown"
+    },
+    "wandb": {
+      "project": "unilab",
+      "entity": null,
+      "name": "ppo__DR002JoystickGetupWE11__2026-09-14_18-57-31_mujoco",
+      "group": "DR002JoystickGetupWE11",
+      "job_type": "ppo",
+      "tags": [
+        "ppo",
+        "DR002JoystickGetupWE11",
+        "mujoco",
+        "user-angela"
+      ],
+      "notes": null,
+      "mode": null
+    },
+    "configured_seed": 1,
+    "configured_seed_source": "algo.seed",
+    "effective_seed": 1
+  },
+  "config": {
+    "algo": {
+      "algo": "ppo",
+      "algo_log_name": "rsl_rl_ppo",
+      "seed": 1,
+      "num_envs": 4096,
+      "num_steps_per_env": 24,
+      "max_iterations": 10000,
+      "save_interval": 100,
+      "empirical_normalization": false,
+      "runner_class_name": "OnPolicyRunner",
+      "obs_groups": {
+        "default": [
+          "policy"
+        ],
+        "actor": [
+          "actor"
+        ],
+        "critic": [
+          "critic"
+        ]
+      },
+      "experiment_name": "test",
+      "run_name": "",
+      "resume": false,
+      "load_run": "-1",
+      "checkpoint": -1,
+      "resume_path": null,
+      "policy": {
+        "init_noise_std": 1.0,
+        "actor_hidden_dims": [
+          512,
+          256,
+          128
+        ],
+        "critic_hidden_dims": [
+          512,
+          256,
+          128
+        ],
+        "activation": "elu",
+        "class_name": "ActorCritic"
+      },
+      "algorithm": {
+        "class_name": "unilab.algos.torch.rsl_rl_ppo:FinalObservationAwarePPO",
+        "value_loss_coef": 1.0,
+        "use_clipped_value_loss": true,
+        "clip_param": 0.2,
+        "entropy_coef": 0.005,
+        "num_learning_epochs": 5,
+        "num_mini_batches": 4,
+        "learning_rate": 0.001,
+        "schedule": "adaptive",
+        "gamma": 0.99,
+        "lam": 0.95,
+        "desired_kl": 0.012,
+        "target_kl_stop": null,
+        "max_grad_norm": 1.0,
+        "adaptive_kl_beta": 0.9,
+        "adaptive_lr_growth": 1.1,
+        "adaptive_lr_decay": 1.2,
+        "adaptive_lr_update_interval": 5,
+        "metrics_interval": 8,
+        "finite_check_interval": 8,
+        "enable_compile": false,
+        "warmup_strict_iters": 10,
+        "warmup_metrics_interval": 2,
+        "warmup_finite_check_interval": 2,
+        "disable_finite_checks": true,
+        "adaptive_kl_threshold_factor": 1.5,
+        "adaptive_lr_decay_factor": 1.1,
+        "adaptive_lr_growth_factor": 1.2,
+        "adaptive_lr_update_mode": "iteration",
+        "adaptation_loss_coef": 1.0
+      },
+      "actor": {
+        "class_name": "unilab.algos.torch.dr002_mlp_adapt:MlpAdaptModel",
+        "activation": "elu",
+        "obs_normalization": false,
+        "distribution_cfg": {
+          "class_name": "rsl_rl.modules.distribution.GaussianDistribution",
+          "init_std": 0.5,
+          "std_type": "scalar"
+        },
+        "max_length": 5,
+        "cmd_dim": 3,
+        "latent_dim": 3,
+        "privileged_target_key": "privileged_target",
+        "privileged_target_dim": 3,
+        "history_term_dims": [
+          3,
+          3,
+          4,
+          6,
+          6,
+          2,
+          2,
+          3
+        ],
+        "mlp_hidden_dims": [
+          128,
+          64
+        ],
+        "actor_hidden_dims": [
+          128,
+          64,
+          32
+        ]
+      },
+      "critic": {
+        "class_name": "rsl_rl.models.MLPModel",
+        "hidden_dims": [
+          256,
+          128,
+          64
+        ],
+        "activation": "elu",
+        "obs_normalization": false
+      }
+    },
+    "training": {
+      "task_name": "DR002JoystickGetupWE11",
+      "device": "cuda:0",
+      "logger": "tensorboard",
+      "wandb_project": "unilab",
+      "wandb_entity": null,
+      "wandb_group": null,
+      "wandb_job_type": null,
+      "wandb_name": null,
+      "wandb_tags": [],
+      "wandb_notes": null,
+      "wandb_mode": null,
+      "sim_backend": "mujoco",
+      "nan_guard": {
+        "enabled": true,
+        "buffer_size": 100,
+        "max_envs_to_dump": 5,
+        "output_dir": null
+      },
+      "play_only": false,
+      "no_play": true,
+      "export_jit": false,
+      "sim2sim_strict": true,
+      "play_render_mode": "none",
+      "play_env_num": 1,
+      "play_start_pose": "getup",
+      "play_getup_difficulty": 1.0,
+      "render_spacing": 0.0,
+      "play_steps": 500,
+      "cam_distance": 6.0,
+      "cam_elevation": -20.0,
+      "cam_azimuth": 90.0,
+      "cam_lookat": null,
+      "cam_tracking": true,
+      "cam_tracking_env_idx": 0,
+      "cam_tracking_extra_envs": 2,
+      "log_root": null,
+      "num_timesteps": null,
+      "log_dir": null
+    },
+    "interactive": {
+      "action_mode": "policy",
+      "policy_obs_mode": "actor",
+      "show_target_bodies": false,
+      "show_reward_debug": false,
+      "target_show_axes": false,
+      "target_body_names": "",
+      "target_max_bodies": 0,
+      "target_marker_radius": 0.02,
+      "target_axis_length": 0.08,
+      "target_marker_alpha": 0.75,
+      "reward_debug_show_velocity": false,
+      "reward_debug_lin_vel_scale": 0.08,
+      "reward_debug_ang_vel_scale": 0.05,
+      "reward_debug_show_connectors": false,
+      "reward_debug_show_global_anchor": false,
+      "camera_follow_body": true,
+      "camera_focus_body_name": "",
+      "camera_height_offset": 0.15,
+      "camera_distance": null,
+      "camera_elevation": null,
+      "camera_azimuth": null,
+      "use_env_visual_model": false,
+      "speed": 1.0,
+      "start_paused": false,
+      "keyboard": false,
+      "keyboard_step_lin": 0.1,
+      "keyboard_step_ang": 0.2
+    },
+    "env": {
+      "post_step_forward_sensor": false,
+      "max_episode_seconds": 23.0,
+      "sim_dt": 0.0025,
+      "ctrl_dt": 0.02,
+      "reset_pose": {
+        "mode": "getup",
+        "getup_probability": 1.0,
+        "getup_keyframe": "getup_start_v2",
+        "getup_termination_grace_seconds": 1.0
+      },
+      "control_config": {
+        "action_scale": 0.5,
+        "wheel_action_scale": 10.0,
+        "clip_actions": 100.0,
+        "wheel_clip_actions": 3.5,
+        "simulate_action_latency": true,
+        "action_delay_semantics": "pre_controller_command_fifo",
+        "torque_delay_steps": null,
+        "motor_control_hz": 200.0,
+        "action_delay_steps_by_joint": null,
+        "torque_delay_steps_by_joint": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "action_delay_min_steps": 2,
+        "action_delay_max_steps": 8,
+        "resample_action_delay": true,
+        "use_native_batched_pd": false,
+        "use_native_command_delay_pd": true,
+        "Kp": [
+          2.0,
+          7.59,
+          0.0,
+          2.0,
+          7.59,
+          0.0
+        ],
+        "Kd": [
+          0.08,
+          0.682,
+          0.05,
+          0.08,
+          0.682,
+          0.05
+        ]
+      },
+      "wing_angle_obs": {
+        "enabled": true,
+        "force_zero_output": false,
+        "normalization_deg": 180.0,
+        "zero_offsets_deg": [
+          0.0,
+          0.0
+        ],
+        "noise_half_range_deg": 0.0,
+        "gaussian_noise_relative_std": 0.05
+      },
+      "wing_velocity_obs": {
+        "enabled": true,
+        "force_zero_output": false,
+        "scale": 0.1,
+        "noise_half_range_rad_s": 0.0,
+        "gaussian_noise_relative_std": 0.05
+      },
+      "wing_velocity_cmd": {
+        "enabled": true,
+        "max_rad_per_s": 0.7853981633974483,
+        "resample_period_s": [
+          1.0,
+          5.0
+        ],
+        "per_side_independent": true,
+        "kp": 10.0,
+        "kd": 0.5
+      },
+      "commands": {
+        "lin_vel_x": [
+          -1.0,
+          1.0
+        ],
+        "ang_vel_z": [
+          -1.0,
+          1.0
+        ],
+        "height": [
+          0.25,
+          0.25
+        ],
+        "resampling_time": 5.0,
+        "startup_stand_seconds": 0.0,
+        "rel_standing_envs": 0.3,
+        "standing_envs_episode_persistent": true,
+        "curriculum": false,
+        "range_multiplier": [
+          1.0,
+          2.0
+        ],
+        "ang_vel_z_range_multiplier": [
+          0.3,
+          1.0
+        ],
+        "curriculum_threshold": 0.7,
+        "curriculum_demote_threshold": 0.4,
+        "curriculum_step": 0.1,
+        "curriculum_min_episode_fraction": 0.8,
+        "curriculum_moving_command_threshold": 0.05,
+        "curriculum_allow_demotion": false,
+        "height_observation_center": 0.25,
+        "height_observation_scale": 20.0
+      },
+      "domain_rand": {
+        "randomize_init_yaw": false,
+        "randomize_base_mass": true,
+        "added_mass_range": [
+          0.0,
+          0.5
+        ],
+        "couple_base_inertia_to_added_mass": true,
+        "randomize_body_mass": true,
+        "body_mass_multiplier_range": [
+          0.9,
+          1.2
+        ],
+        "body_mass_share_bilateral_scale": false,
+        "body_mass_resample_on_reset": false,
+        "randomize_body_inertia": true,
+        "body_inertia_multiplier_range": [
+          0.9,
+          1.2
+        ],
+        "random_com": true,
+        "com_offset_x": [
+          -0.04,
+          0.04
+        ],
+        "com_offset_y": [
+          -0.04,
+          0.04
+        ],
+        "com_offset_z": [
+          -0.04,
+          0.04
+        ],
+        "randomize_ground_friction": true,
+        "ground_friction_multiplier_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_robot_geom_friction": true,
+        "robot_geom_friction_multiplier_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_dof_armature": false,
+        "dof_armature_multiplier_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_kp": true,
+        "kp_multiplier_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_kd": true,
+        "kd_multiplier_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_torque_scale": false,
+        "torque_scale_range": [
+          0.8,
+          1.2
+        ],
+        "randomize_default_joint_pos": true,
+        "default_joint_pos_offset_range": [
+          -0.02,
+          0.02
+        ],
+        "push_robots": true,
+        "push_interval": 250,
+        "push_randomize_within_interval": true,
+        "push_linear_velocity_delta_limit": null,
+        "push_force_limit": [
+          10.0,
+          10.0,
+          0.0
+        ],
+        "csv_force_enabled": false,
+        "csv_force_curriculum": false,
+        "csv_force_observation_include_measured_moment": false,
+        "push_body_name": "base_link",
+        "init_xy_range": [
+          0.0,
+          0.0
+        ],
+        "init_qvel_range": [
+          0.0,
+          0.0
+        ]
+      },
+      "noise_config": {
+        "level": 1.0,
+        "scale_gyro": 0.1,
+        "scale_joint_angle": 0.001,
+        "scale_joint_vel": 0.2,
+        "scale_wheel_vel": 0.3,
+        "scale_gravity": 0.0,
+        "gravity_noise_mode": "tilt",
+        "gravity_installation_bias_max_deg": 5.0,
+        "gravity_dynamic_noise_max_deg": 1.0,
+        "gravity_dynamic_noise_time_constant_s": 3.0,
+        "curriculum": false,
+        "curriculum_levels": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "getup_curriculum": {
+        "easy_keyframe": "home",
+        "hard_keyframe": "getup_start_v2",
+        "initial_difficulty": 0.0,
+        "difficulty_step": 0.05,
+        "frontier_width": 0.05,
+        "replay_fraction": 0.2,
+        "hard_anchor_fraction": 0.1,
+        "window_episodes": 2048,
+        "promote_success_rate": 0.8,
+        "demote_success_rate": 0.5,
+        "pose_bank_file": "src/unilab/assets/robots/dr002/we11/getup_pose_bank_v3.npz",
+        "exact_getup_fraction": 0.8,
+        "exact_getup_path_fraction": 0.2,
+        "getup_with_home_getup_fraction": 0.6,
+        "getup_with_home_home_fraction": 0.3,
+        "getup_with_home_path_fraction": 0.1,
+        "balance_getup_fraction": 0.4,
+        "balance_home_fraction": 0.2,
+        "balance_recovery_fraction": 0.3,
+        "balance_path_fraction": 0.1,
+        "balance_episode_seconds": 5.0,
+        "mixed_getup_fraction": 0.5,
+        "mixed_home_fraction": 0.2,
+        "mixed_balance_fraction": 0.2,
+        "mixed_path_fraction": 0.1,
+        "enhance_getup_fraction": 0.2,
+        "enhance_home_fraction": 0.3,
+        "enhance_balance_fraction": 0.4,
+        "enhance_path_fraction": 0.1,
+        "enhance_startup_stand_seconds": 1.0,
+        "enhance_command_resampling_time": 2.5,
+        "enhance_height_command_range": [
+          0.2,
+          0.3
+        ],
+        "enhance_height_command_initial": 0.25,
+        "enhance_height_velocity_max_m_s": 0.03,
+        "enhance_height_velocity_zero_fraction": 0.3,
+        "enhance_push_episode_fraction": 0.2,
+        "enhance_push_force_scale_range": [
+          0.5,
+          1.0
+        ],
+        "enhance_push_duration_s": [
+          0.04,
+          0.1
+        ],
+        "enhance_tracking_tilt_start_deg": 10.0,
+        "enhance_tracking_tilt_full_deg": 25.0,
+        "enhance_tracking_min_multiplier": 0.2,
+        "balance_max_pitch_deg": 16.25,
+        "balance_max_pitch_rate_rad_s": 0.13,
+        "balance_wheel_pivot_offset_body": [
+          0.02543588,
+          0.0,
+          -0.24231853
+        ],
+        "forced_difficulty": null,
+        "forced_stage": null
+      }
+    },
+    "reward": {
+      "scales": {
+        "alive": 0.0,
+        "track_lin_vel_x": 4,
+        "track_ang_vel_z": 2.0,
+        "track_lin_vel_x_enhance": 4,
+        "lin_vel_z": -2.0,
+        "ang_vel_xy": -0.2,
+        "orientation": -10.0,
+        "base_height": -0.4,
+        "joint_torques_l2": -0.0001,
+        "joint_torques_wheel_l2": -0.0001,
+        "joint_vel_l2": -5e-05,
+        "joint_acc_l2": -0.00025,
+        "joint_acc_wheel_l2": -0.00025,
+        "joint_pos_limits": -1.0,
+        "nominal_state_lingzu": -300.0,
+        "action_rate_l2": -0.2,
+        "action_smooth_lingzu": -0.03,
+        "undesired_contacts": -10.0,
+        "zero_cmd_stationary_vx": -20,
+        "zero_cmd_stationary_yaw": -20,
+        "getup_workspace": -0.5,
+        "getup_success_bonus": 5.0
+      },
+      "tracking_sigma": 0.25,
+      "track_lin_vel_x_std": 0.25,
+      "zero_cmd_stationary_vx_term_clip": 2.0,
+      "zero_cmd_stationary_yaw_term_clip": 2.0,
+      "track_lin_vel_x_enhance_std": 0.6,
+      "track_lin_vel_x_term_clip": 2.0,
+      "track_ang_vel_z_term_clip": 2.0,
+      "orientation_term_clip": 3.0,
+      "base_height_std": 0.025,
+      "base_height_clip": 8.0,
+      "only_positive_rewards": false,
+      "undesired_contact_threshold": 0.1,
+      "termination_contact_threshold": 5.0,
+      "termination_contact_fail_steps": 50,
+      "termination_gravity_z_threshold": 0.4,
+      "termination_fail_time_s": 1.0,
+      "base_height_range": null,
+      "getup_success_gravity_z_threshold": 0.9,
+      "getup_success_base_height_range": [
+        0.2,
+        Infinity
+      ],
+      "getup_workspace_half_extent": 0.5,
+      "getup_success_workspace_half_extent": null,
+      "getup_workspace_penalty_clip": 0.5,
+      "getup_success_hold_time_s": 1.0,
+      "getup_tracking_gate_min_height": 0.14285,
+      "getup_tracking_gate_full_height": 0.2,
+      "getup_lin_vel_z_min_multiplier": 0.1,
+      "getup_leg_regularization_min_multiplier": 0.2
+    }
+  },
+  "contract_snapshot": {
+    "algo.obs_groups": {
+      "default": [
+        "policy"
+      ],
+      "actor": [
+        "actor"
+      ],
+      "critic": [
+        "critic"
+      ]
+    },
+    "env.control_config.action_scale": 0.5,
+    "env.control_config.clip_actions": 100.0,
+    "env.control_config.wheel_clip_actions": 3.5,
+    "algo.policy.actor_hidden_dims": [
+      512,
+      256,
+      128
+    ],
+    "algo.policy.critic_hidden_dims": [
+      512,
+      256,
+      128
+    ],
+    "algo.empirical_normalization": false,
+    "reward.scales": {
+      "alive": 0.0,
+      "track_lin_vel_x": 4,
+      "track_ang_vel_z": 2.0,
+      "track_lin_vel_x_enhance": 4,
+      "lin_vel_z": -2.0,
+      "ang_vel_xy": -0.2,
+      "orientation": -10.0,
+      "base_height": -0.4,
+      "joint_torques_l2": -0.0001,
+      "joint_torques_wheel_l2": -0.0001,
+      "joint_vel_l2": -5e-05,
+      "joint_acc_l2": -0.00025,
+      "joint_acc_wheel_l2": -0.00025,
+      "joint_pos_limits": -1.0,
+      "nominal_state_lingzu": -300.0,
+      "action_rate_l2": -0.2,
+      "action_smooth_lingzu": -0.03,
+      "undesired_contacts": -10.0,
+      "zero_cmd_stationary_vx": -20,
+      "zero_cmd_stationary_yaw": -20,
+      "getup_workspace": -0.5,
+      "getup_success_bonus": 5.0
+    },
+    "env.control_config.simulate_action_latency": true,
+    "env.control_config.action_delay_min_steps": 2,
+    "env.control_config.action_delay_max_steps": 8,
+    "env.control_config.resample_action_delay": true,
+    "env.ctrl_dt": 0.02
+  }
+}

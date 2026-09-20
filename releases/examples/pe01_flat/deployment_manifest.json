@@ -1,0 +1,90 @@
+{
+  "artifacts": {
+    "policy_path": "policy.onnx",
+    "runtime_config_path": "runtime_config.yaml",
+    "scene_path": "robot/scene.xml"
+  },
+  "control": {
+    "action_clip": 1.0,
+    "action_scale": 1.0,
+    "command_delay_steps": 0,
+    "gains": {
+      "calf": [
+        4.9,
+        0.24
+      ],
+      "hip": [
+        4.3,
+        0.34
+      ],
+      "thigh": [
+        4.3,
+        0.34
+      ]
+    },
+    "motor_hz": 400,
+    "physics_hz": 400,
+    "policy_hz": 50
+  },
+  "policy": {
+    "hidden_state": [],
+    "history": {
+      "frame_size": 30,
+      "layout": "frame-major",
+      "length": 10
+    },
+    "inputs": [
+      {
+        "dtype": "float32",
+        "name": "observation_history",
+        "shape": [
+          1,
+          300
+        ]
+      },
+      {
+        "dtype": "float32",
+        "name": "observation",
+        "shape": [
+          1,
+          30
+        ]
+      },
+      {
+        "dtype": "float32",
+        "name": "command",
+        "shape": [
+          1,
+          3
+        ]
+      }
+    ],
+    "observation_builder": "pe01_v1",
+    "outputs": [
+      {
+        "dtype": "float32",
+        "name": "action",
+        "shape": [
+          1,
+          6
+        ]
+      }
+    ]
+  },
+  "robot": {
+    "asset_version": "dragon-3-final-20260915",
+    "id": "pe01",
+    "joint_order": [
+      "left_hip_joint",
+      "left_thigh_joint",
+      "left_calf_joint",
+      "right_hip_joint",
+      "right_thigh_joint",
+      "right_calf_joint"
+    ]
+  },
+  "schema": "aar-unilab.actor.v1",
+  "task": {
+    "id": "pe01_flat"
+  }
+}

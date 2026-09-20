@@ -1,0 +1,15 @@
+<mujoco model="pe03_play_appearance">
+  <!-- Loaded only by Python PE03 playback; scene.xml remains the training asset. -->
+  <visual>
+    <headlight diffuse="0.65 0.65 0.65" ambient="0.35 0.35 0.35" specular="0.1 0.1 0.1" />
+    <rgba haze="0.9 0.94 0.98 1" />
+  </visual>
+  <asset>
+    <texture name="pe03_play_sky" type="skybox" builtin="gradient" rgb1="0.72 0.84 0.95" rgb2="0.94 0.97 1" width="128" height="768" />
+    <texture name="pe03_play_checker" type="2d" builtin="checker" rgb1="0.65 0.68 0.71" rgb2="0.4 0.44 0.48" width="512" height="512" />
+    <material name="pe03_play_ground" texture="pe03_play_checker" texuniform="true" texrepeat="2 2" reflectance="0" />
+  </asset>
+  <worldbody>
+    <geom name="floor" material="pe03_play_ground" rgba="1 1 1 1" />
+  </worldbody>
+</mujoco>

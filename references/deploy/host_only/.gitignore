@@ -1,0 +1,98 @@
+#environment
+.vscode
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Media
+*.jpg
+*.png
+*.jpeg
+*.avi
+*.mp4
+*.pcd
+map
+
+# Executables
+*.exe
+*.out
+*.app
+bin
+build
+lib
+
+# Keep the vendored MNN runtime/converter artifacts trackable for deployment.
+!/src/inference/thirdparty/mnn-linux-x64/lib/
+!/src/inference/thirdparty/mnn-linux-x64/lib/libMNN.so
+!/src/inference/thirdparty/mnn-linux-aarch64/lib/
+!/src/inference/thirdparty/mnn-linux-aarch64/lib/libMNN.so
+!/src/inference/thirdparty/MNNConverter/x64/
+!/src/inference/thirdparty/MNNConverter/x64/MNNConvert
+!/src/inference/thirdparty/MNNConverter/x64/MNNConvert.sh
+!/src/inference/thirdparty/MNNConverter/x64/libMNN.so
+!/src/inference/thirdparty/MNNConverter/x64/libMNN_Express.so
+!/src/inference/thirdparty/MNNConverter/x64/libMNNConvertDeps.so
+/data/video/
+/data/pic/
+/old_data/pic/
+/corefile
+/install
+temp
+cmake-build-debug
+.idea
+log
+*.pyc
+__pycache__/
+*.cmake
+/remote_controller/install/remote_controller/share/
+
+# Runtime/test data generated on deployment machines
+/logs/
+*.log
+.ccache-tmp/
+/plots/
+/src/inference/plots/
+/inference/plots/
+inference_obs_*.csv
+inference_obs_*.pdf
+imu_data_*.csv
+imu_data_*.pdf
+sweep_frequency_*.csv
+sweep_frequency_*.pdf
+
+# Local planning, learning, and paired-sweep runtime output
+/.planning/
+/.learnings/
+/scripts/sweeps/*/logs/
+
+# Upstream source/runtime bundles are reproducible through env_init.sh and are
+# not part of the minimal MNN deployment closure.
+/src/inference/thirdparty/MNN-master/
+/src/inference/thirdparty/onnxruntime-linux-aarch64-1.21.0/
+/src/inference/thirdparty/onnxruntime-linux-x64-1.21.0/
+/src/inference/thirdparty/onnxruntime.tgz

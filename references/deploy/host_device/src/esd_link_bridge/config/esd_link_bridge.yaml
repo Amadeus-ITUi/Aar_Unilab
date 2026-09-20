@@ -1,0 +1,41 @@
+esd_link_bridge_node:
+  ros__parameters:
+    serial_device: "/dev/serial/by-id/usb-Sirin_Systems___OmniX_Robotics_ESD-SLAVE_314137523333-if00"
+    layout_id: 1
+    schema_id: 1
+    expected_active_port_mask: 510
+    expected_control_rate_hz: 250
+    # 2026-09-10 updated lower-controller baseline. A successfully persisted SET_ZERO identity
+    # record takes precedence on subsequent launches.
+    expected_config_fingerprint: 1285716240  # 0x4ca27910
+    identity_record_path: "/home/esd/Pheonix/Deploy/config/esd_link_identity.txt"
+    realtime_priority: 70
+    # Let Linux place the short SCHED_FIFO I/O thread on any available core.
+    # Set this to a core number only when a benchmark shows a real benefit.
+    cpu_affinity: -1
+    enable_confirm_timeout_ms: 1000
+    # Frozen lower firmware may remain in SAFE_DAMPING for up to 5 seconds.
+    disable_confirm_timeout_ms: 6500
+    standby_ramp_seconds: 3.0
+    motor_ids: [1, 2, 3, 4, 5, 6]
+    joint_default_angle: [-0.92020, 0.98338, 0.0, -0.92020, 0.98338, 0.0]
+    flipped_motors: [true, false, true, false, true, false]
+    velocity_only: [false, false, true, false, false, true]
+    kp: [2.0, 8.0, 0.0, 2.0, 8.0, 0.0]
+    kd: [0.1, 0.8, 0.2, 0.1, 0.8, 0.2]
+    # 2026-09-09 operator-confirmed hard endpoints, rounded inward to retain
+    # >=0.075 rad mechanical margin. P3/P6 entries are wrap ranges only.
+    joint_position_limits: [-0.89, 0.84, -0.89, 0.24, -6.28, 6.28, -0.88, 0.84, -0.89, 0.22, -6.28, 6.28]
+    # The updated lower accepts 50 rad/s on P3/P6. Keep the host at the trained
+    # policy contract (action clip 3.5 * wheel scale 10) with device-side margin.
+    wheel_velocity_limits: [35.0, 35.0]
+    # 2026-09-09 bench check: P7 is physical left and P8 is physical right.
+    # Frozen-lower wing feedback is opposite to the legacy Deploy target axes.
+    wing_signs: [-1.0, -1.0]
+    # Measured frozen-lower ranges are approximately P7 [-2.0,+0.7] and
+    # P8 [-0.7,+2.0].  After wing_sign conversion these policy-coordinate
+    # limits are P7(left) [-0.7,+2.0], P8(right) [-2.0,+0.7].
+    wing_position_limits: [-0.7, 2.0, -2.0, 0.7]
+    wing_kp: [10.0, 10.0]
+    wing_kd: [0.5, 0.5]
+    auto_enable: false

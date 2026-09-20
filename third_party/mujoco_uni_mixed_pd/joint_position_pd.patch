@@ -1,0 +1,185 @@
+--- a/mujoco/batch_env.cc
++++ b/mujoco/batch_env.cc
+@@ -1559,0 +1560,98 @@
++
++// Joint-coordinate position PD, with an offset FIFO and optional finite-difference
++// velocity. All layouts arrive from the caller's cold-path metadata cache.
++struct JointPdArgs {
++  int nu, nstep, nstate, nsensor, depth;
++  bool position_difference;
++  const mjtNum *state, *actions, *kp, *kd, *scale, *limits, *gear, *nominal;
++  const mjtNum *velocity, *fifo, *wrench;
++  const int *qpos_adr, *qvel_adr, *delay;
++  mjtNum *state_out, *sensor_out, *torque_out, *velocity_out, *fifo_out;
++};
++
++void StepJointPdRange(const std::vector<const raw::MjModel*>& models,
++                     raw::MjData* d, int begin, int end, const JointPdArgs& p) {
++  std::vector<mjtNum> previous(p.nu), velocity(p.nu), fifo(p.depth * p.nu);
++  for (int r = begin; r < end; ++r) {
++    const raw::MjModel* m = models[r];
++    const size_t offset = static_cast<size_t>(r) * p.nu;
++    const size_t fifo_offset = offset * p.depth;
++    for (int i = 0; i < m->nbody; ++i) {
++      int id = m->body_mocapid[i];
++      if (id >= 0) {
++        mju_copy3(d->mocap_pos + 3 * id, m->body_pos + 3 * i);
++        mju_copy4(d->mocap_quat + 4 * id, m->body_quat + 4 * i);
++      }
++    }
++    for (int i = 0; i < m->neq; ++i) d->eq_active[i] = m->eq_active0[i];
++    mj_setState(m, d, p.state + static_cast<size_t>(r) * p.nstate,
++                mjSTATE_FULLPHYSICS);
++    mju_zero(d->qfrc_applied, m->nv);
++    mju_zero(d->xfrc_applied, 6 * m->nbody);
++    mju_copy(velocity.data(), p.velocity + offset, p.nu);
++    mju_copy(fifo.data(), p.fifo + fifo_offset, p.depth * p.nu);
++    for (int step = 0; step < p.nstep; ++step) {
++      for (int age = p.depth - 1; age > 0; --age) {
++        mju_copy(fifo.data() + age * p.nu,
++                 fifo.data() + (age - 1) * p.nu, p.nu);
++      }
++      mju_copy(fifo.data(), p.actions + offset, p.nu);
++      for (int i = 0; i < p.nu; ++i) {
++        previous[i] = d->qpos[p.qpos_adr[i]];
++        mjtNum target = p.nominal[offset + i] + fifo[p.delay[r] * p.nu + i];
++        mjtNum torque = p.kp[offset + i] * (target - previous[i]) -
++                        p.kd[offset + i] * velocity[i];
++        torque *= p.scale[offset + i];
++        torque = std::min(std::max(torque, -p.limits[i]), p.limits[i]);
++        p.torque_out[offset + i] = torque;
++        d->ctrl[i] = torque / p.gear[i];
++      }
++      if (p.wrench) {
++        size_t address = (static_cast<size_t>(r) * p.nstep + step) * m->nbody * 6;
++        mju_copy(d->xfrc_applied, p.wrench + address, m->nbody * 6);
++      }
++      mju_zero(d->qacc_warmstart, m->nv);
++      for (int i = 0; i < mjNWARNING; ++i) d->warning[i].number = 0;
++      mj_step(m, d);
++      for (int i = 0; i < p.nu; ++i) {
++        if (p.position_difference) {
++          mjtNum delta = std::fmod(d->qpos[p.qpos_adr[i]] - previous[i] + mjPI, 2 * mjPI);
++          if (delta < 0) delta += 2 * mjPI;
++          velocity[i] = (delta - mjPI) / m->opt.timestep;
++        } else {
++          velocity[i] = d->qvel[p.qvel_adr[i]];
++        }
++      }
++    }
++    mj_getState(m, d, p.state_out + static_cast<size_t>(r) * p.nstate,
++                mjSTATE_FULLPHYSICS);
++    mju_copy(p.velocity_out + offset, velocity.data(), p.nu);
++    mju_copy(p.fifo_out + fifo_offset, fifo.data(), p.depth * p.nu);
++    // Match BatchEnvPool.step(post_step_forward_sensor=true): sensors describe
++    // the final state with applied forces/control and warmstart cleared.
++    mju_zero(d->ctrl, p.nu);
++    mju_zero(d->qfrc_applied, m->nv);
++    mju_zero(d->xfrc_applied, m->nbody * 6);
++    mju_zero(d->qacc_warmstart, m->nv);
++    for (int i = 0; i < mjNWARNING; ++i) d->warning[i].number = 0;
++    mj_forwardSkip(m, d, mjSTAGE_NONE, 0);
++    mju_copy(p.sensor_out + static_cast<size_t>(r) * p.nsensor,
++             d->sensordata, p.nsensor);
++  }
++}
++
++void StepJointPdThreaded(const std::vector<const raw::MjModel*>& models,
++                        std::vector<raw::MjData*>& data, int nbatch, int chunk,
++                        ThreadPool* pool, const JointPdArgs& p) {
++  int jobs = (nbatch + chunk - 1) / chunk;
++  pool->ResetCount();
++  for (int begin = 0; begin < nbatch; begin += chunk) {
++    int end = std::min(begin + chunk, nbatch);
++    auto task = [&, begin, end]() {
++      StepJointPdRange(models, data[pool->WorkerId()], begin, end, p);
++    };
++    pool->Schedule(task);
++  }
++  pool->WaitCount(jobs);
++}
++
+@@ -1917,0 +2016,74 @@
++
++  py::tuple step_joint_position_pd(
++      int nstep, const PyCArray state0, const PyCArray actions,
++      const PyCArray kp, const PyCArray kd, const PyCArray torque_scale,
++      const PyCArray torque_limits, const PyCArray gear,
++      const PyCArray nominal, const PyCArray initial_velocity,
++      const PyIArray qpos_adr, const PyIArray qvel_adr,
++      const PyIArray delay_steps, const PyCArray initial_fifo,
++      bool position_difference, std::optional<PyCArray> wrench) {
++    if (nstep < 1) throw py::value_error("nstep must be positive");
++    int nu = models_[0]->nu;
++    if (nu < 1) throw py::value_error("joint PD requires actuators");
++    auto fifo_info = initial_fifo.request();
++    if (fifo_info.ndim != 3 || fifo_info.shape[0] != nbatch_ ||
++        fifo_info.shape[1] < 1 || fifo_info.shape[2] != nu) {
++      throw py::value_error("initial_fifo must have shape (nbatch, depth, nu)");
++    }
++    auto pos_info = qpos_adr.request(), vel_info = qvel_adr.request();
++    auto delay_info = delay_steps.request();
++    if (pos_info.size != nu || vel_info.size != nu || delay_info.size != nbatch_) {
++      throw py::value_error("invalid joint-address or delay array size");
++    }
++    JointPdArgs p{};
++    p.nu = nu; p.nstep = nstep; p.nstate = nstate_; p.nsensor = nsensordata_;
++    p.depth = static_cast<int>(fifo_info.shape[1]);
++    p.position_difference = position_difference;
++    size_t batch = static_cast<size_t>(nbatch_) * nu;
++    p.state = required_array_ptr(state0, "state0", static_cast<size_t>(nbatch_) * nstate_);
++    p.actions = required_array_ptr(actions, "actions", batch);
++    p.kp = required_array_ptr(kp, "kp", batch);
++    p.kd = required_array_ptr(kd, "kd", batch);
++    p.scale = required_array_ptr(torque_scale, "torque_scale", batch);
++    p.limits = required_array_ptr(torque_limits, "torque_limits", nu);
++    p.gear = required_array_ptr(gear, "gear", nu);
++    p.nominal = required_array_ptr(nominal, "nominal", batch);
++    p.velocity = required_array_ptr(initial_velocity, "initial_velocity", batch);
++    p.fifo = required_array_ptr(initial_fifo, "initial_fifo", batch * p.depth);
++    p.wrench = optional_array_ptr(wrench, "wrench",
++        static_cast<size_t>(nbatch_) * nstep * models_[0]->nbody * 6);
++    p.qpos_adr = static_cast<const int*>(pos_info.ptr);
++    p.qvel_adr = static_cast<const int*>(vel_info.ptr);
++    p.delay = static_cast<const int*>(delay_info.ptr);
++    for (int i = 0; i < nu; ++i) {
++      if (p.qpos_adr[i] < 0 || p.qpos_adr[i] >= models_[0]->nq ||
++          p.qvel_adr[i] < 0 || p.qvel_adr[i] >= models_[0]->nv ||
++          !std::isfinite(p.gear[i]) || p.gear[i] == 0 ||
++          !std::isfinite(p.limits[i]) || p.limits[i] < 0) {
++        throw py::value_error("invalid joint address, gear, or torque limit");
++      }
++    }
++    for (int i = 0; i < nbatch_; ++i) {
++      if (p.delay[i] < 0 || p.delay[i] >= p.depth)
++        throw py::value_error("delay_steps must index the FIFO depth");
++    }
++    PyCArray state_out({nbatch_, nstate_}), sensor_out({nbatch_, nsensordata_});
++    PyCArray torque_out({nbatch_, nu}), velocity_out({nbatch_, nu});
++    PyCArray fifo_out({nbatch_, p.depth, nu});
++    p.state_out = state_out.mutable_data(); p.sensor_out = sensor_out.mutable_data();
++    p.torque_out = torque_out.mutable_data(); p.velocity_out = velocity_out.mutable_data();
++    p.fifo_out = fifo_out.mutable_data();
++    std::vector<const raw::MjModel*> models(models_.begin(), models_.end());
++    {
++      py::gil_scoped_release no_gil;
++      if (nthread_ > 0 && nbatch_ > 1) {
++        int chunk = std::max(1, nbatch_ / (10 * nthread_));
++        InterceptMjErrors(StepJointPdThreaded)(
++            models, worker_data_, nbatch_, chunk, pool_.get(), p);
++      } else {
++        InterceptMjErrors(StepJointPdRange)(models, worker_data_[0], 0, nbatch_, p);
++      }
++    }
++    return py::make_tuple(state_out, sensor_out, torque_out, velocity_out, fifo_out);
++  }
++
+@@ -2593,0 +2766,8 @@
++
++      .def("step_joint_position_pd", &BatchEnvPool::step_joint_position_pd,
++           py::kw_only(), py::arg("nstep"), py::arg("state0"), py::arg("actions"),
++           py::arg("kp"), py::arg("kd"), py::arg("torque_scale"),
++           py::arg("torque_limits"), py::arg("gear"), py::arg("nominal"),
++           py::arg("initial_velocity"), py::arg("qpos_adr"), py::arg("qvel_adr"),
++           py::arg("delay_steps"), py::arg("initial_fifo"),
++           py::arg("position_difference"), py::arg("wrench") = py::none())
