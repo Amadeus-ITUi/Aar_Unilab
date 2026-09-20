@@ -75,8 +75,12 @@ bash tools/train.sh we11_getup
 # PE01 原任务
 bash tools/train.sh pe01
 
-# PE02 固定初态行走（2 Hz / 6 cm，关闭物理随机化和噪声）
+# PE02 固定初态行走（无步态时钟，跟踪 home 高度，20% 静止命令，关闭随机化和噪声）
 bash tools/train.sh pe02_walking
+
+# PE03 CNC：独立配置与实现，固定初态，关闭随机化
+bash tools/train.sh pe03_standing
+bash tools/train.sh pe03_walking
 
 # 只查看最终参数，不开始训练
 bash tools/train.sh pe02_walking --dry-run
@@ -131,7 +135,8 @@ WE11 未指定线程数时按 `min(环境数, CPU 逻辑线程数 × 2)` 选择�
 | --- | --- | --- | --- | --- |
 | `we11` | `flat` / `rough` / `getup` | `we11_v2_145` | `we11_mlp` | `rsl_rl_ppo` |
 | `pe01` | `pe01_flat` | `pe01_v2`（旧模型 `pe01_legacy`） | `pe01_encoder_mlp` | `pe01_custom_ppo` |
-| `pe02` | `pe02_flat` | `pe02_v2`（旧模型 `pe02_v1`） | `pe02_encoder_mlp` | `pe02_custom_ppo` |
+| `pe02` | `pe02_flat` | walking：`pe02_v3`；迁移基线：`pe02_v2`；旧模型：`pe02_v1` | `pe02_encoder_mlp` | `pe02_custom_ppo` |
+| `pe03` | `pe03_flat` | standing：`pe03_v2`；walking：`pe03_v3` | `pe03_encoder_mlp` | `pe03_custom_ppo` |
 
 旧 WE11 入口仍可使用：`python scripts/train_rsl_rl.py task=dr002_joystick_getup_we11/mujoco ...`。
 完整任务名用于这个旧入口；统一入口使用 `task=getup`。
@@ -223,7 +228,7 @@ CUDA_VISIBLE_DEVICES=0 python scripts/train.py \
 ### 3.3 看训练曲线
 
 ```bash
-tensorboard --logdir logs/rsl_rl_ppo --port 6006
+tensorboard --logdir logs --port 6006
 ```
 
 浏览器打开 `http://localhost:6006`。`--logdir` 可以缩小到某个任务或某个 run，
@@ -299,10 +304,24 @@ MuJoCo 原生鼠标操作用于旋转、缩放、平移和选中物体后拖动�
 
 ## 5. PE01 与 PE02
 
+PE03 CNC 已有独立训练线，站立/行走使用 `pe03_standing` / `pe03_walking` 预设。
+完整命令、默认站姿和短训验证见 [PE03 说明](PE03_TRAINING_MIGRATION.md)。
+最新行走回放：`bash tools/train.sh pe03_walking mode=play checkpoint=-1`；
+站立回放将预设替换为 `pe03_standing`。首次训练保存 checkpoint 后再使用 `-1`。
+
 PE01 `pe01_v2` 与 PE02 `pe02_v2` 都已迁入完整多环境 PPO、独立速度估计器、
 平地任务与 checkpoint 续训，两套代码和配置独立维护。旧最小适配器保留兼容。
 基准对照与差异见 [PE01 迁移说明](PE01_TRAINING_MIGRATION.md)和
 [PE02 迁移说明](PE02_TRAINING_MIGRATION.md)。
+
+当前 walking 使用 `pe02_v3`：单帧 24 维、10 帧历史 240 维，无时钟步态；
+高度奖励跟踪 home 站姿高度，`reward.base_height_std=0.03`（米）、权重 -3，
+评估高度容差 `training.evaluation_height_tolerance=0.01`（米）。
+另有 `feet_air_height` 奖励：离地脚高度 1–10 cm 线性增长，10 cm 后封顶；
+权重 0.25，仅在运动命令和稳定单脚支撑时发放。
+训练 500 轮：`bash tools/train.sh pe02_walking algo.max_iterations=500`。
+奖励、重置、弱失败和旧模型兼容见 [walking 配置说明](PE02_WALKING_VALIDATION.md)。
+下方 `pe02_v2` 命令保留原始迁移基线；切换训练契约需从头训练。
 
 ### 5.1 训练命令
 
@@ -401,7 +420,39 @@ PE02 的 `reward/*` 已乘策略周期，WE11 的同名日志在乘周期之前�
 奖励绝对值时仍需统一单位。`Loss/encoder` 是 PE02 的独立监督损失，不冒充 WE11
 的 adaptation loss。
 
-已结束的 PE02 训练可从 `metrics.jsonl` 重建同样的分组，保留原事件的轮数和时间戳：
+PE02 的 TensorBoard 运行名称采用：
+
+```text
+样机__任务-仿真器__实验__训练开始时间
+PE02__pe02_flat-mujoco__walking__2026-09-17_17-46-59_339378
+```
+
+实验名称由 `training.experiment_name` 设置，walking、standing 和迁移基线分别默认
+`walking`、`standing`、`baseline`。例如可追加
+`training.experiment_name=walking_low_speed` 区分一组参数实验。
+时间取原训练目录的开始时间，不是模型保存时间或日志整理时间。
+
+训练事件仍写入各 run 的 `tensorboard/`，描述性名称通过同一日志根目录下的
+`tensorboard_runs/` 索引显示。新训练自动建立索引，并在 run 下保存 `run_metadata.json`；
+checkpoint、JSONL 路径和 `checkpoint=-1` 的选择机制不变。
+walking 使用以下命令查看，正式训练列表不包含 `validation/` 子树：
+
+```bash
+env -u PYTHONPATH /ssd/conda/envs/aar_unilab/bin/python -m tensorboard.main \
+  --logdir logs/pe02_walking/tensorboard_runs --host 127.0.0.1 --port 6006
+```
+
+旧训练可补建索引，原始事件、轮数、时间戳和 checkpoint 均不重写：
+
+```bash
+env -u PYTHONPATH /ssd/conda/envs/aar_unilab/bin/python tools/index_pe02_tensorboard.py \
+  logs/pe02_walking
+```
+
+旧版 walking/standing 的实验名从保存配置中的 `training.log_root` 还原。
+索引使用相对符号链接；移动整个日志根目录后仍有效。
+
+已结束的 PE02 v2 训练可从 `metrics.jsonl` 重建同样的指标分组，保留原事件的轮数和时间戳：
 
 ```bash
 env -u PYTHONPATH /ssd/conda/envs/aar_unilab/bin/python tools/rebuild_pe02_tensorboard.py \
@@ -435,17 +486,60 @@ python scripts/play.py \
 
 | 参数 | 默认值 | 用法 |
 | --- | --- | --- |
-| `checkpoint` | 必填 | 指向该样机的 `.pt` 文件；PE02 也支持 `-1` 自动选取最新训练目录内编号最大的模型 |
+| `checkpoint` | PE03：`-1`；PE01/PE02：必填 | 指向该样机的 `.pt` 文件；PE02/PE03 支持 `-1` 自动选取最新训练目录内编号最大的模型 |
 | `play.render` | `interactive` | `interactive` 打开窗口；`none` 不开窗口但仍运行仿真 |
-| `play.plot` | PE01：`true`；PE02 v2：`false` | 是否打开实时曲线窗口；无显示器时设为 `false` |
-| `play.steps` | PE01：`1000`；PE02 v2：`-1` | 正整数限制回放策略步数；`-1` 持续运行，直到关闭仿真窗口或按 `Ctrl+C`；此处不使用 WE11 的 `training.play_steps=null` |
+| `play.paused` | `false` | `true` 在窗口打开时暂停，便于检查姿态或单步调试 |
+| `play.plot` | PE01：`true`；PE02 v2/v3：`false` | 是否打开实时曲线窗口；无显示器时设为 `false` |
+| `play.steps` | PE01：`1000`；PE02 v2/v3：`-1` | 正整数限制回放策略步数；`-1` 持续运行，直到关闭仿真窗口或按 `Ctrl+C`；此处不使用 WE11 的 `training.play_steps=null` |
 | `play.telemetry` | `logs/play/<robot>/<task>/latest` | CSV/JSONL 输出目录；重复使用同一目录会覆盖同名文件 |
+| `play.command_source` | `gamepad` | PE01/PE02/PE03 默认由手柄控制；`fixed` 使用 `play.command` 固定速度 |
+| `play.command` | `[0,0,0]` | 固定模式的 `[vx, vy, vyaw]`，单位 m/s、m/s、rad/s |
+| `play.gamepad.index` / `play.gamepad.deadzone` | `0` / `0.12` | GLFW 手柄编号（0–15）及摇杆死区 |
+| `play.gamepad.scale` | `[1,1,1]` | 三个方向满摇杆对应的速度，顺序同 `play.command` |
 | `training.device` | 正式版均为 `auto`（旧 PE01 `cpu`） | 策略推理设备 |
 
 PE02 walking 自动回放最新模型：
 
 ```bash
 bash tools/train.sh pe02_walking mode=play checkpoint=-1
+```
+
+PE03 手柄回放也直接使用现有入口（gait 任务可替换为 `pe03_gait_fixed` 或
+`pe03_gait_variable`）：
+
+```bash
+bash tools/train.sh pe03_walking mode=play
+```
+
+PE03 省略 `checkpoint` 时默认选最新模型，显式指定路径仍优先。
+
+窗口获得键盘焦点后，PE01/PE02/PE03 Python Play 支持：
+
+| 操作 | 键盘 | 手柄模式 |
+| --- | --- | --- |
+| 暂停 / 继续 | 空格或 `P` | Start |
+| 重置机器人 | `R` 或 Backspace | RB + Y |
+| 暂停时推进一个策略周期（含全部物理子步） | `N` | — |
+| 相机重新对准机器人 | `C` | — |
+| 退出回放 | `Q`、关闭窗口或终端 `Ctrl+C` | — |
+
+暂停时物理、策略和观测历史均保持不动，相机和窗口继续响应；暂停时间不计入
+`play.steps`，也不重复写入遥测。重置通过环境恢复初始姿态、速度、观测历史和控制
+缓冲，清除外力与曲线历史，并保留当前暂停状态和相机视角。手柄模式重置时命令归零，
+恢复运行后重新读取摇杆；固定模式恢复配置命令。左上角显示运行状态、速度命令和快捷键。
+例如先暂停再检查：`bash tools/train.sh pe03_walking mode=play play.paused=true`。
+
+手柄采用 GLFW 标准映射：左摇杆向前为 `+vx`，向左为 `+vy`；右摇杆向左为
+`+vyaw`（左转），向右为右转。右摇杆上下不改变命令，PE03 的步态参数仍由
+`play.gait` 配置。摇杆回中、未连接或断开时速度命令归零，不回退到固定速度；
+支持在窗口运行期间连接手柄。手柄模式需要 `play.render=interactive`，使用可被
+GLFW 识别的标准手柄；无窗口模式不读取手柄。
+
+固定速度回放须显式指定，例如：
+
+```bash
+bash tools/train.sh pe03_walking mode=play checkpoint=-1 \
+  play.command_source=fixed 'play.command=[0.2,0.0,0.0]'
 ```
 
 `-1` 在当前 `training.log_root` 下按训练目录名中的时间排序，再按 `model_<轮次>.pt`
@@ -632,12 +726,15 @@ python tools/compare_pe02_sim2sim.py \
 | WE11 Getup run | `logs/rsl_rl_ppo/DR002JoystickGetupWE11/<run_id>/` |
 | PE01 run | `logs/pe01_custom_ppo/pe01/pe01_flat/<run_id>/` |
 | PE02 run | `logs/pe02_custom_ppo/pe02/pe02_flat/<run_id>/` |
+| PE03 standing / walking run | `logs/pe03_standing/<run_id>/` / `logs/pe03_walking/<run_id>/` |
+| PE03 开发验证 | `logs/pe03-validation/20260918/`；不参与日常最新模型选择 |
 | WE11 checkpoint | 对应 run 下 `model_N.pt` |
 | PE01 checkpoint | 正式版 `model_<iteration>.pt`；旧最小适配器 `model_1.pt` |
 | PE02 checkpoint | 对应 run 下 `model_<iteration>.pt`，包含完整续训状态 |
 | 导出 ONNX | 所选 checkpoint 目录下 `policy.onnx` |
 | WE11 视频 | 所选 checkpoint 目录下 `play_video.mp4` |
 | PE01/PE02 release | `releases/<robot>/<task>/<run_id>/` |
+| PE03 release | `releases/pe03/pe03_flat/<run_id>/` |
 | PE01/PE02 Python 回放数据 | `play.telemetry` 指定目录下 `telemetry.csv`、`telemetry.jsonl` |
 | 通用 C++ 回放数据 | `--telemetry` 指定目录下 `sim2sim.csv`、`sim2sim.jsonl` |
 

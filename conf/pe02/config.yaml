@@ -39,6 +39,8 @@ training:
   native_pd: true
   log_root: logs/pe02_custom_ppo/pe02/pe02_flat
   logger: tensorboard
+  # TensorBoard run name: robot__task-simulator__experiment__training-start-time.
+  experiment_name: baseline
   resume: null
   export: true
   evaluation_episodes: 8
@@ -62,8 +64,16 @@ play:
   # -1 runs until the viewer is closed or playback is interrupted.
   steps: -1
   render: interactive
+  paused: false
   plot: false
   telemetry: logs/play/pe02/pe02_flat/latest
+  # Gamepad controls [vx, vy, vyaw]; fixed uses play.command, including headless runs.
+  command_source: gamepad
   command: [0.0, 0.0, 0.0]
+  gamepad:
+    index: 0
+    deadzone: 0.12
+    # Full-stick velocity [m/s, m/s, rad/s].
+    scale: [1.0, 1.0, 1.0]
   gait: [2.0, 0.5, 0.5, 0.06]
   delay_ms: 0.0

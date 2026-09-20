@@ -20,7 +20,10 @@ class PE02Runtime {
               const DeploymentContract& contract) {
     boost::property_tree::ptree tree;
     boost::property_tree::read_json(path.string(), tree);
-    if (tree.get<std::string>("schema") != "pe02.runtime.v2") {
+    clock_gait_ = contract.observation_builder == "pe02_v2";
+    const std::string expected_schema = clock_gait_ ? "pe02.runtime.v2" : "pe02.runtime.v3";
+    if ((!clock_gait_ && contract.observation_builder != "pe02_v3") ||
+        tree.get<std::string>("schema") != expected_schema) {
       throw std::runtime_error("unsupported PE02 runtime schema");
     }
     const auto array = [&](const std::string& key) {
@@ -29,11 +32,12 @@ class PE02Runtime {
       return result;
     };
     home_ = array("default_joint_position");
-    kp_ = array("kp"); kd_ = array("kd"); limits_ = array("torque_limits"); gait_ = array("gait");
+    kp_ = array("kp"); kd_ = array("kd"); limits_ = array("torque_limits");
+    if (clock_gait_) gait_ = array("gait");
     const auto count = contract.joint_order.size();
     if (count != 6 || home_.size() != count || kp_.size() != count || kd_.size() != count ||
-        limits_.size() != count || gait_.size() != 4 || model->nu != static_cast<int>(count)) {
-      throw std::runtime_error("pe02_v2 runtime dimensions disagree with model/manifest");
+        limits_.size() != count || (clock_gait_ && gait_.size() != 4) || model->nu != static_cast<int>(count)) {
+      throw std::runtime_error("PE02 runtime dimensions disagree with model/manifest");
     }
     delay_ = tree.get<int>("delay_steps");
     if (delay_ < 0 || delay_ > 10000) throw std::runtime_error("invalid PE02 action delay");
@@ -68,7 +72,11 @@ class PE02Runtime {
       for (std::size_t i = 0; i < contract.inputs.size(); ++i) if (contract.inputs[i].name == name) return i;
       throw std::runtime_error("missing PE02 input " + name);
     };
-    std::vector<float> frame(30, 0);
+    std::vector<float> frame(clock_gait_ ? 30 : 24, 0);
+    if (inputs[input("observation")].size() != frame.size() ||
+        inputs[input("observation_history")].size() != history.size()) {
+      throw std::runtime_error("PE02 observation version disagrees with ONNX inputs");
+    }
     mjtNum inverse[4] = {data->qpos[3], -data->qpos[4], -data->qpos[5], -data->qpos[6]};
     mjtNum world_gravity[3] = {0, 0, -1}, gravity[3];
     mju_rotVecQuat(gravity, world_gravity, inverse);
@@ -81,10 +89,12 @@ class PE02Runtime {
       frame[12+i] = static_cast<float>(velocity_[i]*dq_scale_);
       frame[18+i] = static_cast<float>(action_[i]);
     }
-    constexpr double pi = 3.14159265358979323846;
-    frame[24] = static_cast<float>(std::sin(2*pi*phase_));
-    frame[25] = static_cast<float>(std::cos(2*pi*phase_));
-    for (std::size_t i = 0; i < 4; ++i) frame[26+i] = static_cast<float>(gait_[i]);
+    if (clock_gait_) {
+      constexpr double pi = 3.14159265358979323846;
+      frame[24] = static_cast<float>(std::sin(2*pi*phase_));
+      frame[25] = static_cast<float>(std::cos(2*pi*phase_));
+      for (std::size_t i = 0; i < 4; ++i) frame[26+i] = static_cast<float>(gait_[i]);
+    }
     for (float& value : frame) value = std::clamp(value, static_cast<float>(-clip_obs_), static_cast<float>(clip_obs_));
     if (history.empty() || history.size() % frame.size()) throw std::runtime_error("invalid PE02 history size");
     if (!initialized_) {
@@ -131,13 +141,15 @@ class PE02Runtime {
     }
   }
 
-  void end_policy_step() { phase_ = std::fmod(phase_ + policy_dt_*gait_[0], 1.0); }
+  void end_policy_step() {
+    if (clock_gait_) phase_ = std::fmod(phase_ + policy_dt_*gait_[0], 1.0);
+  }
 
  private:
   std::vector<double> home_, kp_, kd_, limits_, gait_, previous_q_, velocity_, action_, offset_;
   std::vector<std::vector<double>> fifo_;
   int delay_{0};
-  bool difference_velocity_{true}, initialized_{false};
+  bool difference_velocity_{true}, initialized_{false}, clock_gait_{true};
   double user_limit_{14}, q_scale_{1}, dq_scale_{0.1}, gyro_scale_{1}, clip_obs_{100};
   double lin_vel_scale_{1};
   double dt_{0.0025}, policy_dt_{0.02}, phase_{0};

@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - gait_base
+  - _self_
+gait:
+  stage: variable
+training:
+  experiment_name: gait_variable
+  log_root: logs/pe03_gait_variable
+play:
+  telemetry: logs/play/pe03/pe03_gait_flat/variable

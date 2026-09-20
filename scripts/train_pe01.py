@@ -215,8 +215,6 @@ def main() -> int:
 
     def action(observation, command):
         if hasattr(env, "set_command"):
-            if not np.any(command):
-                command = np.array(play_config.play.command, dtype=np.float32)
             command = env.set_command(command)
         history = torch.as_tensor(observation.actor, device=device).unsqueeze(0)
         commands = torch.as_tensor(command, device=device).unsqueeze(0)
@@ -224,16 +222,24 @@ def main() -> int:
             selected = policy.action_mean(history, history[:, -policy.frame_size :], commands)
         return selected.cpu().numpy()[0]
 
-    with InteractiveSession(
-        env.model,
-        env.data,
-        telemetry_dir=Path(str(config.play.telemetry)),
-        render=config.play.render == "interactive",
-        plot=bool(config.play.plot),
-    ) as session:
-        session.run(int(config.play.steps), action, env)
-    if hasattr(env, "close"):
-        env.close()
+    try:
+        with InteractiveSession(
+            env.model,
+            env.data,
+            telemetry_dir=Path(str(config.play.telemetry)),
+            render=config.play.render == "interactive",
+            plot=bool(config.play.plot),
+            paused=bool(config.play.paused),
+            command_source=str(config.play.command_source),
+            fixed_command=config.play.command,
+            gamepad_index=int(config.play.gamepad.index),
+            gamepad_deadzone=float(config.play.gamepad.deadzone),
+            gamepad_scale=config.play.gamepad.scale,
+        ) as session:
+            session.run(int(config.play.steps), action, env)
+    finally:
+        if hasattr(env, "close"):
+            env.close()
     return 0
 
 

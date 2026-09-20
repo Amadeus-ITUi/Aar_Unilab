@@ -33,7 +33,7 @@ def validate_config(config: DictConfig) -> None:
     for key, value in expected.items():
         if config[key] != value:
             raise ValueError(f"PE02 configuration requires {key}={value}")
-    if config.observation not in {"pe02_v1", "pe02_v2"}:
+    if config.observation not in {"pe02_v1", "pe02_v2", "pe02_v3"}:
         raise ValueError("unsupported PE02 observation version")
     count = len(config.env.joint_order)
     if count < 1 or len(set(config.env.joint_order)) != count:
@@ -71,10 +71,17 @@ def validate_config(config: DictConfig) -> None:
         if not 0 < config.training.clip_ratio < 1:
             raise ValueError("PE02 clip_ratio must be between zero and one")
         return
-    if count != 6 or config.env.frame_size != 30 or config.network.latent_dim != 3:
-        raise ValueError("pe02_v2 requires 6 joints, a 30D frame and 3D velocity encoder")
+    height_std = float(config.reward.get("base_height_std", 1.0))
+    if not math.isfinite(height_std) or height_std <= 0:
+        raise ValueError("reward.base_height_std must be positive and finite")
+    clock_gait = config.observation == "pe02_v2"
+    frame_size = 30 if clock_gait else 24
+    if count != 6 or config.env.frame_size != frame_size or config.network.latent_dim != 3:
+        raise ValueError(
+            f"{config.observation} requires 6 joints, a {frame_size}D frame and 3D velocity encoder"
+        )
     if keyframe is None:
-        raise ValueError("pe02_v2 requires a named reset keyframe for its PD reference")
+        raise ValueError("PE02 position PD requires a named reset keyframe for its reference")
     contact_geoms = config.env.get("foot_contact_geoms")
     if contact_geoms is not None:
         if (
@@ -93,12 +100,41 @@ def validate_config(config: DictConfig) -> None:
         noise_value = float(config.training.get(field, 0.0))
         if not math.isfinite(noise_value) or noise_value < 0:
             raise ValueError(f"training.{field} must be nonnegative and finite")
-    if len(config.play.command) != 3 or len(config.play.gait) != 4:
-        raise ValueError("pe02_v2 play requires three command values and four gait values")
-    if not 0 < config.play.gait[2] < 1:
-        raise ValueError("play gait duration must be strictly between zero and one")
+    if len(config.play.command) != 3:
+        raise ValueError("PE02 play requires three command values")
+    if clock_gait:
+        if config.gait is None or config.play.gait is None or len(config.play.gait) != 4:
+            raise ValueError("pe02_v2 requires gait configuration and four play gait values")
+        if not 0 < config.play.gait[2] < 1:
+            raise ValueError("play gait duration must be strictly between zero and one")
+    else:
+        if config.gait is not None or config.play.gait is not None:
+            raise ValueError("pe02_v3 has no clock or gait command; set gait and play.gait to null")
+        for name in ("tracking_contacts_shaped_force", "tracking_contacts_shaped_vel"):
+            if config.reward.scales.get(name, 0) != 0:
+                raise ValueError(f"pe02_v3 cannot use phase reward {name}")
+        for name in (
+            "contact_force_threshold",
+            "feet_air_time_cap_s",
+            "moving_lin_vel_threshold",
+            "moving_ang_vel_threshold",
+        ):
+            reward_value = float(config.reward[name])
+            if not math.isfinite(reward_value) or reward_value <= 0:
+                raise ValueError(f"reward.{name} must be positive and finite")
+        if not 0 < config.reward.severe_tilt_deg < 90:
+            raise ValueError("reward.severe_tilt_deg must be between 0 and 90 degrees")
+        if config.reward.scales.get("feet_air_height", 0) != 0:
+            height_range = config.reward.get("feet_air_height_range")
+            if (
+                height_range is None
+                or len(height_range) != 2
+                or not all(math.isfinite(value) for value in height_range)
+                or not 0 <= height_range[0] < height_range[1]
+            ):
+                raise ValueError("reward.feet_air_height_range requires finite 0 <= min < max")
     if config.control.type != "P" or config.control.motor_hz != physics:
-        raise ValueError("pe02_v2 uses position PD at each physics step")
+        raise ValueError("PE02 v2/v3 use position PD at each physics step")
     for field in ("kp", "kd", "torque_limits"):
         values = list(config.control[field])
         if len(values) != count or any(not math.isfinite(v) or v <= 0 for v in values):
@@ -126,7 +162,7 @@ def validate_config(config: DictConfig) -> None:
     if config.algo.schedule not in {"adaptive", "fixed"}:
         raise ValueError("unsupported learning-rate schedule")
     if not config.network.encoder_output_detach:
-        raise ValueError("pe02_v2 uses a separately supervised, detached encoder")
+        raise ValueError("PE02 v2/v3 use a separately supervised, detached encoder")
     for field in ("episode_length_s", "fail_to_terminal_time_s"):
         if config.env[field] <= 0:
             raise ValueError(f"env.{field} must be positive")
@@ -147,10 +183,15 @@ def validate_config(config: DictConfig) -> None:
                 "imu_offset_deg_range",
             ),
         ),
-        (config.gait, ("frequencies", "offsets", "durations", "swing_height")),
+        (
+            config.gait,
+            ("frequencies", "offsets", "durations", "swing_height") if clock_gait else (),
+        ),
         (config.env, ("joint_reset_range", "base_velocity_reset_range")),
         (config.commands.ranges, ("lin_vel_x", "lin_vel_y", "ang_vel_yaw", "heading")),
     ):
+        if owner is None:
+            continue
         for field in fields:
             values = list(owner[field])
             if (
@@ -159,7 +200,7 @@ def validate_config(config: DictConfig) -> None:
                 or values[0] > values[1]
             ):
                 raise ValueError(f"invalid range: {field}")
-    if not 0 < config.gait.durations[0] <= config.gait.durations[1] < 1:
+    if config.gait is not None and not 0 < config.gait.durations[0] <= config.gait.durations[1] < 1:
         raise ValueError("gait durations must be strictly between zero and one")
     if config.domain_rand.delay_ms_range[0] < 0 or config.play.delay_ms < 0:
         raise ValueError("action delays cannot be negative")

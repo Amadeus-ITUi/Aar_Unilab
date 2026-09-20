@@ -29,7 +29,7 @@ def test_profiles_compose_the_existing_owner_configs(profile):
         if profile == "pe02_walking":
             assert not cfg.domain_rand.enabled and not cfg.noise.enabled
             assert list(cfg.env.joint_reset_range) == [0, 0]
-            assert list(cfg.play.gait) == [2, 0.5, 0.5, 0.06]
+            assert cfg.play.gait is None and cfg.observation == "pe02_v3"
     assert cfg.algo.num_envs == 4096
     assert cfg.algo.num_steps_per_env == 24
     assert cfg.algo.max_iterations == 1000
@@ -63,6 +63,7 @@ def test_shell_and_cli_overrides_take_precedence_without_mutating_the_parent():
             "algo.max_iterations=5",
             "training.mujoco_threads=7",
             "+experiment=standing",
+            "observation=pe02_v2",
         ],
         environment=incoming,
     )

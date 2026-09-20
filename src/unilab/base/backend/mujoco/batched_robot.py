@@ -45,12 +45,21 @@ def _apply_visual_style(root: ET.Element, path: Path) -> None:
             raise ValueError(f"unsupported playback appearance element: {element.tag}")
 
 
+def robot_xml_path(scene_path: Path) -> Path:
+    """Resolve the robot of a supported single-include scene on a cold path."""
+    include = ET.parse(scene_path).getroot().find("include")
+    return scene_path if include is None else scene_path.parent / include.attrib["file"]
+
+
 def compile_robot_scene(
     path: Path,
     bodies: tuple[str, ...],
     *,
     visual: bool,
     visual_style: Path | None = None,
+    ground_contact_bodies: tuple[str, ...] = (),
+    foot_clearance_bodies: tuple[str, ...] = (),
+    foot_motion_bodies: tuple[str, ...] = (),
 ) -> mujoco.MjModel:
     scene = ET.parse(path).getroot()
     include = scene.find("include")
@@ -105,6 +114,49 @@ def compile_robot_scene(
             reduce="netforce",
             num="1",
         )
+    for body_name in ground_contact_bodies:
+        # World-body contact excludes foot/foot and foot/robot self contacts.
+        ET.SubElement(
+            sensor,
+            "contact",
+            name=f"batch_ground_contact_{body_name}",
+            body1=body_name,
+            body2="world",
+            data="force",
+            reduce="netforce",
+            num="1",
+        )
+    for body_name in foot_clearance_bodies:
+        # Collision vertices use the link frame; objtype="body" instead reports its COM frame.
+        ET.SubElement(
+            sensor,
+            "framepos",
+            name=f"batch_sole_pos_{body_name}",
+            objtype="xbody",
+            objname=body_name,
+        )
+        ET.SubElement(
+            sensor,
+            "framequat",
+            name=f"batch_sole_quat_{body_name}",
+            objtype="xbody",
+            objname=body_name,
+        )
+    for body_name in foot_motion_bodies:
+        for tag in ("framelinvel", "frameangvel"):
+            ET.SubElement(
+                sensor, tag, name=f"batch_{tag}_{body_name}", objtype="xbody", objname=body_name
+            )
+        ET.SubElement(
+            sensor,
+            "contact",
+            name=f"batch_contact_point_{body_name}",
+            body1=body_name,
+            body2="world",
+            data="found force pos",
+            reduce="netforce",
+            num="1",
+        )
     return mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
 
 
@@ -124,8 +176,27 @@ class BatchedRobotSimulation:
         visual_style: Path | None = None,
         native_pd: bool = False,
         foot_contact_geoms: tuple[str, ...] | None = None,
+        track_foot_ground_contact: bool = False,
+        track_foot_clearance: bool = False,
+        track_gait_kinematics: bool = False,
     ) -> None:
-        self.model = compile_robot_scene(path, body_names, visual=visual, visual_style=visual_style)
+        self.model = compile_robot_scene(
+            path,
+            body_names,
+            visual=visual,
+            visual_style=visual_style,
+            ground_contact_bodies=(
+                body_names
+                if track_gait_kinematics
+                else foot_names
+                if track_foot_ground_contact
+                else ()
+            ),
+            foot_clearance_bodies=foot_names
+            if track_foot_clearance or track_gait_kinematics
+            else (),
+            foot_motion_bodies=foot_names if track_gait_kinematics else (),
+        )
         self.model.opt.timestep = 1.0 / physics_hz
         self.dt = 1.0 / physics_hz
         self.num_envs = num_envs
@@ -158,10 +229,42 @@ class BatchedRobotSimulation:
         self.contact_adr = np.array(
             [model.sensor(f"batch_contact_{name}").adr[0] for name in body_names]
         )
+        self.foot_ground_contact_adr = np.array(
+            [model.sensor(f"batch_ground_contact_{name}").adr[0] for name in foot_names]
+            if track_foot_ground_contact or track_gait_kinematics
+            else [],
+            dtype=np.int64,
+        )
+        self.sole_pos_adr = np.array(
+            [model.sensor(f"batch_sole_pos_{name}").adr[0] for name in foot_names]
+            if track_foot_clearance or track_gait_kinematics
+            else [],
+            dtype=np.int64,
+        )
+        self.sole_quat_adr = np.array(
+            [model.sensor(f"batch_sole_quat_{name}").adr[0] for name in foot_names]
+            if track_foot_clearance or track_gait_kinematics
+            else [],
+            dtype=np.int64,
+        )
         self.base_mass = model.body_mass.copy()
+        self.total_mass = float(model.body_mass.sum())
+        self.gravity_acceleration = float(np.linalg.norm(model.opt.gravity))
+        self.gait_sensor_adr = {}
+        if track_gait_kinematics:
+            for key in ("framelinvel", "frameangvel", "contact_point"):
+                self.gait_sensor_adr[key] = np.array(
+                    [model.sensor(f"batch_{key}_{name}").adr[0] for name in foot_names]
+                )
+            self.gait_sensor_adr["ground"] = np.array(
+                [model.sensor(f"batch_ground_contact_{name}").adr[0] for name in body_names]
+            )
         self.base_inertia = model.body_inertia.copy()
         self.base_ipos = model.body_ipos.copy()
         self.base_friction = model.geom_friction.copy()
+        self.ground_geoms = np.flatnonzero(
+            (model.geom_bodyid == 0) & ((model.geom_contype != 0) | (model.geom_conaffinity != 0))
+        )
         self.robot_geoms = np.flatnonzero(
             (model.geom_bodyid != 0) & ((model.geom_contype != 0) | (model.geom_conaffinity != 0))
         )
@@ -191,6 +294,13 @@ class BatchedRobotSimulation:
                 raise ValueError(f"foot {name!r} has no supported collision geometry")
             self.foot_vertices.append(np.concatenate(vertices) if vertices else np.empty((0, 3)))
             self.foot_spheres.append(np.array(spheres).reshape(-1, 4))
+        self.reset_geometry = None
+        if track_gait_kinematics:
+            from unilab.base.backend.mujoco.reset_geometry import ResetSoleGeometry
+
+            self.reset_geometry = ResetSoleGeometry(
+                model, foot_names, self.foot_vertices, self.foot_spheres
+            )
         # Pool clones models. Fail before allocating, rather than silently changing num_envs.
         meminfo = Path("/proc/meminfo").read_text()
         available = next(
@@ -267,9 +377,56 @@ class BatchedRobotSimulation:
     def contact_forces(self) -> np.ndarray:
         return self.sensors[:, self.contact_adr[:, None] + np.arange(3)]
 
+    @property
+    def foot_ground_forces(self) -> np.ndarray:
+        """Net sole/world forces in configured foot order, excluding self contacts."""
+        return self.sensors[:, self.foot_ground_contact_adr[:, None] + np.arange(3)]
+
     def foot_heights(self) -> np.ndarray:
+        """Legacy height convention retained for existing rewards and checkpoints."""
         positions = self.body_positions[:, self.foot_indices]
         quats = self.body_quaternions[:, self.foot_indices]
+        return self._foot_support_heights(positions, quats)
+
+    def foot_clearances(self) -> np.ndarray:
+        """Lowest collision point above the z=0 plane, using actual link-frame poses."""
+        if not len(self.sole_pos_adr):
+            raise RuntimeError("foot clearances require track_foot_clearance=True")
+        positions = self.sensors[:, self.sole_pos_adr[:, None] + np.arange(3)]
+        quats = self.sensors[:, self.sole_quat_adr[:, None] + np.arange(4)]
+        return self._foot_support_heights(positions, quats)
+
+    def gait_foot_state(self, reference_points: np.ndarray) -> dict[str, np.ndarray]:
+        """World-frame sole reference/contact motion and upward ground reaction.
+
+        Netforce contact sensors report the force exerted by body1 on body2.
+        Negating that force gives the ground reaction acting on the robot.
+        Contact position is a force-weighted point; evaluate rigid-body velocity
+        there rather than differencing a moving contact location on a curved sole.
+        """
+        if not self.gait_sensor_adr:
+            raise RuntimeError("gait foot state requires track_gait_kinematics=True")
+        origin = self.sensors[:, self.sole_pos_adr[:, None] + np.arange(3)]
+        quat = self.sensors[:, self.sole_quat_adr[:, None] + np.arange(4)]
+        local = np.broadcast_to(reference_points, origin.shape)
+        cross = 2 * np.cross(quat[..., 1:], local)
+        reference = origin + local + quat[..., :1] * cross + np.cross(quat[..., 1:], cross)
+        linear = self.sensors[:, self.gait_sensor_adr["framelinvel"][:, None] + np.arange(3)]
+        angular = self.sensors[:, self.gait_sensor_adr["frameangvel"][:, None] + np.arange(3)]
+        contact = self.sensors[:, self.gait_sensor_adr["contact_point"][:, None] + np.arange(7)]
+        point = np.where((contact[..., 0] > 0)[..., None], contact[..., 4:7], reference)
+        return {
+            "reference_position": reference,
+            "reference_velocity": linear + np.cross(angular, reference - origin),
+            "contact_velocity": linear + np.cross(angular, point - origin),
+            "ground_force": -contact[..., 1:4],
+            "body_ground_force": -self.sensors[
+                :, self.gait_sensor_adr["ground"][:, None] + np.arange(3)
+            ],
+            "clearance": self.foot_clearances(),
+        }
+
+    def _foot_support_heights(self, positions: np.ndarray, quats: np.ndarray) -> np.ndarray:
         heights = np.empty((self.num_envs, len(self.foot_indices)))
         for index, vertices in enumerate(self.foot_vertices):
             w, x, y, z = quats[:, index].T
@@ -320,6 +477,14 @@ class BatchedRobotSimulation:
         self.joint_velocity[ids] = qvel[:, 6:]
         self.torque[ids], self.control[ids] = 0, 0
         self.steps[ids], self.delay_buffer[ids] = 0, 0
+
+    def align_reset_soles(self, qpos: np.ndarray, clearance: float) -> np.ndarray:
+        """Align the lowest collision sole before the single normal pool reset."""
+        if self.reset_geometry is None:
+            raise RuntimeError("sole alignment requires gait kinematics")
+        correction = clearance - self.reset_geometry.heights(qpos).min(axis=1)
+        qpos[:, 2] += correction
+        return correction
 
     def step(
         self, actions: np.ndarray, substeps: int, *, push_forces: np.ndarray | None = None

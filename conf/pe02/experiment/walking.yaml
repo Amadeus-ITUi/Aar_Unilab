@@ -1,7 +1,8 @@
 # @package _global_
-# Fixed-home walking preparation. Select with +experiment=walking.
-# Reward weights, loose termination, command sampling and PPO use the migration baseline.
+# Clock-free walking from the existing home pose. Select with +experiment=walking.
+observation: pe02_v3
 env:
+  frame_size: 24
   joint_reset_range: [0.0, 0.0]
   base_velocity_reset_range: [0.0, 0.0]
   foot_contact_geoms: [L_foot_Link_collision_sole_0, R_foot_Link_collision_sole_0]
@@ -13,11 +14,11 @@ env:
   failure_contact_force: 5.0
   failure_gravity_z: -0.1
 
-gait:
-  frequencies: [2.0, 2.0]
-  offsets: [0.5, 0.5]
-  durations: [0.5, 0.5]
-  swing_height: [0.06, 0.06]
+# No phase, gait command, or prescribed foot trajectory in v3.
+gait: null
+
+commands:
+  zero_probability: 0.2
 
 noise:
   enabled: false
@@ -30,12 +31,12 @@ domain_rand:
 
 reward:
   scales:
-    keep_balance: 1.0
-    tracking_lin_vel: 1.0
-    tracking_ang_vel: 0.5
-    base_height: -50.0
-    lin_vel_z: -20.0
-    ang_vel_xy: -0.01
+    keep_balance: 0.0
+    tracking_lin_vel: 6
+    tracking_ang_vel: 3
+    base_height: -3.0
+    lin_vel_z: -5.0
+    ang_vel_xy: -0.05
     torques: -0.0002
     dof_acc: -2.5e-7
     action_rate: -0.01
@@ -44,34 +45,50 @@ reward:
     action_smooth: -0.005
     orientation: -5.0
     feet_distance: -150.0
-    feet_regulation: -0.08
+    feet_regulation: 0.0
     foot_landing_vel: -0.15
-    tracking_contacts_shaped_force: -2.0
-    tracking_contacts_shaped_vel: -2.0
+    tracking_contacts_shaped_force: 0.0
+    tracking_contacts_shaped_vel: 0.0
+    # Actual sole/ground contact replaces prescribed stance timing.
+    feet_slide: -1.0
+    feet_air_time: 0.25
+    feet_air_height: 0.25
+    base_contact: -20.0
+    severe_tilt: -20.0
   only_positive: false
   clip_total: 100.0
   clip_single: 5.0
   tracking_sigma: 0.15
   ang_tracking_sigma: 0.20
   soft_joint_limit: 0.95
-  # null selects PE02 home height in place of PE01-specific 0.25 m.
+  # Track home height; normalize the squared error by std in meters.
   base_height_target: null
+  base_height_std: 0.03
   min_feet_distance: 0.08
   about_landing_threshold: 0.05
   gait_kappa: 0.05
   gait_force_sigma: 5.0
   gait_vel_sigma: 0.20
+  contact_force_threshold: 1.0
+  feet_air_time_cap_s: 0.25
+  # Airborne sole clearance: zero at/below 1 cm, linear to full reward at 10 cm.
+  feet_air_height_range: [0.01, 0.10]
+  moving_lin_vel_threshold: 0.1
+  moving_ang_vel_threshold: 0.1
+  severe_tilt_deg: 60.0
 
 
 algo:
   num_envs: 4096
 
 training:
+  experiment_name: walking
   mujoco_threads: 32
   log_root: logs/pe02_walking
   evaluation_joint_noise: 0.0
   evaluation_velocity_noise: 0.0
+  evaluation_height_tolerance: 0.01
 
 play:
-  gait: [2.0, 0.5, 0.5, 0.06]
+  gait: null
   delay_ms: 0.0

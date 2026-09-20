@@ -164,8 +164,10 @@ def test_delay_pd_limits_and_randomization_isolation():
         env.close()
 
 
-def test_standing_rewards_are_targeted_and_keep_original_weights():
-    env = PE02VectorEnv(small_config(), evaluation=True)
+@pytest.mark.parametrize("old_config", [False, True])
+def test_standing_rewards_are_targeted_and_keep_original_weights(old_config):
+    cfg = small_config(*([] if old_config else ["+reward.base_height_std=1.0"]))
+    env = PE02VectorEnv(cfg, evaluation=True)
     try:
         total, terms = env._rewards()
         np.testing.assert_allclose(terms["base_height"], 0, atol=1e-9)
@@ -174,6 +176,8 @@ def test_standing_rewards_are_targeted_and_keep_original_weights():
         np.testing.assert_allclose(terms["tracking_lin_vel"], 0.02)
         assert len(terms) == 18
         assert np.isfinite(total).all()
+        env.backend.qpos[:, 2] += 0.03
+        np.testing.assert_allclose(env._rewards()[1]["base_height"], -3 * 0.03**2 * 0.02)
     finally:
         env.close()
 
@@ -189,8 +193,9 @@ def run_training(config, path):
         runner.close()
 
 
-def test_multiple_updates_and_exact_resume(tmp_path):
-    cfg = small_config()
+@pytest.mark.parametrize("experiment", [None, "walking"])
+def test_multiple_updates_and_exact_resume(tmp_path, experiment):
+    cfg = small_config(*([f"+experiment={experiment}"] if experiment else []))
     checkpoint, initial, final = run_training(cfg, tmp_path / "whole")
     payload = torch.load(checkpoint, weights_only=True)
     assert payload["iteration"] == 2 and payload["total_samples"] == 32
@@ -253,7 +258,12 @@ def test_evaluation_perturbations_are_reproducible_and_play_stays_at_home():
         play.close()
 
 
-def test_formal_training_export_and_relocated_play_are_independent(tmp_path):
+@pytest.mark.parametrize(
+    "experiment,version,frame_size", [(None, "pe02_v2", 30), ("walking", "pe02_v3", 24)]
+)
+def test_formal_training_export_and_relocated_play_are_independent(
+    tmp_path, experiment, version, frame_size
+):
     # Run the ONNX legacy tracer outside pytest (Torch/Python native tracing isolation).
     script = tmp_path / "formal_release.py"
     script.write_text(
@@ -283,13 +293,15 @@ cfg = load_config([
     'algo.num_envs=2', 'algo.num_steps_per_env=2', 'algo.max_iterations=1',
     'training.device=cpu', 'training.logger=none', 'training.evaluation_interval=0',
     'play.delay_ms=25', 'play.command=[0.2,-0.1,0.3]',
-])
+] + ([f'+experiment={sys.argv[2]}'] if sys.argv[2] != 'none' else []))
 result = train(Path('run'), config=cfg)
 release = export_release(result.checkpoint, 'formal')
 relocated = Path('relocated')
 shutil.move(release, relocated)
 manifest = load_manifest(relocated / 'deployment_manifest.json')
-assert manifest['policy']['observation_builder'] == 'pe02_v2'
+assert manifest['policy']['observation_builder'] == sys.argv[3]
+frame_size = int(sys.argv[4])
+assert manifest['policy']['history']['frame_size'] == frame_size
 assert manifest['control']['type'] == 'position_pd'
 assert manifest['control']['command_delay_steps'] == 10
 policy = load_policy(result.checkpoint)
@@ -301,7 +313,7 @@ try:
     for _ in range(12):
         inputs = {
             'observation_history': observation.actor[None],
-            'observation': observation.actor[None, -30:],
+            'observation': observation.actor[None, -frame_size:],
             'command': command,
         }
         action = session.run(['action'], inputs)[0]
@@ -314,4 +326,9 @@ finally:
     env.close()
 """
     )
-    subprocess.run([sys.executable, str(script), str(ROOT)], cwd=tmp_path, check=True, timeout=60)
+    subprocess.run(
+        [sys.executable, str(script), str(ROOT), experiment or "none", version, str(frame_size)],
+        cwd=tmp_path,
+        check=True,
+        timeout=60,
+    )

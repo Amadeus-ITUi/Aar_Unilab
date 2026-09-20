@@ -10,7 +10,6 @@ from unilab.envs.locomotion.pe02.vector_env import PE02VectorEnv
 
 
 class PE02PlayEnv:
-    frame_size = 30
     action_size = 6
 
     def __init__(self, config: DictConfig, model_path: Path | None = None) -> None:
@@ -25,6 +24,7 @@ class PE02PlayEnv:
         self.model = self.vector.backend.model
         self.data = self.vector.backend.create_visual_data()
         self.config = config
+        self.frame_size = int(config.env.frame_size)
         self.history_length = int(config.env.history_length)
         self.physics_hz = int(config.control.physics_hz)
         self.policy_hz = int(config.control.policy_hz)

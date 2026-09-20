@@ -17,14 +17,29 @@ MuJoCo plot and diagnostic telemetry. The original-style WE11 implementation
 is active under `sim2sim/we11_play/`; its `IMPORT.md` retains provenance.
 Training-only reward, critic, curriculum and PPO code do not enter the generic target.
 
-PE02 formal releases use the independent `pe02_v2` observation and position-PD
+PE02 formal releases use the independent `pe02_v2` / `pe02_v3` observation and position-PD
 runtime in `include/aar/pe02_runtime.hpp`. The release's `robot/pe02_runtime.json`
-owns home angles, gains, delay, gait and normalization; old `pe02_v1` releases
+owns home angles, gains, delay and normalization. V2 has a 30D frame including a
+gait clock; v3 has a 24D frame with no gait command and uses `pe02.runtime.v3`.
+Old `pe02_v1` releases
 retain their torque-control contract. See the [PE02 migration audit](../docs/PE02_TRAINING_MIGRATION.md).
 
 PE01 formal releases similarly use their own `pe01_v2` runtime in
 `include/aar/pe01_runtime.hpp` and `robot/pe01_runtime.json`. The original
 `pe01_v1` runtime remains compatible with existing example releases.
+
+PE03 CNC releases use their independent `include/aar/pe03_runtime.hpp` and
+`robot/pe03_runtime.json`, selected by `pe03_v2` (standing) or `pe03_v3`
+(clock-free walking). No PE01/PE02 runtime is inherited. Compare a PE03 release with:
+
+```bash
+/ssd/conda/envs/aar_unilab/bin/python tools/compare_pe03_sim2sim.py \
+  --binary sim2sim/build/aar_sim2sim \
+  --release releases/pe03/pe03_flat/<run_id> --steps 1 10 100
+```
+
+The [PE03 validation report](../docs/PE03_TRAINING_MIGRATION.md) records the tested
+assets, control contract and smoke release locations.
 
 Build the dependency-free contract layer with:
 

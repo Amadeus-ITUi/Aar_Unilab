@@ -20,6 +20,7 @@ from omegaconf import DictConfig, OmegaConf
 from unilab.algos.torch.pe02.console import format_iteration
 from unilab.algos.torch.pe02.policy import PE02EncoderPolicy
 from unilab.algos.torch.pe02.ppo import PE02PPO
+from unilab.algos.torch.pe02.run_logging import index_tensorboard_run
 from unilab.algos.torch.pe02.tensorboard import tensorboard_metrics
 from unilab.catalog.registry import repository_path
 from unilab.envs.locomotion.pe02.config import ROOT, validate_config
@@ -99,6 +100,10 @@ class PE02Runner:
 
                 self.writer = SummaryWriter(
                     str(output_dir / "tensorboard"), purge_step=self.iteration, flush_secs=10
+                )
+                link = index_tensorboard_run(output_dir, config)
+                print(
+                    f"TensorBoard run: {link.name}\nTensorBoard logdir: {link.parent}", flush=True
                 )
             elif config.training.logger != "none":
                 raise ValueError("PE02 supports training.logger=tensorboard or none")
@@ -229,9 +234,11 @@ class PE02Runner:
                     measured += int(live.sum())
                     for key in ("base_height", "base_tilt_deg", "nonfoot_contact"):
                         sums[key] += float(state.info[key][live].sum())
-                    standing = np.abs(
-                        state.info["base_height"] - env.height_target
-                    ) < self.config.training.get("evaluation_height_tolerance", 0.03)
+                    standing = np.ones(env.num_envs, dtype=bool)
+                    if self.config.reward.scales.base_height != 0:
+                        standing &= np.abs(
+                            state.info["base_height"] - env.height_target
+                        ) < self.config.training.get("evaluation_height_tolerance", 0.03)
                     standing &= state.info["base_tilt_deg"] < self.config.training.get(
                         "evaluation_tilt_deg", 10
                     )

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, open_dict
 from torch import nn
 
 from unilab.adapters.pe02_ppo import load_policy, resolve_play_checkpoint, train, train_minimal
@@ -121,14 +121,14 @@ def export_release(checkpoint: Path, run_id: str, device: str = "cpu") -> Path:
             ),
             reset_keyframe=reset_keyframe,
         )
-        if config.observation == "pe02_v2":
+        if config.observation in {"pe02_v2", "pe02_v3"}:
             from unilab.base.backend.mujoco.batched_robot import compile_robot_scene
 
             model = compile_robot_scene(
                 staging / model_path.name, tuple(config.env.body_names), visual=False
             )
             runtime = {
-                "schema": "pe02.runtime.v2",
+                "schema": f"pe02.runtime.{str(config.observation).removeprefix('pe02_')}",
                 "default_joint_position": model.key(str(reset_keyframe)).qpos[7:].tolist(),
                 "kp": list(config.control.kp),
                 "kd": list(config.control.kd),
@@ -138,9 +138,10 @@ def export_release(checkpoint: Path, run_id: str, device: str = "cpu") -> Path:
                 "delay_steps": round(
                     float(config.play.delay_ms) * int(config.control.physics_hz) / 1000
                 ),
-                "gait": list(config.play.gait),
                 "normalization": OmegaConf.to_container(config.normalization, resolve=True),
             }
+            if config.observation == "pe02_v2":
+                runtime["gait"] = list(config.play.gait)
             (staging / "pe02_runtime.json").write_text(json.dumps(runtime, indent=2) + "\n")
             manifest["artifacts"]["pe02_runtime_path"] = "robot/pe02_runtime.json"
             manifest["control"]["command_delay_steps"] = runtime["delay_steps"]
@@ -214,14 +215,20 @@ def main() -> int:
     print(f"PE02 play checkpoint={checkpoint.resolve()}", flush=True)
     policy = load_policy(checkpoint, device=device)
     play_config = OmegaConf.merge(policy.config)
-    if play_config.observation == "pe02_v2":
-        play_config.play = config.play
+    if play_config.observation in {"pe02_v2", "pe02_v3"}:
+        overrides = OmegaConf.to_container(config.play, resolve=True)
+        # The checkpoint owns the observation layout. A v3 launcher can play old v2 models.
+        if play_config.observation == "pe02_v3":
+            overrides["gait"] = None
+        elif overrides.get("gait") is None:
+            overrides.pop("gait")
+        # Playback options can be newer than the checkpoint's structured config.
+        with open_dict(play_config.play):
+            play_config.play.merge_with(overrides)
     env = make_play_env(play_config)
 
     def action(observation, command):
         if hasattr(env, "set_command"):
-            if not np.any(command):
-                command = np.array(play_config.play.command, dtype=np.float32)
             command = env.set_command(command)
         history = torch.as_tensor(observation.actor, device=device).unsqueeze(0)
         commands = torch.as_tensor(command, device=device).unsqueeze(0)
@@ -229,16 +236,24 @@ def main() -> int:
             selected = policy.action_mean(history, history[:, -policy.frame_size :], commands)
         return selected.cpu().numpy()[0]
 
-    with InteractiveSession(
-        env.model,
-        env.data,
-        telemetry_dir=Path(str(config.play.telemetry)),
-        render=config.play.render == "interactive",
-        plot=bool(config.play.plot),
-    ) as session:
-        session.run(int(config.play.steps), action, env)
-    if hasattr(env, "close"):
-        env.close()
+    try:
+        with InteractiveSession(
+            env.model,
+            env.data,
+            telemetry_dir=Path(str(config.play.telemetry)),
+            render=config.play.render == "interactive",
+            plot=bool(config.play.plot),
+            paused=bool(config.play.paused),
+            command_source=str(config.play.command_source),
+            fixed_command=config.play.command,
+            gamepad_index=int(config.play.gamepad.index),
+            gamepad_deadzone=float(config.play.gamepad.deadzone),
+            gamepad_scale=config.play.gamepad.scale,
+        ) as session:
+            session.run(int(config.play.steps), action, env)
+    finally:
+        if hasattr(env, "close"):
+            env.close()
     return 0
 
 

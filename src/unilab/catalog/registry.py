@@ -249,6 +249,15 @@ catalog.observations["pe02_v2"] = ObservationSpec(
     critic_dim=33,
     robot_ids=frozenset({"pe02"}),
 )
+catalog.observations["pe02_v3"] = ObservationSpec(
+    "pe02_v3",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=240,
+    critic_dim=27,
+    robot_ids=frozenset({"pe02"}),
+)
 catalog.policies["we11_mlp"] = PolicySpec(
     "we11_mlp", "mlp", ("obs",), ("act",), robot_ids=frozenset({"we11"})
 )
@@ -283,6 +292,81 @@ catalog.algorithms["pe02_custom_ppo"] = AlgorithmSpec(
     frozenset({"pe02_encoder_mlp"}),
     entrypoint="scripts/train_pe02.py",
 )
+# Independently owned CNC prototype training contracts.
+catalog.robots["pe03"] = RobotSpec(
+    id="pe03",
+    asset="src/unilab/assets/robots/pe03/urdf/pe03.urdf",
+    joints=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    actuators=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    capabilities=frozenset({"legs", "legacy-custom-ppo"}),
+    metadata={"source_asset_name": "点足CNC", "training_profile": "pe03"},
+    scene="src/unilab/assets/robots/pe03/scene.xml",
+    asset_version="cnc-collision-v1-20260918",
+    runtime_assets=(
+        "pe03.xml",
+        "pe03_joint_limits.xml",
+        "scene_joint_limits.xml",
+        "scene.xml",
+        "play_visual.xml",
+        "runtime_meshes",
+        "collision_meshes",
+    ),
+)
+catalog.tasks["pe03_flat"] = TaskSpec(
+    "pe03_flat", frozenset({"pe03"}), "pe03/task/pe03_flat", "PE03Flat"
+)
+catalog.tasks["pe03_gait_flat"] = TaskSpec(
+    "pe03_gait_flat", frozenset({"pe03"}), "pe03/task/pe03_gait_flat", "PE03GaitFlat"
+)
+catalog.observations["pe03_v4"] = ObservationSpec(
+    "pe03_v4",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=30,
+    actor_dim=1140,
+    critic_dim=14,
+    robot_ids=frozenset({"pe03"}),
+)
+catalog.policies["pe03_history_velocity_mlp"] = PolicySpec(
+    "pe03_history_velocity_mlp",
+    "mlp-history-velocity",
+    ("observation_history", "observation", "command"),
+    ("action",),
+    robot_ids=frozenset({"pe03"}),
+)
+catalog.observations["pe03_v2"] = ObservationSpec(
+    "pe03_v2",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe03"}),
+)
+catalog.observations["pe03_v3"] = ObservationSpec(
+    "pe03_v3",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=240,
+    critic_dim=27,
+    robot_ids=frozenset({"pe03"}),
+)
+catalog.policies["pe03_encoder_mlp"] = PolicySpec(
+    "pe03_encoder_mlp",
+    "mlp-encoder",
+    ("observation_history", "observation", "command"),
+    ("action",),
+    robot_ids=frozenset({"pe03"}),
+)
+catalog.algorithms["pe03_custom_ppo"] = AlgorithmSpec(
+    "pe03_custom_ppo",
+    "unilab.adapters.pe03_ppo",
+    "PE03PPOAdapter",
+    frozenset({"pe03_encoder_mlp", "pe03_history_velocity_mlp"}),
+    entrypoint="scripts/train_pe03.py",
+)
+
 catalog.simulators["mujoco"] = SimulatorSpec(
     "mujoco", "mujoco", frozenset({"headless", "render", "mouse-force", "camera"})
 )

@@ -1,0 +1,153 @@
+# @package _global_
+# Independent WTW-inspired task. No reward/reset inheritance from pe03_flat.
+task_id: pe03_gait_flat
+env:
+  model_path: src/unilab/assets/robots/pe03/scene_joint_limits.xml
+  asset_version: pe03-cnc-joint-limits-v3 # Inward hip travel capped at 11.1 degrees.
+  joint_order: [L_hip_, L_thigh_, L_calf_, R_hip_, R_thigh_, R_calf_]
+  body_names: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, L_foot_Link, R_hip_Link, R_thigh_Link, R_calf_link, R_foot_Link]
+  foot_names: [L_foot_Link, R_foot_Link]
+  foot_contact_geoms: [L_foot_Link_collision_sole_0, R_foot_Link_collision_sole_0]
+  penalized_bodies: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, R_hip_Link, R_thigh_Link, R_calf_link]
+  termination_bodies: [body_link]
+  frame_size: 38
+  history_length: 30
+  reset_keyframe: home
+  reset_randomization:
+    enabled: true
+    joint_range: [-0.1, 0.1]
+    linear_velocity_range: [0.0, 0.0]
+    angular_velocity_range: [0.0, 0.0]
+    sole_clearance: 0.001
+    max_attempts: 8
+  initial_height: null
+  episode_length_s: 20.0
+  fail_to_terminal_time_s: 0.1
+  failure_tilt_deg: 80.0
+  failure_height: 0.08
+  failure_contact_force: 1.0
+  dof_vel_use_pos_diff: true
+  workspace_path: src/unilab/assets/robots/pe03/analysis/gait_workspace_joint_limits.npz
+  reference_points: [[-0.035424222548802696, -0.0005453385723133882, -0.0006062477477826178], [-0.035424222548802696, 0.0005453385723133882, -0.0006062477477826178]]
+
+control:
+  physics_hz: 400
+  motor_hz: 400
+  policy_hz: 50
+  type: P
+  action_clip: 100.0
+  action_scale: 0.25
+  clip_joint_targets: true # Clamp final PD targets to this model's per-joint hard bounds.
+  kp: [4.3, 4.3, 4.9, 4.3, 4.3, 4.9]
+  kd: [0.34, 0.34, 0.24, 0.34, 0.34, 0.24]
+  torque_limits: [5.5, 5.5, 14.0, 5.5, 5.5, 14.0]
+  user_torque_limit: 14.0
+
+commands:
+  resampling_time: 10.0
+  zero_probability: 0.2
+  initial_low: [-0.3, -0.1, -0.5]
+  initial_high: [0.3, 0.1, 0.5]
+  low: [-1.0, -0.6, -1.0]
+  high: [1.0, 0.6, 1.0]
+  bin_width: [0.1, 0.1, 0.1]
+
+gait:
+  fixed: [2.0, 0.6, 0.03] # frequency Hz, support fraction, clearance m
+  low: [1.5, 0.5, 0.02]
+  high: [3.0, 0.7, 0.10]
+  bin_width: [0.25, 0.05, 0.01]
+  fixed_probability: 0.2
+  transition_s: 0.5
+  reset_phase: 0.05
+  kappa: 0.07
+
+curriculum:
+  thresholds: [0.8, 0.7, 0.9, 0.9]
+  weight_increment: 0.2
+  contact_accuracy: 0.9
+  clearance_tolerance: 0.01
+
+normalization:
+  lin_vel: 1.0
+  ang_vel: 1.0
+  dof_pos: 1.0
+  dof_vel: 0.1
+  frequency: 0.5
+  support_fraction: 1.0
+  clearance: 10.0
+  clip_observations: 100.0
+
+noise:
+  enabled: true
+  level: 1.0
+  dof_pos: 0.08
+  dof_vel: 1.5
+  ang_vel: 0.2
+  gravity: 0.2
+domain_rand:
+  enabled: true
+  curriculum:
+    enabled: true
+    initial_level: 0.0
+    increment: 0.1
+    max_level: 1.0
+    strategy: per_env_mean # One natural completed episode per parallel environment.
+    mean_episode_length: 950 # Policy steps; 19 seconds at 50 Hz.
+  friction_range: [0.1, 2.0]
+  friction_buckets: 64
+  added_mass_range: [-0.2, 0.2]
+  base_com_range: [0.01, 0.01, 0.01]
+  inertia_range: [0.8, 1.2]
+  kp_range: [0.8, 1.2]
+  kd_range: [0.8, 1.2]
+  torque_scale_range: [0.8, 1.2]
+  default_joint_offset_range: [-0.02, 0.02]
+  delay_ms_range: [20.0, 20.0]
+  imu_offset_deg_range: [-1.2, 1.2]
+  push_enabled: true
+  push_interval_s: 5.0
+  max_push_vel: 0.5
+  restitution_mapping: null
+
+reward:
+  tracking_sigma: 0.25
+  yaw_tracking_sigma: 0.25
+  force_sigma_weight_fraction: 0.08
+  gait_vel_sigma: 10.0
+  contact_force_threshold: 1.0
+  sigma_negative: 0.02
+  soft_limit_fraction: 0.05
+  collision:
+    # Deduct each body's cost after the exponential; do not clip the sum at zero.
+    aggregation: additive
+    force_threshold: 1.0 # N, norm of the body's net contact force (including self contact)
+    # Multiply scales.collision per body. A body counts once, regardless of mesh count.
+    body_multipliers:
+      body_link: 1.0
+      L_hip_Link: 1.0
+      L_thigh_Link: 1.0
+      L_calf_Link: 1.0
+      R_hip_Link: 1.0
+      R_thigh_Link: 1.0
+      R_calf_link: 1.0
+  scales:
+    tracking_lin_vel: 1.0
+    tracking_ang_vel: 0.5
+    contact_force: -4.0
+    contact_velocity: -4.0
+    foot_clearance: -30.0
+    foot_placement: -10.0
+    base_height: -100.0
+    orientation: -5.0
+    lin_vel_z: -0.02
+    ang_vel_xy: -0.001
+    torques: -0.0001
+    dof_vel: -0.0001
+    dof_acc: -0.00000025
+    action_rate: -0.01
+    target_smoothness_1: -0.1
+    target_smoothness_2: -0.1
+    feet_slip: -0.04
+    dof_pos_limits: -10.0
+    collision: -5.0

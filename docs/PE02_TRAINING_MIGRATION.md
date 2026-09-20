@@ -1,7 +1,9 @@
 # PE02 原始 PE01 训练系统迁移
 
 PE02 现在有独立的多环境 MuJoCo 训练环境、PPO runner、速度估计 encoder、
-配置、checkpoint 续训和 Python/C++ 部署合同。正式入口使用 `pe02_v2`。
+配置、checkpoint 续训和 Python/C++ 部署合同。本文记录原始 `pe02_v2` 迁移基线。
+当前 `+experiment=walking` 使用去掉时钟步态的 `pe02_v3`，见
+[walking 配置说明](PE02_WALKING_VALIDATION.md)；下文基线数值不代表当前 walking。
 原 `pe02_v1` 单环境最小适配器保留用于旧 checkpoint 兼容，不能与正式训练混用。
 
 最新短训、初始化诊断及长训前待办见

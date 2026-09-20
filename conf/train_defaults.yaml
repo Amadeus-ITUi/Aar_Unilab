@@ -54,7 +54,7 @@ profiles:
     selectors:
       robot: pe02
       task: pe02_flat
-      observation: pe02_v2
+      observation: pe02_v3
       policy: pe02_encoder_mlp
       algorithm: pe02_custom_ppo
       simulator: mujoco
@@ -65,3 +65,64 @@ profiles:
       training.device: auto
       training.evaluation_interval: 100
       training.log_root: logs/pe02_walking
+
+  pe03_walking:
+    selectors:
+      robot: pe03
+      task: pe03_flat
+      observation: pe03_v3
+      policy: pe03_encoder_mlp
+      algorithm: pe03_custom_ppo
+      simulator: mujoco
+    overrides:
+      +experiment: walking
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+      training.evaluation_interval: 100
+      training.log_root: logs/pe03_walking
+
+  pe03_gait_fixed:
+    selectors:
+      robot: pe03
+      task: pe03_gait_flat
+      observation: pe03_v4
+      policy: pe03_history_velocity_mlp
+      algorithm: pe03_custom_ppo
+      simulator: mujoco
+    overrides:
+      +experiment: gait_fixed
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+
+  pe03_gait_variable:
+    selectors:
+      robot: pe03
+      task: pe03_gait_flat
+      observation: pe03_v4
+      policy: pe03_history_velocity_mlp
+      algorithm: pe03_custom_ppo
+      simulator: mujoco
+    overrides:
+      +experiment: gait_variable
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+
+  pe03_standing:
+    selectors:
+      robot: pe03
+      task: pe03_flat
+      observation: pe03_v2
+      policy: pe03_encoder_mlp
+      algorithm: pe03_custom_ppo
+      simulator: mujoco
+    overrides:
+      +experiment: standing
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.device: auto
+      training.evaluation_interval: 50
+      training.log_root: logs/pe03_standing
+      algo.save_interval: 50

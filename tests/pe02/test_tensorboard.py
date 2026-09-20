@@ -43,7 +43,8 @@ def test_metric_groups_preserve_values_and_convert_episode_seconds_to_steps():
     assert "Train/mean_episode_length" not in tensorboard_metrics({}, policy_dt=0.02)
 
 
-def test_training_writes_grouped_events_and_keeps_original_jsonl_and_policy(tmp_path):
+@pytest.mark.parametrize("experiment", [None, "walking"])
+def test_training_writes_grouped_events_and_keeps_original_jsonl_and_policy(tmp_path, experiment):
     cfg = load_config(
         [
             "algo.num_envs=2",
@@ -57,6 +58,7 @@ def test_training_writes_grouped_events_and_keeps_original_jsonl_and_policy(tmp_
             "training.evaluation_interval=1",
             "training.evaluation_episodes=2",
             "training.export=false",
+            *([f"+experiment={experiment}"] if experiment else []),
         ]
     )
     states = []
@@ -73,7 +75,13 @@ def test_training_writes_grouped_events_and_keeps_original_jsonl_and_policy(tmp_
     row = json.loads((tmp_path / "logged/metrics.jsonl").read_text())
     assert "policy_loss" in row and "Loss/surrogate" not in row
     events = EventAccumulator(str(tmp_path / "logged/tensorboard")).Reload()
+    metadata = json.loads((tmp_path / "logged/run_metadata.json").read_text())
+    link = tmp_path / "tensorboard_runs" / metadata["run_name"]
+    assert link.resolve() == tmp_path / "logged/tensorboard"
+    assert metadata["experiment"] == (experiment or "baseline")
     expected = tensorboard_metrics(row, policy_dt=0.02)
+    if experiment == "walking":
+        assert "reward/feet_air_height" in row
     assert set(events.Tags()["scalars"]) == set(expected)
     for tag, value in expected.items():
         (point,) = events.Scalars(tag)

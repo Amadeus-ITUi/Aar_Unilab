@@ -1,0 +1,124 @@
+# @package _global_
+task_id: pe03_flat
+
+env:
+  model_path: src/unilab/assets/robots/pe03/scene.xml
+  joint_order: [L_hip_, L_thigh_, L_calf_, R_hip_, R_thigh_, R_calf_]
+  body_names: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, L_foot_Link, R_hip_Link, R_thigh_Link, R_calf_link, R_foot_Link]
+  foot_names: [L_foot_Link, R_foot_Link]
+  penalized_bodies: [body_link, L_thigh_Link, L_calf_Link, R_thigh_Link, R_calf_link]
+  termination_bodies: [body_link]
+  frame_size: 30
+  history_length: 10
+  reset_keyframe: home
+  # null uses the ground-aligned height from the scene keyframe; a number overrides z.
+  initial_height: null
+  episode_length_s: 20.0
+  fail_to_terminal_time_s: 0.5
+  failure_gravity_z: -0.1
+  failure_contact_force: 5.0
+  # Source accumulates failure ticks, rather than requiring consecutive failures.
+  consecutive_failure: false
+  joint_reset_range: [-0.5, 0.5]
+  base_velocity_reset_range: [-0.5, 0.5]
+  dof_vel_use_pos_diff: true
+
+control:
+  # Initial settings copied from PE02, not identified on the CNC prototype.
+  physics_hz: 400
+  motor_hz: 400
+  policy_hz: 50
+  type: P
+  action_clip: 100.0
+  action_scale: 0.25
+  kp: [4.3, 4.3, 4.9, 4.3, 4.3, 4.9]
+  kd: [0.34, 0.34, 0.24, 0.34, 0.34, 0.24]
+  torque_limits: [5.5, 5.5, 14.0, 5.5, 5.5, 14.0]
+  user_torque_limit: 14.0
+
+commands:
+  resampling_time: 5.0
+  heading_command: false
+  heading_gain: 1.0
+  # Source uses random > 0.1: the effective zero-command probability is 0.9.
+  zero_probability: 0.9
+  ranges:
+    lin_vel_x: [-1.0, 1.0]
+    lin_vel_y: [-0.6, 0.6]
+    ang_vel_yaw: [-1.0, 1.0]
+    heading: [-3.141592653589793, 3.141592653589793]
+
+gait:
+  resampling_time: 5.0
+  frequencies: [2.0, 2.0]
+  offsets: [0.5, 0.5]
+  durations: [0.5, 0.5]
+  swing_height: [0.06, 0.06]
+
+normalization:
+  lin_vel: 1.0
+  ang_vel: 1.0
+  dof_pos: 1.0
+  dof_vel: 0.1
+  clip_observations: 100.0
+
+noise:
+  enabled: true
+  level: 1.5
+  dof_pos: 0.08
+  dof_vel: 1.5
+  ang_vel: 0.2
+  gravity: 0.2
+
+domain_rand:
+  enabled: true
+  friction_range: [0.1, 2.0]
+  friction_buckets: 64
+  added_mass_range: [-0.2, 0.2]
+  base_com_range: [0.01, 0.01, 0.01]
+  inertia_range: [0.8, 1.2]
+  kp_range: [0.8, 1.2]
+  kd_range: [0.8, 1.2]
+  torque_scale_range: [0.8, 1.2]
+  default_joint_offset_range: [-0.02, 0.02]
+  delay_ms_range: [25.0, 50.0]
+  imu_offset_deg_range: [-1.2, 1.2]
+  push_enabled: true
+  push_interval_s: 5.0
+  max_push_vel: 0.5
+  # PhysX restitution has no scalar MuJoCo equivalent.
+  restitution_mapping: null
+
+reward:
+  scales:
+    keep_balance: 1.0
+    tracking_lin_vel: 1.0
+    tracking_ang_vel: 0.5
+    base_height: -3.0
+    lin_vel_z: -0.5
+    ang_vel_xy: -0.01
+    torques: -0.0002
+    dof_acc: -2.5e-7
+    action_rate: -0.01
+    dof_pos_limits: -2.0
+    collision: -3.0
+    action_smooth: -0.005
+    orientation: -5.0
+    feet_distance: -150.0
+    feet_regulation: -0.08
+    foot_landing_vel: -0.15
+    tracking_contacts_shaped_force: -2.0
+    tracking_contacts_shaped_vel: -2.0
+  only_positive: false
+  clip_total: 100.0
+  clip_single: 5.0
+  tracking_sigma: 0.15
+  ang_tracking_sigma: 0.20
+  soft_joint_limit: 0.95
+  # null selects the recomputed CNC home height from scene.xml.
+  base_height_target: null
+  min_feet_distance: 0.08
+  about_landing_threshold: 0.05
+  gait_kappa: 0.05
+  gait_force_sigma: 5.0
+  gait_vel_sigma: 0.20

@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - gait_base
+  - _self_
+gait:
+  stage: fixed
+training:
+  experiment_name: gait_fixed
+  log_root: logs/pe03_gait_fixed
+play:
+  telemetry: logs/play/pe03/pe03_gait_flat/fixed

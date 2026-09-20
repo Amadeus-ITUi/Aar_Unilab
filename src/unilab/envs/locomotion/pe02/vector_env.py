@@ -39,8 +39,9 @@ class PE02VectorEnv:
     ) -> None:
         self.config = OmegaConf.merge(config if config is not None else load_config())
         validate_config(self.config)
-        if self.config.observation != "pe02_v2":
-            raise ValueError("PE02VectorEnv requires pe02_v2")
+        if self.config.observation not in {"pe02_v2", "pe02_v3"}:
+            raise ValueError("PE02VectorEnv requires pe02_v2 or pe02_v3")
+        self.clock_gait = self.config.observation == "pe02_v2"
         self.cfg = OmegaConf.to_container(self.config, resolve=True)
         self.evaluation = evaluation
         self.auto_reset = auto_reset
@@ -70,6 +71,8 @@ class PE02VectorEnv:
                 if env.get("foot_contact_geoms") is not None
                 else None
             ),
+            track_foot_ground_contact=not self.clock_gait,
+            track_foot_clearance=bool(self.cfg["reward"]["scales"].get("feet_air_height", 0)),
         )
         self.home = self.backend.home.copy()
         if env["initial_height"] is not None:
@@ -83,12 +86,17 @@ class PE02VectorEnv:
         ]
         self.max_episode_steps = int(np.ceil(env["episode_length_s"] / self.dt))
         self.command_interval = max(1, round(self.cfg["commands"]["resampling_time"] / self.dt))
-        self.gait_interval = max(1, round(self.cfg["gait"]["resampling_time"] / self.dt))
+        self.gait_interval = (
+            max(1, round(self.cfg["gait"]["resampling_time"] / self.dt)) if self.clock_gait else 1
+        )
         n = self.num_envs
         self.actions = np.zeros((n, 6))
         self.last_actions = np.zeros((n, 2, 6))
-        self.history = np.zeros((n, self.history_length, 30), dtype=np.float32)
+        self.history = np.zeros((n, self.history_length, env["frame_size"]), dtype=np.float32)
         self.commands = np.zeros((n, 3))
+        self.standing_command = np.zeros(n, dtype=bool)
+        self.foot_air_time = np.zeros((n, 2))
+        self.foot_contact_time = np.zeros((n, 2))
         self.headings = np.zeros(n)
         self.gaits = np.zeros((n, 4))
         self.phase = np.zeros(n)
@@ -181,12 +189,15 @@ class PE02VectorEnv:
         for i, key in enumerate(("lin_vel_x", "lin_vel_y", "ang_vel_yaw")):
             self.commands[ids, i] = self._uniform(cfg["ranges"][key], len(ids))
         self.headings[ids] = self._uniform(cfg["ranges"]["heading"], len(ids))
-        zero = ids[self.rng.random(len(ids)) < cfg["zero_probability"]]
+        self.standing_command[ids] = self.rng.random(len(ids)) < cfg["zero_probability"]
+        zero = ids[self.standing_command[ids]]
         self.commands[zero] = 0
         forward = rotate(self.backend.qpos[zero, 3:7], np.tile([1.0, 0.0, 0.0], (len(zero), 1)))
         self.headings[zero] = np.arctan2(forward[:, 1], forward[:, 0])
 
     def _resample_gaits(self, ids: np.ndarray) -> None:
+        if not self.clock_gait:
+            return
         if self.evaluation:
             self.gaits[ids] = self.cfg["play"]["gait"]
         else:
@@ -203,20 +214,22 @@ class PE02VectorEnv:
         scale = self.cfg["normalization"]
         gyro = self.backend.qvel[ids, 3:6]
         gravity = self._gravity()[ids]
-        frame = np.concatenate(
-            (
-                gyro * scale["ang_vel"],
-                gravity,
-                (self.backend.qpos[ids, 7:] - self.backend.default_position[ids])
-                * scale["dof_pos"],
-                self.backend.joint_velocity[ids] * scale["dof_vel"],
-                self.actions[ids],
-                np.sin(2 * np.pi * self.phase[ids])[:, None],
-                np.cos(2 * np.pi * self.phase[ids])[:, None],
-                self.gaits[ids],
-            ),
-            axis=-1,
-        )
+        parts = [
+            gyro * scale["ang_vel"],
+            gravity,
+            (self.backend.qpos[ids, 7:] - self.backend.default_position[ids]) * scale["dof_pos"],
+            self.backend.joint_velocity[ids] * scale["dof_vel"],
+            self.actions[ids],
+        ]
+        if self.clock_gait:
+            parts.extend(
+                (
+                    np.sin(2 * np.pi * self.phase[ids])[:, None],
+                    np.cos(2 * np.pi * self.phase[ids])[:, None],
+                    self.gaits[ids],
+                )
+            )
+        frame = np.concatenate(parts, axis=-1)
         clean = frame.copy()
         if not self.evaluation:
             biased = multiply(self.imu_offset[ids], q)
@@ -230,7 +243,7 @@ class PE02VectorEnv:
                         np.full(3, noise["gravity"]),
                         np.full(6, noise["dof_pos"] * scale["dof_pos"]),
                         np.full(6, noise["dof_vel"] * scale["dof_vel"]),
-                        np.zeros(12),
+                        np.zeros(frame.shape[1] - 18),
                     ]
                     * noise["level"]
                 )
@@ -281,6 +294,7 @@ class PE02VectorEnv:
             qvel[:, :6] = self._uniform(self.cfg["env"]["base_velocity_reset_range"], (n, 6))
         self.backend.reset(ids, qpos, qvel)
         self.phase[ids], self.episode_steps[ids], self.failure_steps[ids] = 0, 0, 0
+        self.foot_air_time[ids], self.foot_contact_time[ids] = 0, 0
         self.actions[ids], self.last_actions[ids], self.episode_returns[ids] = 0, 0, 0
         self.previous_velocity[ids] = 0
         self.previous_base[ids] = qpos[:, :3]
@@ -321,6 +335,49 @@ class PE02VectorEnv:
             (mapped - 1) / kappa
         ) * (1 - ndtr((mapped - 1.5) / kappa))
 
+    def _ground_contacts(self) -> np.ndarray:
+        return (
+            np.linalg.norm(self.backend.foot_ground_forces, axis=-1)
+            > self.cfg["reward"]["contact_force_threshold"]
+        )
+
+    def _update_contact_times(self) -> None:
+        # Contact duration is measured at policy frequency (20 ms), without a gait clock.
+        contact = self._ground_contacts()
+        self.foot_air_time[:] = np.where(contact, 0, self.foot_air_time + self.dt)
+        self.foot_contact_time[:] = np.where(contact, self.foot_contact_time + self.dt, 0)
+
+    def _contact_rewards(self, forces: np.ndarray, gravity: np.ndarray) -> dict[str, np.ndarray]:
+        r = self.cfg["reward"]
+        contact = self._ground_contacts()
+        moving = (np.linalg.norm(self.commands[:, :2], axis=-1) > r["moving_lin_vel_threshold"]) | (
+            np.abs(self.commands[:, 2]) > r["moving_ang_vel_threshold"]
+        )
+        mode_time = np.where(contact, self.foot_contact_time, self.foot_air_time)
+        single_stance = contact.sum(axis=1) == 1
+        base_contact = (forces[:, self.termination_bodies] > r["contact_force_threshold"]).any(1)
+        severe_tilt = gravity[:, 2] > -np.cos(np.deg2rad(r["severe_tilt_deg"]))
+        nonfoot_contact = (forces[:, self.penalized] > r["contact_force_threshold"]).any(1)
+        stepping = moving & single_stance & ~nonfoot_contact & ~severe_tilt
+        # Bounded single-support duration, inspired by Isaac Lab's positive biped term.
+        # It is a weak aid to stepping, not a prescribed cadence or swing trajectory.
+        air_time = np.minimum(mode_time.min(axis=1), r["feet_air_time_cap_s"])
+        air_time *= stepping
+        rewards = {
+            "feet_air_time": air_time,
+            "feet_slide": (contact * np.linalg.norm(self.foot_velocity[:, :, :2], axis=-1)).sum(
+                axis=1
+            ),
+            "base_contact": base_contact.astype(float),
+            "severe_tilt": severe_tilt.astype(float),
+        }
+        if r["scales"].get("feet_air_height", 0) != 0:
+            lower, upper = r["feet_air_height_range"]
+            foot_heights = self.backend.foot_clearances()
+            height_reward = np.clip((foot_heights - lower) / (upper - lower), 0, 1)
+            rewards["feet_air_height"] = (height_reward * ~contact).sum(axis=1) * stepping
+        return rewards
+
     def _rewards(self) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         r, b = self.cfg["reward"], self.backend
         gyro, gravity = b.qvel[:, 3:6], self._gravity()
@@ -328,7 +385,7 @@ class PE02VectorEnv:
         foot_force = forces[:, b.foot_indices]
         foot_speed = np.linalg.norm(self.foot_velocity, axis=-1)
         height = b.foot_heights()
-        desired = self._desired_contacts()
+        desired = self._desired_contacts() if self.clock_gait else np.zeros((self.num_envs, 2))
         rel = b.body_positions[:, b.foot_indices] - b.qpos[:, None, :3]
         body_feet = inverse_rotate(b.qpos[:, None, 3:7], rel)
         distance = np.abs(body_feet[:, 0, 1] - body_feet[:, 1, 1])
@@ -346,7 +403,8 @@ class PE02VectorEnv:
             "tracking_ang_vel": np.exp(
                 -np.square(self.commands[:, 2] - gyro[:, 2]) / r["ang_tracking_sigma"]
             ),
-            "base_height": np.square(b.qpos[:, 2] - self.height_target),
+            "base_height": np.square(b.qpos[:, 2] - self.height_target)
+            / r.get("base_height_std", 1.0) ** 2,
             "lin_vel_z": np.square(self.base_velocity[:, 2]),
             "ang_vel_xy": np.square(gyro[:, :2]).sum(1),
             "torques": np.square(b.torque).sum(1),
@@ -374,9 +432,12 @@ class PE02VectorEnv:
                 desired * (1 - np.exp(-np.square(foot_speed) / r["gait_vel_sigma"]))
             ).mean(1),
         }
+        if not self.clock_gait:
+            values.update(self._contact_rewards(forces, gravity))
         scaled = {
             key: np.clip(values[key] * weight * self.dt, -r["clip_single"], r["clip_single"])
             for key, weight in r["scales"].items()
+            if self.clock_gait or weight != 0
         }
         total = sum(scaled.values())
         if r["only_positive"]:
@@ -421,13 +482,23 @@ class PE02VectorEnv:
         feet = b.body_positions[:, b.foot_indices]
         self.foot_velocity[:] = (feet - self.previous_feet) / self.dt
         self._resample_commands(np.flatnonzero(self.episode_steps % self.command_interval == 0))
-        self._resample_gaits(np.flatnonzero(self.episode_steps % self.gait_interval == 0))
-        self.phase[:] = (self.phase + self.dt * self.gaits[:, 0]) % 1
+        if self.clock_gait:
+            self._resample_gaits(np.flatnonzero(self.episode_steps % self.gait_interval == 0))
+            self.phase[:] = (self.phase + self.dt * self.gaits[:, 0]) % 1
         if self.cfg["commands"]["heading_command"] and not self.evaluation:
             forward = rotate(b.qpos[:, 3:7], np.tile([1.0, 0.0, 0.0], (self.num_envs, 1)))
             self.commands[:, 2] = self.cfg["commands"]["heading_gain"] * wrap(
                 self.headings - np.arctan2(forward[:, 1], forward[:, 0])
             )
+            if not self.clock_gait:
+                self.commands[:, 2] = np.clip(
+                    self.commands[:, 2], *self.cfg["commands"]["ranges"]["ang_vel_yaw"]
+                )
+        if not self.clock_gait:
+            if not self.evaluation:
+                # Heading feedback must never turn an explicit stand command into a turn.
+                self.commands[self.standing_command] = 0
+            self._update_contact_times()
         cfg = self.cfg["env"]
         failure = (
             np.linalg.norm(b.contact_forces[:, self.termination_bodies], axis=-1)

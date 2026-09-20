@@ -52,6 +52,7 @@ network:
   initial_std: 0.3
 
 training:
+  experiment_name: standing
   mujoco_threads: 32
   log_root: logs/pe02_standing
   evaluation_interval: 50

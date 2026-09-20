@@ -37,7 +37,7 @@ control:
 
 commands:
   resampling_time: 5.0
-  heading_command: true
+  heading_command: false
   heading_gain: 1.0
   # Source uses random > 0.1: the effective zero-command probability is 0.9.
   zero_probability: 0.9
