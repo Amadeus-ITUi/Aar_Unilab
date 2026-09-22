@@ -91,7 +91,7 @@ domain_rand:
     enabled: true
     initial_level: 0.0
     increment: 0.1
-    max_level: 1.0
+    max_level: 0.7
     strategy: per_env_mean # One natural completed episode per parallel environment.
     mean_episode_length: 950 # Policy steps; 19 seconds at 50 Hz.
   friction_range: [0.1, 2.0]
