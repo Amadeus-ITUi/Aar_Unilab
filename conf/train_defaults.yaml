@@ -155,3 +155,38 @@ profiles:
       training.evaluation_interval: 0
       training.experiment_name: smoke
       training.log_root: logs/pe04_smoke
+
+  # Active baseline: PE03 body with original PE01 training semantics.
+  pe05:
+    selectors:
+      robot: pe05
+      task: pe05_flat
+      observation: pe05_v1
+      policy: pe05_encoder_mlp
+      algorithm: pe05_custom_ppo
+      simulator: mujoco
+    overrides:
+      algo.num_envs: 4096
+      algo.num_steps_per_env: 24
+      algo.max_iterations: 15000
+      algo.save_interval: 400
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.cpu_threads: ${environment.OMP_NUM_THREADS}
+      training.log_root: logs/pe05
+
+  pe05_smoke:
+    selectors:
+      robot: pe05
+      task: pe05_flat
+      observation: pe05_v1
+      policy: pe05_encoder_mlp
+      algorithm: pe05_custom_ppo
+      simulator: mujoco
+    overrides:
+      algo.num_envs: 32
+      algo.num_steps_per_env: 24
+      algo.max_iterations: 10
+      algo.save_interval: 5
+      training.evaluation_interval: 0
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+      training.log_root: logs/pe05_smoke

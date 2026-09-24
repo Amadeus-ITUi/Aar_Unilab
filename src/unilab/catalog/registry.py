@@ -412,6 +412,51 @@ catalog.algorithms["pe04_custom_ppo"] = AlgorithmSpec(
     entrypoint="scripts/train_pe04.py",
 )
 
+# PE05 owns its complete training and runtime implementation.
+catalog.robots["pe05"] = RobotSpec(
+    id="pe05",
+    asset="src/unilab/assets/robots/pe05/urdf/pe05.urdf",
+    joints=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    actuators=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
+    capabilities=frozenset({"legs"}),
+    scene="src/unilab/assets/robots/pe05/scene.xml",
+    asset_version="pe05-pe03-cnc-joint-limits-v3",
+    runtime_assets=(
+        "pe05.xml",
+        "scene.xml",
+        "play_visual.xml",
+        "runtime_meshes",
+        "collision_meshes",
+        "provenance.json",
+    ),
+)
+catalog.tasks["pe05_flat"] = TaskSpec(
+    "pe05_flat", frozenset({"pe05"}), "pe05/task/pe05_flat", "PE05Flat"
+)
+catalog.observations["pe05_v1"] = ObservationSpec(
+    "pe05_v1",
+    ("actor", "frame", "command"),
+    ("critic",),
+    history=10,
+    actor_dim=300,
+    critic_dim=33,
+    robot_ids=frozenset({"pe05"}),
+)
+catalog.policies["pe05_encoder_mlp"] = PolicySpec(
+    "pe05_encoder_mlp",
+    "mlp-encoder",
+    ("observation_history", "observation", "command"),
+    ("action",),
+    robot_ids=frozenset({"pe05"}),
+)
+catalog.algorithms["pe05_custom_ppo"] = AlgorithmSpec(
+    "pe05_custom_ppo",
+    "unilab.adapters.pe05_ppo",
+    "PE05PPOAdapter",
+    frozenset({"pe05_encoder_mlp"}),
+    entrypoint="scripts/train_pe05.py",
+)
+
 catalog.simulators["mujoco"] = SimulatorSpec(
     "mujoco", "mujoco", frozenset({"headless", "render", "mouse-force", "camera"})
 )
