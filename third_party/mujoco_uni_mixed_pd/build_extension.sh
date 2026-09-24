@@ -43,7 +43,7 @@ DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
 
 if [[ -f "${DEST_SO}" ]] && \
    PYTHONPATH="${ROOT_DIR}/src" "${PYTHON_BIN}" -c \
-     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available, native_joint_position_pd_available; assert native_mixed_pd_available() and native_command_delay_pd_available() and native_joint_position_pd_available()'; then
+     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available, native_joint_position_pd_available; from unilab.base.backend.mujoco.native_batch import _unilab_batch_env; assert native_mixed_pd_available() and native_command_delay_pd_available() and native_joint_position_pd_available() and hasattr(_unilab_batch_env.BatchEnvPool, "has_joint_pd_telemetry")'; then
   echo "UniLab native torque-FIFO, command-delay and joint-position PD extension: already ready"
   exit 0
 fi
@@ -59,6 +59,8 @@ tar -xzf "${ARCHIVE_PATH}" --strip-components=1 -C "${SOURCE_DIR}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${PATCH_PATH}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${COMMAND_DELAY_PATCH_PATH}"
 patch --directory="${SOURCE_DIR}" --strip=1 < "${JOINT_POSITION_PATCH_PATH}"
+patch --directory="${SOURCE_DIR}" --strip=1 < "${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/controlled_forward.patch"
+patch --directory="${SOURCE_DIR}" --strip=1 < "${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/joint_pd_telemetry.patch"
 
 pushd "${SOURCE_DIR}" >/dev/null
 MUJOCO_PATH="${MUJOCO_DIR}" \
@@ -77,9 +79,11 @@ from unilab.base.backend.mujoco.native_batch import (
     native_command_delay_pd_available,
     native_mixed_pd_available,
     native_joint_position_pd_available,
+    _unilab_batch_env,
 )
 
 if not all((native_mixed_pd_available(), native_command_delay_pd_available(), native_joint_position_pd_available())):
     raise SystemExit("native PD extension import check failed")
+assert hasattr(_unilab_batch_env.BatchEnvPool, "has_joint_pd_telemetry")
 print("UniLab native torque-FIFO, command-delay and joint-position PD extension: ready")
 PY

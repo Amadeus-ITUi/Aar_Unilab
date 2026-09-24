@@ -1,0 +1,67 @@
+defaults:
+  - task: pe04_flat
+  - _self_
+robot: pe04
+observation: pe04_tron1_v1
+policy: pe04_encoder_mlp
+algorithm: pe04_custom_ppo
+simulator: mujoco
+mode: train
+checkpoint: -1
+algo:
+  num_envs: 4096
+  num_steps_per_env: 24
+  max_iterations: 2000
+  save_interval: 200
+  num_learning_epochs: 5
+  num_mini_batches: 4
+  gamma: 0.99
+  lam: 0.95
+  learning_rate: 0.001
+  encoder_learning_rate: 0.001
+  clip_ratio: 0.2
+  value_loss_coefficient: 1.0
+  use_clipped_value_loss: true
+  entropy_coefficient: 0.01
+  max_grad_norm: 1.0
+  desired_kl: 0.01
+  schedule: adaptive
+network:
+  command_size: 3
+  encoder_hidden_dims: [256, 128]
+  latent_dim: 3
+  encoder_output_detach: true
+  actor_hidden_dims: [512, 256, 128]
+  critic_hidden_dims: [512, 256, 128]
+  initial_std: 1.0
+training:
+  seed: 42
+  device: auto
+  cpu_threads: 1
+  matmul_precision: highest
+  # Optional bfloat16 applies only to GPU network updates, not rollout or export.
+  update_precision: float32
+  cache_update_inputs: true
+  mujoco_threads: 32
+  native_pd: true
+  log_root: logs/pe04_tron1
+  logger: tensorboard
+  experiment_name: tron1
+  resume: null
+  export: true
+  evaluation_episodes: 8
+  evaluation_interval: 200
+play:
+  steps: -1
+  render: interactive
+  paused: false
+  plot: false
+  telemetry: logs/play/pe04/latest
+  command_source: gamepad
+  command: [0.0, 0.0, 0.0]
+  gait: [2.0, 0.5, 0.5, 0.06]
+  delay_ms: 0.0
+  gamepad:
+    index: 0
+    deadzone: 0.12
+    scale: [1.5, 1.0, 0.5]

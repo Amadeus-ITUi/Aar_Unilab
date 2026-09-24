@@ -1,0 +1,228 @@
+--- a/mujoco/batch_env.cc
++++ b/mujoco/batch_env.cc
+@@ -1563,6 +1563,9 @@
+ struct JointPdArgs {
+   int nu, nstep, nstate, nsensor, depth;
+   bool position_difference;
++  int telemetry_stride = 0, ncontact = 0;
++  const int* contact_adr = nullptr;
++  mjtNum *contact_out = nullptr, *acceleration_out = nullptr;
+   const mjtNum *state, *actions, *kp, *kd, *scale, *limits, *gear, *nominal;
+   const mjtNum *velocity, *fifo, *wrench;
+   const int *qpos_adr, *qvel_adr, *delay;
+@@ -1574,6 +1577,16 @@
+   std::vector<mjtNum> previous(p.nu), velocity(p.nu), fifo(p.depth * p.nu);
+   for (int r = begin; r < end; ++r) {
+     const raw::MjModel* m = models[r];
++    // A private model header shares read-only arrays, but has its own options.
++    // PD uses joint coordinates: intermediate sensors are unused. Evaluate
++    // sensors only in the controlled forward at each requested sample boundary.
++    raw::MjModel integration_model;
++    const raw::MjModel* integration = m;
++    if (p.telemetry_stride) {
++      integration_model = *m;
++      integration_model.opt.disableflags |= mjDSBL_SENSOR;
++      integration = &integration_model;
++    }
+     const size_t offset = static_cast<size_t>(r) * p.nu;
+     const size_t fifo_offset = offset * p.depth;
+     for (int i = 0; i < m->nbody; ++i) {
+@@ -1612,7 +1625,15 @@
+       }
+       mju_zero(d->qacc_warmstart, m->nv);
+       for (int i = 0; i < mjNWARNING; ++i) d->warning[i].number = 0;
+-      mj_step(m, d);
++      if (p.telemetry_stride && step > 0 && step % p.telemetry_stride == 0 &&
++          m->opt.integrator != mjINT_RK4) {
++        // The preceding controlled forward already computed position/velocity
++        // at this exact state. Only controls changed: step2 recomputes actuator,
++        // acceleration and constraint stages, then uses the selected integrator.
++        mj_step2(integration, d);
++      } else {
++        mj_step(integration, d);
++      }
+       for (int i = 0; i < p.nu; ++i) {
+         if (p.position_difference) {
+           mjtNum delta = std::fmod(d->qpos[p.qpos_adr[i]] - previous[i] + mjPI, 2 * mjPI);
+@@ -1622,11 +1643,37 @@
+           velocity[i] = d->qvel[p.qvel_adr[i]];
+         }
+       }
++      if (p.telemetry_stride && (step + 1) % p.telemetry_stride == 0) {
++        // Reproduce the controlled-forward observation without a second batch
++        // dispatch or the discarded, zero-control forward of the legacy path.
++        // Full forward reconstructs the position/velocity stages. Reset only
++        // the solver guess; do not clear and copy back an unchanged physics state.
++        mju_zero(d->qacc_warmstart, m->nv);
++        for (int i = 0; i < p.nu; ++i)
++          d->ctrl[i] = p.torque_out[offset + i] / p.gear[i];
++        if (p.wrench) {
++          size_t address = (static_cast<size_t>(r) * p.nstep + step) * m->nbody * 6;
++          mju_copy(d->xfrc_applied, p.wrench + address, m->nbody * 6);
++        }
++        mj_forward(m, d);
++        const int samples = p.nstep / p.telemetry_stride;
++        const int age = samples - (step + 1) / p.telemetry_stride;
++        mjtNum* contacts = p.contact_out +
++            (static_cast<size_t>(r) * samples + age) * p.ncontact * 3;
++        for (int i = 0; i < p.ncontact; ++i)
++          mju_copy3(contacts + i * 3, d->sensordata + p.contact_adr[i]);
++      }
+     }
+     mj_getState(m, d, p.state_out + static_cast<size_t>(r) * p.nstate,
+                 mjSTATE_FULLPHYSICS);
+     mju_copy(p.velocity_out + offset, velocity.data(), p.nu);
+     mju_copy(p.fifo_out + fifo_offset, fifo.data(), p.depth * p.nu);
++    if (p.telemetry_stride) {
++      mju_copy(p.sensor_out + static_cast<size_t>(r) * p.nsensor,
++               d->sensordata, p.nsensor);
++      mju_copy(p.acceleration_out + static_cast<size_t>(r) * m->nv, d->qacc, m->nv);
++      continue;
++    }
+     // Match BatchEnvPool.step(post_step_forward_sensor=true): sensors describe
+     // the final state with applied forces/control and warmstart cleared.
+     mju_zero(d->ctrl, p.nu);
+@@ -2021,8 +2068,12 @@
+       const PyCArray nominal, const PyCArray initial_velocity,
+       const PyIArray qpos_adr, const PyIArray qvel_adr,
+       const PyIArray delay_steps, const PyCArray initial_fifo,
+-      bool position_difference, std::optional<PyCArray> wrench) {
++      bool position_difference, std::optional<PyCArray> wrench,
++      int telemetry_stride, std::optional<PyIArray> contact_adr,
++      std::optional<int> chunk_size) {
+     if (nstep < 1) throw py::value_error("nstep must be positive");
++    if (chunk_size.has_value() && *chunk_size <= 0)
++      throw py::value_error("chunk_size must be positive");
+     int nu = models_[0]->nu;
+     if (nu < 1) throw py::value_error("joint PD requires actuators");
+     auto fifo_info = initial_fifo.request();
+@@ -2067,6 +2118,23 @@
+       if (p.delay[i] < 0 || p.delay[i] >= p.depth)
+         throw py::value_error("delay_steps must index the FIFO depth");
+     }
++    if (telemetry_stride < 0 || (telemetry_stride && nstep % telemetry_stride))
++      throw py::value_error("telemetry_stride must divide nstep");
++    PyCArray contacts_out, acceleration_out;
++    if (telemetry_stride) {
++      if (!contact_adr.has_value() || contact_adr->ndim() != 1 || contact_adr->size() < 1)
++        throw py::value_error("telemetry requires contact sensor addresses");
++      p.telemetry_stride = telemetry_stride;
++      p.ncontact = contact_adr->size();
++      p.contact_adr = contact_adr->data();
++      for (int i = 0; i < p.ncontact; ++i)
++        if (p.contact_adr[i] < 0 || p.contact_adr[i] + 3 > nsensordata_)
++          throw py::value_error("invalid contact sensor address");
++      contacts_out = PyCArray({nbatch_, nstep / telemetry_stride, p.ncontact, 3});
++      acceleration_out = PyCArray({nbatch_, nv_});
++      p.contact_out = contacts_out.mutable_data();
++      p.acceleration_out = acceleration_out.mutable_data();
++    }
+     PyCArray state_out({nbatch_, nstate_}), sensor_out({nbatch_, nsensordata_});
+     PyCArray torque_out({nbatch_, nu}), velocity_out({nbatch_, nu});
+     PyCArray fifo_out({nbatch_, p.depth, nu});
+@@ -2077,13 +2145,16 @@
+     {
+       py::gil_scoped_release no_gil;
+       if (nthread_ > 0 && nbatch_ > 1) {
+-        int chunk = std::max(1, nbatch_ / (10 * nthread_));
++        int chunk = chunk_size.value_or(std::max(1, nbatch_ / (10 * nthread_)));
+         InterceptMjErrors(StepJointPdThreaded)(
+             models, worker_data_, nbatch_, chunk, pool_.get(), p);
+       } else {
+         InterceptMjErrors(StepJointPdRange)(models, worker_data_[0], 0, nbatch_, p);
+       }
+     }
++    if (telemetry_stride)
++      return py::make_tuple(state_out, sensor_out, torque_out, velocity_out, fifo_out,
++                            contacts_out, acceleration_out);
+     return py::make_tuple(state_out, sensor_out, torque_out, velocity_out, fifo_out);
+   }
+ 
+@@ -2265,39 +2336,47 @@
+   // -----------------------------------------------------------------
+   // Evaluate telemetry at the final state under the actual applied control.
+   py::tuple forward_controlled(const PyCArray state0, const PyCArray control,
+-                               const PyCArray wrench) {
++                               const PyCArray wrench, std::optional<PyIArray> ids) {
+     const int nu = models_[0]->nu;
+     const int nw = models_[0]->nbody * 6;
+     if (state0.ndim() != 2 || state0.shape(0) != nbatch_ || state0.shape(1) != nstate_ ||
+         control.ndim() != 2 || control.shape(0) != nbatch_ || control.shape(1) != nu ||
+         wrench.ndim() != 2 || wrench.shape(0) != nbatch_ || wrench.shape(1) != nw)
+       throw py::value_error("invalid controlled-forward shapes");
+-    PyCArray sensors({nbatch_, nsensordata_}), acceleration({nbatch_, nv_});
++    const int count = ids.has_value() ? ids->size() : nbatch_;
++    if (ids.has_value()) {
++      if (ids->ndim() != 1) throw py::value_error("ids must be one-dimensional");
++      for (int i = 0; i < count; ++i)
++        if (ids->data()[i] < 0 || ids->data()[i] >= nbatch_)
++          throw py::value_error("invalid controlled-forward environment id");
++    }
++    PyCArray sensors({count, nsensordata_}), acceleration({count, nv_});
+     const mjtNum* states = state0.data();
+     const mjtNum* controls = control.data();
+     const mjtNum* wrenches = wrench.data();
+     mjtNum* sensor_out = sensors.mutable_data();
+     mjtNum* acc_out = acceleration.mutable_data();
+     auto range = [&](int start, int end, raw::MjData* d) {
+-      for (int r = start; r < end; ++r) {
++      for (int row = start; row < end; ++row) {
++        const int r = ids.has_value() ? ids->data()[row] : row;
+         const raw::MjModel* m = models_[r];
+         mj_resetData(m, d);
+         mj_setState(m, d, states + static_cast<size_t>(r)*nstate_, mjSTATE_FULLPHYSICS);
+         mju_copy(d->ctrl, controls + static_cast<size_t>(r)*nu, nu);
+         mju_copy(d->xfrc_applied, wrenches + static_cast<size_t>(r)*nw, nw);
+         mj_forward(m, d);
+-        mju_copy(sensor_out + static_cast<size_t>(r)*nsensordata_, d->sensordata, nsensordata_);
+-        mju_copy(acc_out + static_cast<size_t>(r)*nv_, d->qacc, nv_);
++        mju_copy(sensor_out + static_cast<size_t>(row)*nsensordata_, d->sensordata, nsensordata_);
++        mju_copy(acc_out + static_cast<size_t>(row)*nv_, d->qacc, nv_);
+       }
+     };
+     {
+       py::gil_scoped_release no_gil;
+-      if (nthread_ > 0 && nbatch_ > 1) {
++      if (nthread_ > 0 && count > 1) {
+         pool_->ResetCount();
+-        const int chunk = std::max(1, nbatch_ / (10*nthread_));
++        const int chunk = std::max(1, count / (10*nthread_));
+         int jobs = 0;
+-        for (int start = 0; start < nbatch_; start += chunk) {
+-          int end = std::min(nbatch_, start + chunk);
++        for (int start = 0; start < count; start += chunk) {
++          int end = std::min(count, start + chunk);
+           pool_->Schedule([&, start, end]() {
+             InterceptMjErrors(range)(start, end, worker_data_[pool_->WorkerId()]);
+           });
+@@ -2305,7 +2384,7 @@
+         }
+         pool_->WaitCount(jobs);
+       } else {
+-        InterceptMjErrors(range)(0, nbatch_, worker_data_[0]);
++        InterceptMjErrors(range)(0, count, worker_data_[0]);
+       }
+     }
+     return py::make_tuple(sensors, acceleration);
+@@ -2818,7 +2897,9 @@
+            py::arg("torque_limits"), py::arg("gear"), py::arg("nominal"),
+            py::arg("initial_velocity"), py::arg("qpos_adr"), py::arg("qvel_adr"),
+            py::arg("delay_steps"), py::arg("initial_fifo"),
+-           py::arg("position_difference"), py::arg("wrench") = py::none())
++           py::arg("position_difference"), py::arg("wrench") = py::none(),
++           py::arg("telemetry_stride") = 0, py::arg("contact_adr") = py::none(),
++           py::arg("chunk_size") = py::none())
+       .def("step_command_delay_pd",
+            &BatchEnvPool::step_command_delay_pd, py::kw_only(),
+            py::arg("nstep"), py::arg("control_spec"), py::arg("state0"),
+@@ -2835,7 +2916,9 @@
+            py::arg("quantize_float32") = true,
+            py::arg("chunk_size") = py::none())
+       .def("forward_controlled", &BatchEnvPool::forward_controlled,
+-           py::arg("state0"), py::arg("control"), py::arg("wrench"))
++           py::arg("state0"), py::arg("control"), py::arg("wrench"),
++           py::arg("ids") = py::none())
++      .def_property_readonly("has_joint_pd_telemetry", [](const BatchEnvPool&) { return true; })
+       .def("forward", &BatchEnvPool::forward, py::kw_only(),
+            py::arg("state0"), py::arg("warmstart0") = py::none(),
+            py::arg("skipsensor") = false, py::arg("chunk_size") = py::none())

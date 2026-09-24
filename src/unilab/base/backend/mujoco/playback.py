@@ -32,13 +32,14 @@ def run_mujoco_playback(
     extra_data_getter: Callable[[], np.ndarray | None] | None = None,
 ) -> str | None:
     if not headless:
-        return _run_mujoco_interactive_playback(
+        _run_mujoco_interactive_playback(
             env=env,
             initialize=initialize,
             step=step,
             num_steps=num_steps,
             frame_state_getter=frame_state_getter,
         )
+        return None
     if not record_video:
         raise ValueError("MuJoCo play rendering requires record_video=true.")
     if num_steps is None:
@@ -190,7 +191,11 @@ def _run_mujoco_interactive_playback(
         model_path = resolve_render_play_model_files(env, num_envs=1, tmp_dir=tmp_dir)
         if isinstance(model_path, list):
             model_path = model_path[0]
-        model = mujoco.MjModel.from_binary_path(model_path) if str(model_path).endswith(".mjb") else mujoco.MjModel.from_xml_path(model_path)
+        model = (
+            mujoco.MjModel.from_binary_path(model_path)
+            if str(model_path).endswith(".mjb")
+            else mujoco.MjModel.from_xml_path(model_path)
+        )
         data = mujoco.MjData(model)
         copy_state(model, data)
 
@@ -201,7 +206,9 @@ def _run_mujoco_interactive_playback(
             show_left_ui=True,
             show_right_ui=True,
         ) as viewer:
-            print("Python Play controls: 1/Enter or RB+DPadUp start; P or LB+X stop; R or RB+Y reset")
+            print(
+                "Python Play controls: 1/Enter or RB+DPadUp start; P or LB+X stop; R or RB+Y reset"
+            )
             print("Axes: LY=vx, RX=yaw, RY=height; wing/wrench disturbance disabled")
             while viewer.is_running() and (num_steps is None or completed_steps < num_steps):
                 loop_start = time.monotonic()

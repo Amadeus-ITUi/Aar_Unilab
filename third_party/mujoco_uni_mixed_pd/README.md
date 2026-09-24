@@ -15,6 +15,16 @@ force-cleared sensor refresh, and imposes no robot-specific dimensions. PE01
 continues using its existing path; the WE11 entry points are unchanged.
 It does not replace the Conda environment's official `mujoco._batch_env` module.
 
+PE04 opts into `joint_pd_telemetry.patch`: a complete policy interval runs in
+one call and returns newest-first contact samples at the requested cadence,
+controlled final-state sensors, and actual acceleration. Intermediate sensors
+are skipped; non-RK4 integration reuses the position/velocity stages already
+computed by a sample-boundary forward. Sensor options live in a private model
+header, so workers never mutate shared model options. The default joint-PD
+entry point and both WE11 controllers retain their existing behavior.
+`forward_controlled` also accepts selected environment IDs for sparse resets.
+See `docs/PE04_TRAINING_PERFORMANCE.md` for parity and timing results.
+
 Build it in the active UniLab environment:
 
 ```bash

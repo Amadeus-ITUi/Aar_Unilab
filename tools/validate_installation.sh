@@ -47,12 +47,13 @@ if [[ "$RUN_ALL" == true ]]; then
   MUJOCO_ROOT=$("$PYTHON" -c 'import pathlib, mujoco; print(pathlib.Path(mujoco.__file__).parent)')
   ONNXRUNTIME_ROOT=$("$PYTHON" -c 'import pathlib, onnxruntime; print(pathlib.Path(onnxruntime.__file__).parent / "capi")')
   GLFW_ROOT=$("$PYTHON" -c 'import pathlib, glfw; print(pathlib.Path(glfw.__file__).parent)')
+  bash "$REPO_ROOT/tools/prepare_sim2sim_headers.sh"
   cmake -S "$REPO_ROOT/sim2sim" -B "$REPO_ROOT/sim2sim/build" \
     -DCMAKE_BUILD_TYPE=Release -DAAR_MUJOCO_ROOT="$MUJOCO_ROOT" \
     -DAAR_ONNXRUNTIME_ROOT="$ONNXRUNTIME_ROOT" \
-    -DAAR_ONNXRUNTIME_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/inference_runtime/onnxruntime/include" \
+    -DAAR_ONNXRUNTIME_INCLUDE="/ssd/conda/cache/aar_unilab-native/sim2sim-sdk/onnxruntime-1.22.0" \
     -DAAR_GLFW_ROOT="$GLFW_ROOT" \
-    -DAAR_GLFW_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/glfw/include"
+    -DAAR_GLFW_INCLUDE="/ssd/conda/cache/aar_unilab-native/sim2sim-sdk/glfw-3.4"
   cmake --build "$REPO_ROOT/sim2sim/build" --parallel
   ctest --test-dir "$REPO_ROOT/sim2sim/build" --output-on-failure
   WE11_RELEASE=/ssd/conda/cache/aar_unilab-native/we11-getup-release

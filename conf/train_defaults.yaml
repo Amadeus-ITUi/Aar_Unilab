@@ -126,3 +126,32 @@ profiles:
       training.evaluation_interval: 50
       training.log_root: logs/pe03_standing
       algo.save_interval: 50
+
+  pe04_tron1:
+    selectors:
+      robot: pe04
+      task: pe04_flat
+      observation: pe04_tron1_v1
+      policy: pe04_encoder_mlp
+      algorithm: pe04_custom_ppo
+      simulator: mujoco
+    overrides:
+      algo.max_iterations: 2000
+      algo.save_interval: 200
+      training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
+
+  pe04_smoke:
+    selectors:
+      robot: pe04
+      task: pe04_flat
+      observation: pe04_tron1_v1
+      policy: pe04_encoder_mlp
+      algorithm: pe04_custom_ppo
+      simulator: mujoco
+    overrides:
+      algo.num_envs: 32
+      algo.max_iterations: 10
+      algo.save_interval: 5
+      training.evaluation_interval: 0
+      training.experiment_name: smoke
+      training.log_root: logs/pe04_smoke

@@ -26,12 +26,13 @@ if [[ -f "$REPO_ROOT/sim2sim/CMakeLists.txt" ]]; then
   if [[ ! -e "$ONNXRUNTIME_ROOT/libonnxruntime.so.1" ]]; then
     ln -s libonnxruntime.so.1.22.0 "$ONNXRUNTIME_ROOT/libonnxruntime.so.1"
   fi
-  ONNXRUNTIME_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/inference_runtime/onnxruntime/include"
+  bash "$REPO_ROOT/tools/prepare_sim2sim_headers.sh"
+  ONNXRUNTIME_INCLUDE=/ssd/conda/cache/aar_unilab-native/sim2sim-sdk/onnxruntime-1.22.0
   GLFW_ROOT=$("$ENV_PREFIX/bin/python" -c 'import pathlib, glfw; print(pathlib.Path(glfw.__file__).parent)')
   if [[ ! -e "$GLFW_ROOT/x11/libglfw.so.3" ]]; then
     ln -s libglfw.so "$GLFW_ROOT/x11/libglfw.so.3"
   fi
-  GLFW_INCLUDE="$REPO_ROOT/references/legacy_play_source/library/glfw/include"
+  GLFW_INCLUDE=/ssd/conda/cache/aar_unilab-native/sim2sim-sdk/glfw-3.4
   cmake -S "$REPO_ROOT/sim2sim" -B "$REPO_ROOT/sim2sim/build" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH=/ssd/conda/cache/aar_unilab-native \

@@ -1,0 +1,66 @@
+--- a/mujoco/batch_env.cc
++++ b/mujoco/batch_env.cc
+@@ -2263,6 +2263,54 @@
+   // Equivalent to the old mujoco.batch_forward path, just owned by the
+   // pool's models/data instead of caller-supplied lists.
+   // -----------------------------------------------------------------
++  // Evaluate telemetry at the final state under the actual applied control.
++  py::tuple forward_controlled(const PyCArray state0, const PyCArray control,
++                               const PyCArray wrench) {
++    const int nu = models_[0]->nu;
++    const int nw = models_[0]->nbody * 6;
++    if (state0.ndim() != 2 || state0.shape(0) != nbatch_ || state0.shape(1) != nstate_ ||
++        control.ndim() != 2 || control.shape(0) != nbatch_ || control.shape(1) != nu ||
++        wrench.ndim() != 2 || wrench.shape(0) != nbatch_ || wrench.shape(1) != nw)
++      throw py::value_error("invalid controlled-forward shapes");
++    PyCArray sensors({nbatch_, nsensordata_}), acceleration({nbatch_, nv_});
++    const mjtNum* states = state0.data();
++    const mjtNum* controls = control.data();
++    const mjtNum* wrenches = wrench.data();
++    mjtNum* sensor_out = sensors.mutable_data();
++    mjtNum* acc_out = acceleration.mutable_data();
++    auto range = [&](int start, int end, raw::MjData* d) {
++      for (int r = start; r < end; ++r) {
++        const raw::MjModel* m = models_[r];
++        mj_resetData(m, d);
++        mj_setState(m, d, states + static_cast<size_t>(r)*nstate_, mjSTATE_FULLPHYSICS);
++        mju_copy(d->ctrl, controls + static_cast<size_t>(r)*nu, nu);
++        mju_copy(d->xfrc_applied, wrenches + static_cast<size_t>(r)*nw, nw);
++        mj_forward(m, d);
++        mju_copy(sensor_out + static_cast<size_t>(r)*nsensordata_, d->sensordata, nsensordata_);
++        mju_copy(acc_out + static_cast<size_t>(r)*nv_, d->qacc, nv_);
++      }
++    };
++    {
++      py::gil_scoped_release no_gil;
++      if (nthread_ > 0 && nbatch_ > 1) {
++        pool_->ResetCount();
++        const int chunk = std::max(1, nbatch_ / (10*nthread_));
++        int jobs = 0;
++        for (int start = 0; start < nbatch_; start += chunk) {
++          int end = std::min(nbatch_, start + chunk);
++          pool_->Schedule([&, start, end]() {
++            InterceptMjErrors(range)(start, end, worker_data_[pool_->WorkerId()]);
++          });
++          ++jobs;
++        }
++        pool_->WaitCount(jobs);
++      } else {
++        InterceptMjErrors(range)(0, nbatch_, worker_data_[0]);
++      }
++    }
++    return py::make_tuple(sensors, acceleration);
++  }
++
+   PyCArray forward(const PyCArray state0,
+                    std::optional<const PyCArray> warmstart0, bool skipsensor,
+                    std::optional<int> chunk_size) {
+@@ -2786,6 +2834,8 @@
+            py::arg("initial_motor_ctrl"),
+            py::arg("quantize_float32") = true,
+            py::arg("chunk_size") = py::none())
++      .def("forward_controlled", &BatchEnvPool::forward_controlled,
++           py::arg("state0"), py::arg("control"), py::arg("wrench"))
+       .def("forward", &BatchEnvPool::forward, py::kw_only(),
+            py::arg("state0"), py::arg("warmstart0") = py::none(),
+            py::arg("skipsensor") = false, py::arg("chunk_size") = py::none())

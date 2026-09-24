@@ -4,6 +4,7 @@
 #include "aar/pe02_observation.hpp"
 #include "aar/pe02_runtime.hpp"
 #include "aar/pe03_runtime.hpp"
+#include "aar/pe04_runtime.hpp"
 #include "aar/pe01_runtime.hpp"
 #include "aar/telemetry.hpp"
 
@@ -456,11 +457,12 @@ int main(int argc, char** argv) {
     We11State we11;
     std::unique_ptr<aar::PE02Runtime> pe02;
     std::unique_ptr<aar::PE03Runtime> pe03;
+    std::unique_ptr<aar::PE04Runtime> pe04;
     std::unique_ptr<aar::PE01Runtime> pe01;
     if (contract.observation_builder == "pe01_v1" || contract.observation_builder == "pe02_v1" ||
         contract.observation_builder == "pe02_v2" || contract.observation_builder == "pe02_v3" ||
         contract.observation_builder == "pe03_v2" || contract.observation_builder == "pe03_v3" ||
-        contract.observation_builder == "pe03_v4" ||
+        contract.observation_builder == "pe03_v4" || contract.observation_builder == "pe04_tron1_v1" ||
         contract.observation_builder == "pe01_v2") {
       history = inputs[input_index(contract, "observation_history")];
       if (contract.observation_builder == "pe02_v2" || contract.observation_builder == "pe02_v3") {
@@ -471,6 +473,10 @@ int main(int argc, char** argv) {
           contract.observation_builder == "pe03_v4") {
         pe03 = std::make_unique<aar::PE03Runtime>(
             (options.release / contract.scene_path).parent_path() / "pe03_runtime.json", model, contract);
+      }
+      if (contract.observation_builder == "pe04_tron1_v1") {
+        pe04 = std::make_unique<aar::PE04Runtime>(
+            (options.release / contract.scene_path).parent_path() / "pe04_runtime.json", model, contract);
       }
       if (contract.observation_builder == "pe01_v2") {
         pe01 = std::make_unique<aar::PE01Runtime>(
@@ -492,6 +498,7 @@ int main(int argc, char** argv) {
       if (viewer && viewer->gamepad(contract, inputs, we11.command)) {
         if (pe02) pe02->normalize_gamepad_command(contract, inputs);
         if (pe03) pe03->normalize_gamepad_command(contract, inputs);
+        if (pe04) pe04->normalize_gamepad_command(contract, inputs);
         if (pe01) pe01->normalize_gamepad_command(contract, inputs);
       }
 #endif
@@ -503,6 +510,8 @@ int main(int argc, char** argv) {
         pe02->update_inputs(data, contract, inputs, history);
       } else if (pe03) {
         pe03->update_inputs(data, contract, inputs, history);
+      } else if (pe04) {
+        pe04->update_inputs(data, contract, inputs, history);
       } else if (pe01) {
         pe01->update_inputs(data, contract, inputs, history);
       } else if (contract.observation_builder.rfind("we11_", 0) == 0) {
@@ -517,6 +526,8 @@ int main(int argc, char** argv) {
         pe02->prepare_action(data, action, contract);
       } else if (pe03) {
         pe03->prepare_action(data, action, contract);
+      } else if (pe04) {
+        pe04->prepare_action(data, action, contract);
       } else if (pe01) {
         pe01->prepare_action(data, action, contract);
       } else if (contract.observation_builder.rfind("we11_", 0) != 0) {
@@ -529,6 +540,7 @@ int main(int argc, char** argv) {
       for (int substep = 0; substep < substeps; ++substep) {
         if (pe02) pe02->before_step(model, data);
         if (pe03) pe03->before_step(model, data);
+        if (pe04) pe04->before_step(model, data);
         if (pe01) pe01->before_step(model, data);
         if (contract.observation_builder.rfind("we11_", 0) == 0) {
           apply_we11_control(model, data, action, substep);
@@ -536,10 +548,12 @@ int main(int argc, char** argv) {
         mj_step(model, data);
         if (pe02) pe02->after_step(data);
         if (pe03) pe03->after_step(data);
+        if (pe04) pe04->after_step(data);
         if (pe01) pe01->after_step(data);
       }
       if (pe02) pe02->end_policy_step();
       if (pe03) pe03->end_policy_step();
+        if (pe04) pe04->end_policy_step();
       if (pe01) pe01->end_policy_step();
       if (contract.observation_builder.rfind("we11_", 0) == 0) {
         we11.previous_action = action;
