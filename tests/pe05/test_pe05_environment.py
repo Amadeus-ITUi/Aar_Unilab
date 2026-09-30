@@ -9,7 +9,7 @@ from unilab.envs.locomotion.pe05.vector_env import PE05VectorEnv
 
 @pytest.fixture
 def env():
-    cfg = load_config(["algo.num_envs=4", "training.mujoco_threads=1"])
+    cfg = load_config(["task=pe05_legacy", "algo.num_envs=4", "training.mujoco_threads=1"])
     instance = PE05VectorEnv(cfg)
     try:
         yield instance

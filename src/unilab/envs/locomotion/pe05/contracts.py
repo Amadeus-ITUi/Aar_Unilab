@@ -1,6 +1,8 @@
 """Cold-path asset, observation and checkpoint contracts owned by PE05."""
 
 import hashlib
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -74,9 +76,34 @@ def validate_checkpoint(
 
 
 def resolve_checkpoint(value: str | int | Path, log_root: str | Path) -> Path:
+    """Select the newest timestamped run, then its highest numeric saved iteration."""
     if str(value) != "-1":
-        return Path(str(value))
-    candidates = list(Path(log_root).glob("*/model_*.pt"))
-    if not candidates:
-        raise FileNotFoundError(f"no PE05 checkpoint under {log_root}")
-    return max(candidates, key=lambda p: (p.stat().st_mtime_ns, int(p.stem.split("_")[-1])))
+        return Path(str(value)).expanduser()
+    root = Path(log_root).expanduser()
+    if not root.is_dir():
+        raise FileNotFoundError(f"PE05 training log directory does not exist: {root}")
+    runs = []
+    for path in root.iterdir():
+        if not path.is_dir():
+            continue
+        for fmt in ("%Y-%m-%d_%H-%M-%S_%f_mujoco", "%Y-%m-%d_%H-%M-%S_mujoco"):
+            try:
+                timestamp = datetime.strptime(path.name, fmt)
+            except ValueError:
+                continue
+            runs.append((timestamp, path.name, path))
+            break
+    if not runs:
+        raise FileNotFoundError(f"No timestamped PE05 training runs found in {root}")
+    latest = max(runs)[2]
+    models = []
+    for path in latest.iterdir():
+        match = re.fullmatch(r"model_([0-9]+)\.pt", path.name)
+        if match is not None and path.is_file():
+            models.append((int(match[1]), path.name, path))
+    if not models:
+        raise FileNotFoundError(
+            f"Latest PE05 run has no saved model_<iteration>.pt yet: {latest}; "
+            "wait for a checkpoint or specify an explicit checkpoint path"
+        )
+    return max(models)[2]

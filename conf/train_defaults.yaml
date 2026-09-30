@@ -156,8 +156,8 @@ profiles:
       training.experiment_name: smoke
       training.log_root: logs/pe04_smoke
 
-  # Active baseline: PE03 body with original PE01 training semantics.
-  pe05:
+  # Fixed PE05 gait: same profile/log naming convention as PE03.
+  pe05_gait_fixed:
     selectors:
       robot: pe05
       task: pe05_flat
@@ -169,10 +169,13 @@ profiles:
       algo.num_envs: 4096
       algo.num_steps_per_env: 24
       algo.max_iterations: 15000
-      algo.save_interval: 400
+      algo.save_interval: 100
       training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
       training.cpu_threads: ${environment.OMP_NUM_THREADS}
-      training.log_root: logs/pe05
+      +experiment: gait_fixed
+
+  # Backward-compatible command alias; both select the same experiment and log root.
+  pe05: ${profiles.pe05_gait_fixed}
 
   pe05_smoke:
     selectors:
@@ -189,4 +192,5 @@ profiles:
       algo.save_interval: 5
       training.evaluation_interval: 0
       training.mujoco_threads: ${environment.UNILAB_MUJOCO_NTHREADS}
-      training.log_root: logs/pe05_smoke
+      training.experiment_name: gait_fixed_smoke
+      training.log_root: logs/pe05_gait_fixed_smoke

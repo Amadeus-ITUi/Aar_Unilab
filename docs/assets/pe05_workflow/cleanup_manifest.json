@@ -1,0 +1,649 @@
+{
+  "canonical_log_root": "logs/pe05_gait_fixed",
+  "retained_runs": [
+    "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco",
+    "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco"
+  ],
+  "archive": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup",
+  "deleted_files": 0,
+  "moves": {
+    "logs/pe05": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05",
+    "logs/pe05_smoke": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke",
+    "logs/pe05_validation": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_validation",
+    "logs/pe05_weighted": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted",
+    "logs/pe05_weighted_smoke": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke",
+    "logs/pe05_weighted_validation": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_validation",
+    "logs/pe05_calibrated_smoke": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke",
+    "logs/pe05_pe01_gait": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_pe01_gait",
+    "logs/pe05_pe01_gait_smoke": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_pe01_gait_smoke",
+    "releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco",
+    "releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco",
+    "releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco",
+    "releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco",
+    "releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco",
+    "releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco",
+    "releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco",
+    "releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco",
+    "releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco",
+    "releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco",
+    "releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco",
+    "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco",
+    "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco"
+  },
+  "compatibility_aliases": [
+    "logs/pe05_weighted",
+    "logs/pe05_pe01_gait"
+  ],
+  "model_and_config_fingerprints": [
+    {
+      "original": "logs/pe05/2026-09-26_13-06-20_129850_mujoco/model_500.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05/2026-09-26_13-06-20_129850_mujoco/model_500.pt",
+      "sha256": "7d28baf9682bb4c8b1ba192da41c517fbfc34aff21da2e8d4b19e2b81994ba89",
+      "bytes": 36544587
+    },
+    {
+      "original": "logs/pe05/2026-09-26_13-06-20_129850_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05/2026-09-26_13-06-20_129850_mujoco/training_config.yaml",
+      "sha256": "07b2ef9b716d6e6233eb0d22981dd837f75297f63338d441a9770fc71657ba8a",
+      "bytes": 4555
+    },
+    {
+      "original": "logs/pe05/2026-09-26_13-06-20_129850_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05/2026-09-26_13-06-20_129850_mujoco/runtime_config.yaml",
+      "sha256": "07b2ef9b716d6e6233eb0d22981dd837f75297f63338d441a9770fc71657ba8a",
+      "bytes": 4555
+    },
+    {
+      "original": "logs/pe05/2026-09-26_13-06-20_129850_mujoco/model_400.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05/2026-09-26_13-06-20_129850_mujoco/model_400.pt",
+      "sha256": "7002a0ff185792c63d5dcad501a46a52386c4a60a67727f213062e2d8fca2990",
+      "bytes": 36544587
+    },
+    {
+      "original": "logs/pe05/2026-09-26_13-06-20_129850_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05/2026-09-26_13-06-20_129850_mujoco/policy.onnx",
+      "sha256": "7c5e5148331cdb7a1229f24121c4edc68daac110f564d183efd924e086dabac2",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/model_10.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/model_10.pt",
+      "sha256": "6292af6aba476ecf343baae23d44d6c88054503daecc3c932dfae8d0064e8397",
+      "bytes": 6047676
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/model_5.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/model_5.pt",
+      "sha256": "67e5156e0a94fa177d073285dfbf03540d4d2cc5d59621de21269b7956b9c439",
+      "bytes": 6046765
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/training_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/runtime_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-08_548357_mujoco/policy.onnx",
+      "sha256": "76d8daeef20b695ce3b1faf05e84100133d6e23ed6029a3752c63766e9474720",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/training_config.yaml",
+      "sha256": "5a79e8b0f28c5a0337ec9a63057ecf2f207000f6e751d86e28723fc1bf01dbb9",
+      "bytes": 4610
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/runtime_config.yaml",
+      "sha256": "5a79e8b0f28c5a0337ec9a63057ecf2f207000f6e751d86e28723fc1bf01dbb9",
+      "bytes": 4610
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/model_12.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/model_12.pt",
+      "sha256": "20aec16665ed09e2cfeb4b16a91c1da7847d67501a6a1211450522e125c89028",
+      "bytes": 6048124
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-51_775679_mujoco/policy.onnx",
+      "sha256": "5ae236fd45dc0e61ab7fefaf2f7aec7850548ae2310c68b115b3f038390c4a1c",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/training_config.yaml",
+      "sha256": "8c3e1aa04283e7d6f3d601aae9f1cf87851ae472e026c54a85a82b7bc0654cae",
+      "bytes": 4610
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/runtime_config.yaml",
+      "sha256": "8c3e1aa04283e7d6f3d601aae9f1cf87851ae472e026c54a85a82b7bc0654cae",
+      "bytes": 4610
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/model_12.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/model_12.pt",
+      "sha256": "33546b147624a2fb1ee41a0b09b883fc8237665a081478d323e919c8f642f774",
+      "bytes": 6048060
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_19-00-13_391439_mujoco/policy.onnx",
+      "sha256": "67bbba285babcc040da665e17fe0170666df7a16aa0eb8a5fbb4fb4b7479b2c4",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/model_10.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/model_10.pt",
+      "sha256": "e2cbd313898afc712b489884f607e4217fc574df055e3c3fd22eccb376f0f151",
+      "bytes": 6047740
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/model_5.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/model_5.pt",
+      "sha256": "ceeeb0342ddf46ebd802c2ce82324bc95dc44c94c0b66cf66d5810e2fd302e11",
+      "bytes": 6046829
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/training_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/runtime_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_smoke/2026-09-24_18-50-21_457396_mujoco/policy.onnx",
+      "sha256": "22a4b0ebfbe62fe773f8945594aa91c1cb602e37f6d45d1d44e603559cfd3b06",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/model_500.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/model_500.pt",
+      "sha256": "4590a9607b1ab8928952970255a48c7822efecd312975d640bd7f537df8ac582",
+      "bytes": 56910795
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/training_config.yaml",
+      "sha256": "7c2e7bfceaca55e8cd43259efab1956814ae1a61d01330bf401be0e5e4f9543a",
+      "bytes": 6139
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/runtime_config.yaml",
+      "sha256": "7c2e7bfceaca55e8cd43259efab1956814ae1a61d01330bf401be0e5e4f9543a",
+      "bytes": 6139
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/model_400.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/model_400.pt",
+      "sha256": "7d8c40bf2582e15b547aad51737f19b5cd9ee70d5a38131406b4e67be2d6bbb1",
+      "bytes": 56910859
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-26_14-13-24_070750_mujoco/policy.onnx",
+      "sha256": "d7b03c5f0e82a59e7190d3e6239c026188a9e9c12eb8c62da1b2d431c89843b9",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_500.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_500.pt",
+      "sha256": "78f343cdb7c4dda2badaaff24d676656c3061ce7e2fa1fec637b4c20393a7892",
+      "bytes": 43321931
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/training_config.yaml",
+      "sha256": "cad7923abf8de3b47bdf9e0430f2c98b8a27448aef8b5c8f4015ef957487d7ca",
+      "bytes": 6606
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_700.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_700.pt",
+      "sha256": "50de610b6a75d4b432f5ade8f6df1ce58160a0372ccaa73a44da5efcaed265bf",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_600.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_600.pt",
+      "sha256": "18922edd735b2e8671a36991e16f69a3bb0529701c7fc631df241371ec476c66",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/runtime_config.yaml",
+      "sha256": "cad7923abf8de3b47bdf9e0430f2c98b8a27448aef8b5c8f4015ef957487d7ca",
+      "bytes": 6606
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_200.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_200.pt",
+      "sha256": "289dbfbddbc1bc803823e90cb1e7e3157559ff8f3aabdc08f47aae3bec424960",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_300.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_300.pt",
+      "sha256": "28af71bf9dfd1bf47a9562dbc23d73e6ba58561223a6d8277d709dad24df1202",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_400.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_400.pt",
+      "sha256": "7446bc43fa156d8df8b8a6f83c375ca8cc499ae306af2bb07926b53dd59ed0f3",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_1000.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_1000.pt",
+      "sha256": "c8bcb6f2ddb0f7a277d81bdc11e99677f515ac6711973f5c0d6fe58d3294c249",
+      "bytes": 43322092
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_800.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_800.pt",
+      "sha256": "c2877477df55a55c93601bbf424a1930d5108263250212a165194d5bec8ef054",
+      "bytes": 43321931
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/policy.onnx",
+      "sha256": "47f25ce71fb4ce6f597027284fdea4eb4bfbac3acc50535b6c418af0f6c1a9f0",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_900.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_900.pt",
+      "sha256": "48e286e82c19d3509c30a67b6135e55b5bcbec369a640c6e23ef242abe3aa965",
+      "bytes": 43321931
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_100.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_100.pt",
+      "sha256": "35447782c215c60b25d604a88e4e43687ffe2a79f9c182c38dbf071723242756",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_500.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_500.pt",
+      "sha256": "67d7bc4e55f54d0f70a78d86d4c739db8b636a77204cb7d62af6dfe43e6a47ca",
+      "bytes": 43321867
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/training_config.yaml",
+      "sha256": "69236bc0d0c646729259ad15a2cfdfe0b31a2f987383d8e55c1ea07f585299da",
+      "bytes": 6551
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/runtime_config.yaml",
+      "sha256": "69236bc0d0c646729259ad15a2cfdfe0b31a2f987383d8e55c1ea07f585299da",
+      "bytes": 6551
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_200.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_200.pt",
+      "sha256": "8becb5d48ed59dc80bf5dc2b258bba7ce6474cdd4ca6b05957609bb85e8fdb07",
+      "bytes": 43321803
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_300.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_300.pt",
+      "sha256": "93e3cfb07ad0bf7812bfed203128c015ab4a9312475cb1635224e5f83a73cc43",
+      "bytes": 43321803
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_400.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_400.pt",
+      "sha256": "0c6ef54748d8b8a2943724779d675ba2fbd6e82429f01ae7213f8cc4cceb2b36",
+      "bytes": 43321803
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/policy.onnx",
+      "sha256": "29341952c65387e21c596a96bc29200fc6c57698f6b578b3cf8012d600b30316",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_100.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted/2026-09-28_13-38-25_381588_mujoco/model_100.pt",
+      "sha256": "908568863d8ce188a3e38b47c866c97d25eea5ce42b9b309a1214b0705e125c4",
+      "bytes": 43321803
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/model_500.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_500.pt",
+      "sha256": "aac5ee5c878538ba5bd4f974921cced8e0dbd4425b1ac6795bf72d97e607eab7",
+      "bytes": 43322379
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/training_config.yaml",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/training_config.yaml",
+      "sha256": "3b2edf372ab663202748c884a2e1f07e129dc3f01a3c051ece3b8a4f8c25b9cb",
+      "bytes": 6851
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/runtime_config.yaml",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/runtime_config.yaml",
+      "sha256": "3b2edf372ab663202748c884a2e1f07e129dc3f01a3c051ece3b8a4f8c25b9cb",
+      "bytes": 6851
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/model_200.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_200.pt",
+      "sha256": "3e3370e9db66618af6274c2db79efc9517640d8536202b5f4fca6a46ee89401a",
+      "bytes": 43322315
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/model_300.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_300.pt",
+      "sha256": "c27dc014a91699d6b240801514e940be9a302f88b69eb08b08a17a9cee5f39b8",
+      "bytes": 43322379
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/model_400.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_400.pt",
+      "sha256": "3846e2e87d35fd37f6b9d5a3353f528af72fe0dc08d3c55eef78f32596b01246",
+      "bytes": 43322379
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/policy.onnx",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/policy.onnx",
+      "sha256": "d21664052c3a6118e2a8e9e709bd2dcc4c7f34b464f56c5ed6539a6fc7223224",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted/2026-09-28_17-09-58_288435_mujoco/model_100.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_100.pt",
+      "sha256": "828fbef34b0ddc26f08d4342c96a6fc5c0af99875c6717cfc11125c6d3fb305f",
+      "bytes": 43322315
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/model_10.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/model_10.pt",
+      "sha256": "4137103892425c93c10962c56895c0f0ec168abfd1de8d3b34df71dc42251249",
+      "bytes": 6216103
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/model_5.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/model_5.pt",
+      "sha256": "e2584d6a02eac4f6970b99cf0a307281616b20402feefd015f5e463ea118bdb7",
+      "bytes": 6215107
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/training_config.yaml",
+      "sha256": "d6d547783e66c4b6ac04385a8345e91d60ab01122c5d7dd78558a7b25246abc6",
+      "bytes": 6137
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/runtime_config.yaml",
+      "sha256": "d6d547783e66c4b6ac04385a8345e91d60ab01122c5d7dd78558a7b25246abc6",
+      "bytes": 6137
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-05-36_549294_mujoco/policy.onnx",
+      "sha256": "8247aa1230b0de526ce06e15c8a63cca44f1553425cde2f6b315948598f93e06",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/training_config.yaml",
+      "sha256": "efd5d6ee0f493a498343f8f9e7bb1801bdb1578ac5feabc07de9b0530b9e72a6",
+      "bytes": 6202
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/runtime_config.yaml",
+      "sha256": "efd5d6ee0f493a498343f8f9e7bb1801bdb1578ac5feabc07de9b0530b9e72a6",
+      "bytes": 6202
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/model_12.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/model_12.pt",
+      "sha256": "8a86aae824fe0d1fdc36b7472465627c7e415b57752b72b50dfaeadc82c61e8c",
+      "bytes": 6216487
+    },
+    {
+      "original": "logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_smoke/2026-09-26_14-06-04_363819_mujoco/policy.onnx",
+      "sha256": "aba2f375c75ee3fc6b9ec365f225531e988164d979df06761e87d70fdd1f13a0",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_weighted_validation/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_weighted_validation/training_config.yaml",
+      "sha256": "54d1d4a4385c381479d93be6c7df61079c2b05f2b3b6c6643470e91dd33a493e",
+      "bytes": 6129
+    },
+    {
+      "original": "logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/model_10.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/model_10.pt",
+      "sha256": "c49c13f114f69cca2ed57cf29bcb36cb0e10ea9bb42d51e1ae2e4cb140d24cc1",
+      "bytes": 6148074
+    },
+    {
+      "original": "logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/model_5.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/model_5.pt",
+      "sha256": "f89605706bc323041797550ac013868cad7af987ccde4e3a55b661d3e22bbf03",
+      "bytes": 6147081
+    },
+    {
+      "original": "logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/training_config.yaml",
+      "sha256": "1a186f7a512a86c0949c22cf4e673d28be6f9e6e65133b634b2f8f4807beaed9",
+      "bytes": 6606
+    },
+    {
+      "original": "logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/runtime_config.yaml",
+      "sha256": "1a186f7a512a86c0949c22cf4e673d28be6f9e6e65133b634b2f8f4807beaed9",
+      "bytes": 6606
+    },
+    {
+      "original": "logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_calibrated_smoke/2026-09-28_15-24-57_524249_mujoco/policy.onnx",
+      "sha256": "c265dcdb76e11be5b4d48c69fc17a6f1bd42032db3d7ff194deadf91b60a9060",
+      "bytes": 1179706
+    },
+    {
+      "original": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco/model_25.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco/model_25.pt",
+      "sha256": "98efd170bbe4889510e6d994f7507c5a31101c76735fc3fca099d6937e8e375a",
+      "bytes": 43322154
+    },
+    {
+      "original": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco/training_config.yaml",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco/training_config.yaml",
+      "sha256": "229d1f3a8e316c41382385a60f9abe4bcf9f07aff4076117613d2196c179c990",
+      "bytes": 6878
+    },
+    {
+      "original": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco/model_75.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco/model_75.pt",
+      "sha256": "588ca926b438b509c520df381e6baa9207dda6f9ad50df2b7eafaf120607f568",
+      "bytes": 43322154
+    },
+    {
+      "original": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco/model_50.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco/model_50.pt",
+      "sha256": "61cfcce8c6d829fab9135adf47fb9c98bd38797f73bc381145c266efc06a3c87",
+      "bytes": 43322154
+    },
+    {
+      "original": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco/model_100.pt",
+      "destination": "logs/pe05_gait_fixed/2026-09-28_16-51-56_802881_mujoco/model_100.pt",
+      "sha256": "7afa6e10694344630b14f03f70c218547cf493ab6de412c694d2f4e7a33d3deb",
+      "bytes": 43322315
+    },
+    {
+      "original": "logs/pe05_pe01_gait_smoke/2026-09-28_16-51-02_238562_mujoco/model_5.pt",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_pe01_gait_smoke/2026-09-28_16-51-02_238562_mujoco/model_5.pt",
+      "sha256": "507f8e23a17105f99a8c815095a898767100f7c7be2174e3da323bcbe31e3934",
+      "bytes": 6440777
+    },
+    {
+      "original": "logs/pe05_pe01_gait_smoke/2026-09-28_16-51-02_238562_mujoco/training_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/logs/pe05_pe01_gait_smoke/2026-09-28_16-51-02_238562_mujoco/training_config.yaml",
+      "sha256": "709d14a49906869a5178075523b9abda97fd3a069a26f42adf4ff628a25cce50",
+      "bytes": 6878
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco/runtime_config.yaml",
+      "sha256": "7c2e7bfceaca55e8cd43259efab1956814ae1a61d01330bf401be0e5e4f9543a",
+      "bytes": 6139
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-13-24_070750_mujoco/policy.onnx",
+      "sha256": "d7b03c5f0e82a59e7190d3e6239c026188a9e9c12eb8c62da1b2d431c89843b9",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco/runtime_config.yaml",
+      "sha256": "cad7923abf8de3b47bdf9e0430f2c98b8a27448aef8b5c8f4015ef957487d7ca",
+      "bytes": 6606
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-27-23_266542_mujoco/policy.onnx",
+      "sha256": "47f25ce71fb4ce6f597027284fdea4eb4bfbac3acc50535b6c418af0f6c1a9f0",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco/runtime_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-08_548357_mujoco/policy.onnx",
+      "sha256": "76d8daeef20b695ce3b1faf05e84100133d6e23ed6029a3752c63766e9474720",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco/runtime_config.yaml",
+      "sha256": "5a79e8b0f28c5a0337ec9a63057ecf2f207000f6e751d86e28723fc1bf01dbb9",
+      "bytes": 4610
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-51_775679_mujoco/policy.onnx",
+      "sha256": "5ae236fd45dc0e61ab7fefaf2f7aec7850548ae2310c68b115b3f038390c4a1c",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco/runtime_config.yaml",
+      "sha256": "1a186f7a512a86c0949c22cf4e673d28be6f9e6e65133b634b2f8f4807beaed9",
+      "bytes": 6606
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_15-24-57_524249_mujoco/policy.onnx",
+      "sha256": "c265dcdb76e11be5b4d48c69fc17a6f1bd42032db3d7ff194deadf91b60a9060",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco/runtime_config.yaml",
+      "sha256": "69236bc0d0c646729259ad15a2cfdfe0b31a2f987383d8e55c1ea07f585299da",
+      "bytes": 6551
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-28_13-38-25_381588_mujoco/policy.onnx",
+      "sha256": "29341952c65387e21c596a96bc29200fc6c57698f6b578b3cf8012d600b30316",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco/runtime_config.yaml",
+      "sha256": "d6d547783e66c4b6ac04385a8345e91d60ab01122c5d7dd78558a7b25246abc6",
+      "bytes": 6137
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-05-36_549294_mujoco/policy.onnx",
+      "sha256": "8247aa1230b0de526ce06e15c8a63cca44f1553425cde2f6b315948598f93e06",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco/runtime_config.yaml",
+      "sha256": "8c3e1aa04283e7d6f3d601aae9f1cf87851ae472e026c54a85a82b7bc0654cae",
+      "bytes": 4610
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_19-00-13_391439_mujoco/policy.onnx",
+      "sha256": "67bbba285babcc040da665e17fe0170666df7a16aa0eb8a5fbb4fb4b7479b2c4",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco/runtime_config.yaml",
+      "sha256": "f6bffedb8e0ea19ecdc30da1220cd2eb82ebc2af9cd85d3c747c234d65033e68",
+      "bytes": 4554
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-24_18-50-21_457396_mujoco/policy.onnx",
+      "sha256": "22a4b0ebfbe62fe773f8945594aa91c1cb602e37f6d45d1d44e603559cfd3b06",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco/runtime_config.yaml",
+      "sha256": "efd5d6ee0f493a498343f8f9e7bb1801bdb1578ac5feabc07de9b0530b9e72a6",
+      "bytes": 6202
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_14-06-04_363819_mujoco/policy.onnx",
+      "sha256": "aba2f375c75ee3fc6b9ec365f225531e988164d979df06761e87d70fdd1f13a0",
+      "bytes": 1179706
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco/runtime_config.yaml",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco/runtime_config.yaml",
+      "sha256": "07b2ef9b716d6e6233eb0d22981dd837f75297f63338d441a9770fc71657ba8a",
+      "bytes": 4555
+    },
+    {
+      "original": "releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco/policy.onnx",
+      "destination": "logs/archive/pe05/2026-09-28_19-47-33_workflow_cleanup/releases/pe05/pe05_flat/2026-09-26_13-06-20_129850_mujoco/policy.onnx",
+      "sha256": "7c5e5148331cdb7a1229f24121c4edc68daac110f564d183efd924e086dabac2",
+      "bytes": 1179706
+    }
+  ],
+  "tensorboard_runs": [
+    "PE05__pe05_flat-mujoco__pe01_gait__2026-09-28_16-51-56_802881",
+    "PE05__pe05_flat-mujoco__velocity_bins__2026-09-28_17-09-58_288435"
+  ]
+}

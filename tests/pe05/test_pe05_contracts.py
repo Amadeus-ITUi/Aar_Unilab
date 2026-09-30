@@ -67,7 +67,11 @@ def test_assets_are_frozen_from_latest_pe03():
 
 
 def test_catalog_and_launch_profiles():
-    for profile, iterations, count, save in (("pe05", 15000, 4096, 400), ("pe05_smoke", 10, 32, 5)):
+    for profile, iterations, count, save in (
+        ("pe05", 15000, 4096, 100),
+        ("pe05_gait_fixed", 15000, 4096, 100),
+        ("pe05_smoke", 10, 32, 5),
+    ):
         command, _, _ = build_launch(DEFAULTS, profile, [], environment={})
         assert Path(command[1]).name == "train_pe05.py"
         cfg = load_config(command[2:])
@@ -102,8 +106,9 @@ def test_checkpoint_load_rejects_asset_layout_and_config_changes(tmp_path):
             "training.mujoco_threads=1",
         ]
     )
-    runner = PE05Runner(cfg, tmp_path / "run")
-    checkpoint = tmp_path / "run/model_0.pt"
+    run = tmp_path / "2026-09-28_12-00-00_000001_mujoco"
+    runner = PE05Runner(cfg, run)
+    checkpoint = run / "model_0.pt"
     try:
         runner.save(checkpoint)
     finally:

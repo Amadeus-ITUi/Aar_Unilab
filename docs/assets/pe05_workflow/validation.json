@@ -1,0 +1,45 @@
+{
+  "full_pytest": {
+    "passed": 634,
+    "failed": 4,
+    "xfailed": 2,
+    "existing_failures": [
+      "3 PE03 robustness max_level expectation mismatches",
+      "Read-only references contain nested .git metadata"
+    ]
+  },
+  "focused": {
+    "passed": 100,
+    "initial_native_import_abort": 1,
+    "details": "One PyTorch ApproximateClock fast_1 >= fast_0 assertion during import; the same export/play test passed in the full suite and in a standalone rerun."
+  },
+  "mypy": {
+    "passed": true,
+    "source_files": 179
+  },
+  "changed_ruff_and_format": {
+    "passed": true
+  },
+  "full_ruff": {
+    "existing_errors": 7
+  },
+  "full_format": {
+    "existing_unformatted_files": 11
+  },
+  "headless_play": {
+    "passed": true,
+    "steps": 10,
+    "profile": "pe05_gait_fixed",
+    "checkpoint": "logs/pe05_gait_fixed/2026-09-28_17-09-58_288435_mujoco/model_500.pt"
+  },
+  "checkpoint_resume_contract_preserved": true,
+  "tensorboard_http_runs": {
+    "url": "http://127.0.0.1:6006/data/runs",
+    "runs": 2
+  },
+  "cleanup": {
+    "fingerprints_verified": 101,
+    "deleted_files": 0,
+    "manifest": "cleanup_manifest.json"
+  }
+}

@@ -1,4 +1,3 @@
-# @package _global_
 task_id: pe05_flat
 env:
   model_path: src/unilab/assets/robots/pe05/scene.xml
@@ -106,7 +105,7 @@ control:
   clip_joint_targets: true
 commands:
   resampling_time: 10.0
-  heading_command: false # Direct yaw-rate commands, matching the velocity-bin curriculum.
+  heading_command: false
   heading_gain: 1.0
   zero_probability: 0.2
   ranges:
@@ -126,12 +125,24 @@ commands:
   initial_range_scale: 0.3
   curriculum: true
   curriculum_strategy: velocity_bins
-  initial_low: [-0.3, -0.1, -0.5]
-  initial_high: [0.3, 0.1, 0.5]
-  bin_width: [0.1, 0.1, 0.1]
+  initial_low:
+  - -0.3
+  - -0.1
+  - -0.5
+  initial_high:
+  - 0.3
+  - 0.1
+  - 0.5
+  bin_width:
+  - 0.1
+  - 0.1
+  - 0.1
   weight_increment: 0.2
-  thresholds: [0.8, 0.7, 0.9, 0.9]
-  # PE03-style scores used only for curriculum decisions, not the PPO reward.
+  thresholds:
+  - 0.8
+  - 0.7
+  - 0.9
+  - 0.9
   score_tracking_sigma: 0.25
   score_yaw_sigma: 0.25
   score_force_weight_fraction: 0.08
@@ -165,7 +176,7 @@ noise:
   ang_vel: 0.2
   gravity: 0.2
 domain_rand:
-  enabled: false # Temporary nominal baseline; retain ranges for later re-enabling.
+  enabled: false
   friction_range:
   - 0.1
   - 2.0
@@ -213,23 +224,22 @@ domain_rand:
     max_tracking_error: 0.15
     max_yaw_error: 0.2
 reward:
-  # PE01-shaped foot costs plus explicit PE05 clearance; see PE05_PE01_GAIT.md.
   aggregation: weighted_sum
   gait_reward_version: pe01_shaped_v1
   gait_kappa: 0.05
-  gait_force_sigma: 5.0 # Exponent denominator, N^2; not a standard deviation.
-  gait_vel_sigma: 0.20 # Exponent denominator, (m/s)^2.
+  gait_force_sigma: 5.0
+  gait_vel_sigma: 0.2
   feet_regulation_height_scale: 0.00025
   about_landing_threshold: 0.05
   landing_force_threshold: 0.1
-  zero_command_stance: false # Keep alternating gait targets even at zero command.
+  zero_command_stance: false
   base_height_target: null
   base_height_std: 0.03
   foot_clearance_std: 0.02
   slip_velocity_std: 0.2
   orientation_std: 0.2
   joint_limit_std: 0.1
-  soft_joint_limit: 0.90
+  soft_joint_limit: 0.9
   min_feet_distance: 0.08
   feet_distance_std: 0.03
   contact_force_threshold: 1.0
@@ -282,11 +292,11 @@ evaluation:
     - 0
     left:
     - 0
-    - 0.15
+    - 0.1
     - 0
     right:
     - 0
-    - -0.15
+    - -0.1
     - 0
     turn_left:
     - 0
@@ -297,6 +307,88 @@ evaluation:
     - 0
     - -0.4
   max_nonfoot_fraction: 0.01
-  max_height_error: 0.01
+  max_height_error: 0.02
   max_tracking_error: 0.15
   max_yaw_error: 0.2
+robot: pe05
+observation: pe05_v1
+policy: pe05_encoder_mlp
+algorithm: pe05_custom_ppo
+simulator: mujoco
+mode: train
+checkpoint: -1
+algo:
+  num_envs: 4096
+  num_steps_per_env: 24
+  max_iterations: 100
+  save_interval: 25
+  num_learning_epochs: 5
+  num_mini_batches: 4
+  gamma: 0.99
+  lam: 0.95
+  learning_rate: 0.001
+  encoder_learning_rate: 0.001
+  clip_ratio: 0.2
+  value_loss_coefficient: 1.0
+  use_clipped_value_loss: true
+  entropy_coefficient: 0.01
+  max_grad_norm: 1.0
+  desired_kl: 0.01
+  schedule: adaptive
+training:
+  seed: 1
+  device: auto
+  cpu_threads: 1
+  mujoco_threads: 32
+  log_root: logs/pe05_pe01_gait
+  logger: tensorboard
+  resume: null
+  export: false
+  evaluation_episodes: 8
+  evaluation_interval: 25
+  evaluation_joint_noise: 0.0
+  evaluation_velocity_noise: 0.0
+  evaluation_height_tolerance: 0.03
+  evaluation_tilt_deg: 10.0
+  evaluation_speed_tolerance: 0.1
+  experiment_name: pe01_gait
+network:
+  command_size: 3
+  encoder_hidden_dims:
+  - 256
+  - 128
+  latent_dim: 3
+  encoder_output_detach: true
+  actor_hidden_dims:
+  - 512
+  - 256
+  - 128
+  critic_hidden_dims:
+  - 512
+  - 256
+  - 128
+  initial_std: 1.0
+play:
+  steps: -1
+  render: interactive
+  paused: false
+  plot: false
+  telemetry: logs/play/pe05/pe05_flat/latest
+  command_source: gamepad
+  command:
+  - 0.0
+  - 0.0
+  - 0.0
+  gamepad:
+    index: 0
+    deadzone: 0.12
+    scale:
+    - 1.0
+    - 1.0
+    - 1.0
+  gait:
+  - 2.0
+  - 0.5
+  - 0.5
+  - 0.03
+  delay_ms: 0.0

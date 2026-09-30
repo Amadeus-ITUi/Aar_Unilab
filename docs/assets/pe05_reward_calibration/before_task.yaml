@@ -213,15 +213,7 @@ domain_rand:
     max_tracking_error: 0.15
     max_yaw_error: 0.2
 reward:
-  # PE01-shaped foot costs plus explicit PE05 clearance; see PE05_PE01_GAIT.md.
   aggregation: weighted_sum
-  gait_reward_version: pe01_shaped_v1
-  gait_kappa: 0.05
-  gait_force_sigma: 5.0 # Exponent denominator, N^2; not a standard deviation.
-  gait_vel_sigma: 0.20 # Exponent denominator, (m/s)^2.
-  feet_regulation_height_scale: 0.00025
-  about_landing_threshold: 0.05
-  landing_force_threshold: 0.1
   zero_command_stance: false # Keep alternating gait targets even at zero command.
   base_height_target: null
   base_height_std: 0.03
@@ -229,7 +221,7 @@ reward:
   slip_velocity_std: 0.2
   orientation_std: 0.2
   joint_limit_std: 0.1
-  soft_joint_limit: 0.90
+  soft_joint_limit: 0.95
   min_feet_distance: 0.08
   feet_distance_std: 0.03
   contact_force_threshold: 1.0
@@ -239,31 +231,29 @@ reward:
     body_link: 1.0
     L_hip_Link: 1.0
     L_thigh_Link: 1.0
-    L_calf_Link: 1.0
+    L_calf_Link: 2.0
     R_hip_Link: 1.0
     R_thigh_Link: 1.0
-    R_calf_link: 1.0
+    R_calf_link: 2.0
   scales:
     tracking_lin_vel: 1.0
     tracking_ang_vel: 0.5
-    base_height: -0.135
-    foot_clearance: -0.1
-    tracking_contacts_shaped_force: -2.0
-    tracking_contacts_shaped_vel: -2.0
-    collision: -5.0
+    base_height: -1.0
+    foot_clearance: -0.5
+    contact_schedule: -0.5
+    collision: -3.0
     termination: -100.0
-    feet_regulation: -0.08
-    foot_landing_vel: -0.15
-    orientation: -0.3
-    lin_vel_z: -0.03
-    ang_vel_xy: -0.0015
-    torques: -0.00015
-    dof_acc: -3.75e-07
+    feet_slip: -0.2
+    orientation: -0.2
+    lin_vel_z: -0.5
+    ang_vel_xy: -0.01
+    torques: -0.0002
+    dof_acc: -2.5e-07
     action_rate: -0.01
     action_smooth: -0.005
-    dof_pos_limits: -1.5
+    dof_pos_limits: -0.2
     feet_distance: -0.5
-  tracking_velocity_std: 0.5
+  tracking_velocity_std: 0.4
   tracking_yaw_std: 0.5
 evaluation:
   delay_ms: 0.0

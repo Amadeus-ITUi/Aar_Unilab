@@ -1,0 +1,80 @@
+{
+  "focused_initial": {
+    "passed": 93,
+    "failed": 0,
+    "log": "focused.log"
+  },
+  "focused_final_gait": {
+    "passed": 17,
+    "failed": 0,
+    "log": "focused_final.log",
+    "note": "Includes the added non-reward config invariance test after full-suite collection."
+  },
+  "full_pytest": {
+    "passed": 626,
+    "failed": 4,
+    "xfailed": 2,
+    "log": "pytest.log",
+    "existing_failures": [
+      "3 PE03 robustness tests expect max_level=1; existing config is 0.7",
+      "Repository independence finds existing nested .git under read-only references"
+    ]
+  },
+  "full_ruff": {
+    "errors": 7,
+    "all_preexisting": true,
+    "log": "ruff.log"
+  },
+  "full_format": {
+    "unformatted_files": 11,
+    "all_preexisting": true,
+    "log": "format.log"
+  },
+  "mypy": {
+    "passed": true,
+    "source_files": 179,
+    "log": "mypy.log"
+  },
+  "diff_check": {
+    "passed": true,
+    "log": "diffcheck.log"
+  },
+  "we11": {
+    "passed": true,
+    "environments_per_task": 2,
+    "steps": 5,
+    "details": "we11_validation.json"
+  },
+  "smoke": {
+    "passed": true,
+    "environments": 64,
+    "iterations": 5,
+    "samples": 7680,
+    "log": "smoke.log"
+  },
+  "run": "logs/pe05_pe01_gait/2026-09-28_16-51-56_802881_mujoco",
+  "training_complete": true,
+  "iterations": 100,
+  "samples": 9830400,
+  "seed": 1,
+  "save_and_evaluation_interval": 25,
+  "evaluation_episodes_per_group": 8,
+  "max_seconds_per_episode": 20,
+  "from_scratch": true,
+  "exported_release": false,
+  "accepted": false,
+  "checkpoint_sha256": "7afa6e10694344630b14f03f70c218547cf493ab6de412c694d2f4e7a33d3deb",
+  "evaluation": "evaluation.json",
+  "replays": "logs/reports/pe05_pe01_gait/final/replays",
+  "non_reward_task_settings_unchanged": true,
+  "acceptance_note": "Implementation and training pipeline passed; no stable alternating gait or walking acceptance after 100 iterations.",
+  "changed_file_ruff": {
+    "passed": true,
+    "log": "changed_ruff.log"
+  },
+  "changed_file_format": {
+    "passed": true,
+    "files": 10,
+    "log": "changed_format.log"
+  }
+}

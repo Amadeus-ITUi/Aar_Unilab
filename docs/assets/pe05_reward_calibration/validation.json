@@ -1,0 +1,65 @@
+{
+  "pe05_tests": {
+    "passed": 77,
+    "failed": 0,
+    "log": "pe05_tests.log"
+  },
+  "required_full_pytest": {
+    "passed": 605,
+    "failed": 4,
+    "xfailed": 2,
+    "log": "pytest.log",
+    "unrelated_failures": [
+      "PE03 robustness curriculum tests expect max_level=1 while current owner YAML has 0.7 (3 tests)",
+      "Repository independence detects existing nested .git metadata in read-only references (1 test)"
+    ]
+  },
+  "mypy": {
+    "passed": true,
+    "source_files": 177,
+    "log": "mypy.log"
+  },
+  "changed_file_ruff": {
+    "passed": true,
+    "log": "changed_ruff.log"
+  },
+  "changed_file_format": {
+    "passed": true,
+    "log": "changed_format.log"
+  },
+  "required_full_ruff": {
+    "passed": false,
+    "existing_errors": 7,
+    "log": "ruff.log"
+  },
+  "required_full_format": {
+    "passed": false,
+    "existing_unformatted_files": 11,
+    "log": "format.log"
+  },
+  "we11_tasks": {
+    "passed": true,
+    "environments_per_task": 2,
+    "steps_per_task": 5,
+    "log": "we11_smoke.log"
+  },
+  "engineering_training": {
+    "iterations": 10,
+    "samples": 7680,
+    "exported": true,
+    "log": "smoke.log"
+  },
+  "training_run": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco",
+  "training_budget": {
+    "environments": 4096,
+    "rollout_steps": 24,
+    "max_iterations": 1000
+  },
+  "training_complete": true,
+  "training_iterations": 1000,
+  "training_samples": 98304000,
+  "accepted": false,
+  "non_reward_task_settings_unchanged": true,
+  "final_checkpoint_sha256": "c8bcb6f2ddb0f7a277d81bdc11e99677f515ac6711973f5c0d6fe58d3294c249",
+  "final_evaluation": "final/evaluation.json"
+}

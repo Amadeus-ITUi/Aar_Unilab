@@ -1,0 +1,455 @@
+[
+  {
+    "passed": false,
+    "groups": {
+      "standing": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.0,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2576180031097852,
+        "yaw_error_radps": 0.08428767415906498,
+        "height_error_m": 0.043601433346876266,
+        "nonfoot_contact": 0.12
+      },
+      "forward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.0,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2505097964884352,
+        "yaw_error_radps": 0.08735045564143849,
+        "height_error_m": 0.04533626382255556,
+        "nonfoot_contact": 0.12
+      },
+      "backward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.02,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.5580361530839381,
+        "yaw_error_radps": 0.07720280137063462,
+        "height_error_m": 0.043784242612220824,
+        "nonfoot_contact": 0.11764705882352941
+      },
+      "left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.0,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.286342823660468,
+        "yaw_error_radps": 0.057859375438035696,
+        "height_error_m": 0.04333399913848573,
+        "nonfoot_contact": 0.1
+      },
+      "right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.0,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.300885752646877,
+        "yaw_error_radps": 0.09393612809339358,
+        "height_error_m": 0.044506498465857476,
+        "nonfoot_contact": 0.12
+      },
+      "turn_left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.02,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2609674543567275,
+        "yaw_error_radps": 0.08434351943371104,
+        "height_error_m": 0.04568777248333257,
+        "nonfoot_contact": 0.11764705882352941
+      },
+      "turn_right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 0.98,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.25539957328916224,
+        "yaw_error_radps": 0.15978841379377662,
+        "height_error_m": 0.04519367823749825,
+        "nonfoot_contact": 0.12244897959183673
+      }
+    },
+    "iteration": 25,
+    "consecutive_pass": false
+  },
+  {
+    "passed": false,
+    "groups": {
+      "standing": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.32,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.15477380231175628,
+        "yaw_error_radps": 0.09070644111291583,
+        "height_error_m": 0.01183064539559437,
+        "nonfoot_contact": 0.09090909090909091
+      },
+      "forward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.36,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2663425087540084,
+        "yaw_error_radps": 0.040472871085784394,
+        "height_error_m": 0.019239748793419865,
+        "nonfoot_contact": 0.08823529411764706
+      },
+      "backward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.1,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2687554867371346,
+        "yaw_error_radps": 0.08494827603092558,
+        "height_error_m": 0.016720287639388445,
+        "nonfoot_contact": 0.10909090909090909
+      },
+      "left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.32,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.18028984059851844,
+        "yaw_error_radps": 0.08254845747293421,
+        "height_error_m": 0.01308447050426567,
+        "nonfoot_contact": 0.09090909090909091
+      },
+      "right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.26,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.23423542534684247,
+        "yaw_error_radps": 0.10250452236105957,
+        "height_error_m": 0.01130228559662506,
+        "nonfoot_contact": 0.09523809523809523
+      },
+      "turn_left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.04,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.17559813173026162,
+        "yaw_error_radps": 0.08159941334068808,
+        "height_error_m": 0.01829390150906485,
+        "nonfoot_contact": 0.09615384615384616
+      },
+      "turn_right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.1400000000000001,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.1679888232598318,
+        "yaw_error_radps": 0.0606924602072718,
+        "height_error_m": 0.022881880122078896,
+        "nonfoot_contact": 0.10526315789473684
+      }
+    },
+    "iteration": 50,
+    "consecutive_pass": false
+  },
+  {
+    "passed": false,
+    "groups": {
+      "standing": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.1,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.16811484723487055,
+        "yaw_error_radps": 0.07170151149557906,
+        "height_error_m": 0.015774000595003078,
+        "nonfoot_contact": 0.10909090909090909
+      },
+      "forward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.32,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2618895189872739,
+        "yaw_error_radps": 0.0426648910519108,
+        "height_error_m": 0.019590502333455738,
+        "nonfoot_contact": 0.07575757575757576
+      },
+      "backward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.1,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2620159838721065,
+        "yaw_error_radps": 0.09056039171859938,
+        "height_error_m": 0.015445480459351523,
+        "nonfoot_contact": 0.10909090909090909
+      },
+      "left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.12,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.19709043124601897,
+        "yaw_error_radps": 0.06156123293741865,
+        "height_error_m": 0.014851247266721431,
+        "nonfoot_contact": 0.10714285714285714
+      },
+      "right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.21777237857893664,
+        "yaw_error_radps": 0.0705981170457197,
+        "height_error_m": 0.01580040381942291,
+        "nonfoot_contact": 0.1111111111111111
+      },
+      "turn_left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.3800000000000001,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.14260597220645338,
+        "yaw_error_radps": 0.0535068710988525,
+        "height_error_m": 0.02053642410788228,
+        "nonfoot_contact": 0.08695652173913043
+      },
+      "turn_right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "height_error_m",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.4000000000000001,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.1359816468648353,
+        "yaw_error_radps": 0.08628027212828351,
+        "height_error_m": 0.02202433847723333,
+        "nonfoot_contact": 0.08571428571428572
+      }
+    },
+    "iteration": 75,
+    "consecutive_pass": false
+  },
+  {
+    "passed": false,
+    "groups": {
+      "standing": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.13766052465640594,
+        "yaw_error_radps": 0.02506251648739545,
+        "height_error_m": 0.016629209182512046,
+        "nonfoot_contact": 0.1111111111111111
+      },
+      "forward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.2,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.41291801356697644,
+        "yaw_error_radps": 0.03278040110152885,
+        "height_error_m": 0.017526617283386708,
+        "nonfoot_contact": 0.1
+      },
+      "backward": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.2538000267980301,
+        "yaw_error_radps": 0.03714902637236648,
+        "height_error_m": 0.01595267699932491,
+        "nonfoot_contact": 0.1111111111111111
+      },
+      "left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.17114691725240075,
+        "yaw_error_radps": 0.027142469874621194,
+        "height_error_m": 0.016333221718548365,
+        "nonfoot_contact": 0.1111111111111111
+      },
+      "right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "tracking_error_mps",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.18443330624889598,
+        "yaw_error_radps": 0.023342039199794815,
+        "height_error_m": 0.01642411385370113,
+        "nonfoot_contact": 0.1111111111111111
+      },
+      "turn_left": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.16,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.14404673056736805,
+        "yaw_error_radps": 0.05696086365276284,
+        "height_error_m": 0.016643619993563,
+        "nonfoot_contact": 0.10344827586206896
+      },
+      "turn_right": {
+        "passed": false,
+        "failed_metrics": [
+          "failure_rate",
+          "nonfoot_contact",
+          "episode_seconds"
+        ],
+        "episode_seconds": 1.08,
+        "failure_rate": 1.0,
+        "tracking_error_mps": 0.13309459289713355,
+        "yaw_error_radps": 0.08098978038979948,
+        "height_error_m": 0.014017104998112083,
+        "nonfoot_contact": 0.1111111111111111
+      }
+    },
+    "iteration": 100,
+    "consecutive_pass": false
+  }
+]

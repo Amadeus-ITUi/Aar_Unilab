@@ -145,3 +145,166 @@ def validate_config(config: DictConfig) -> None:
         raise ValueError("action delays cannot be negative")
     if config.domain_rand.restitution_mapping is not None:
         raise ValueError("PhysX restitution is not a MuJoCo scalar; no mapping has been calibrated")
+    revision = config.env.get("task_revision")
+    if revision not in (None, "weighted_v2"):
+        raise ValueError("unsupported PE05 task revision")
+    if revision == "weighted_v2":
+        _validate_weighted(config)
+
+
+def _validate_weighted(config: DictConfig) -> None:
+    env, reward, course = config.env, config.reward, config.domain_rand.curriculum
+    commands = config.commands
+    strategy = commands.get("curriculum_strategy")
+    if strategy not in (None, "velocity_bins"):
+        raise ValueError("unsupported command curriculum strategy")
+    if strategy == "velocity_bins":
+        if commands.curriculum and commands.heading_command:
+            raise ValueError(
+                "velocity_bins requires direct yaw-rate commands (heading_command=false)"
+            )
+        for key in ("initial_low", "initial_high", "bin_width", "thresholds"):
+            values = commands[key]
+            if len(values) != (4 if key == "thresholds" else 3) or not all(
+                math.isfinite(v) for v in values
+            ):
+                raise ValueError(f"invalid commands.{key}")
+        for i, name in enumerate(("lin_vel_x", "lin_vel_y", "ang_vel_yaw")):
+            low, high = commands.ranges[name]
+            width = commands.bin_width[i]
+            if width <= 0 or not low <= commands.initial_low[i] < commands.initial_high[i] <= high:
+                raise ValueError("invalid command curriculum bounds")
+            cells = (high - low) / width
+            if not math.isclose(cells, round(cells), abs_tol=1e-8) or cells < 1:
+                raise ValueError("command curriculum range must contain whole bins")
+            for bound in (commands.initial_low[i], commands.initial_high[i]):
+                offset = (bound - low) / width
+                if not math.isclose(offset, round(offset), abs_tol=1e-8):
+                    raise ValueError("initial command bounds must align with bin edges")
+        if not 0 < commands.weight_increment <= 1 or any(
+            not 0 < v <= 1 for v in commands.thresholds
+        ):
+            raise ValueError("invalid command curriculum increment or thresholds")
+        for key in (
+            "resampling_time",
+            "score_tracking_sigma",
+            "score_yaw_sigma",
+            "score_force_weight_fraction",
+            "score_contact_velocity_sigma",
+            "score_contact_kappa",
+        ):
+            if not math.isfinite(commands[key]) or commands[key] <= 0:
+                raise ValueError(f"commands.{key} must be positive and finite")
+    if reward.aggregation != "weighted_sum":
+        raise ValueError("weighted_v2 requires a signed weighted_sum")
+    if not isinstance(reward.get("zero_command_stance", True), bool):
+        raise ValueError("reward.zero_command_stance must be boolean")
+    for key in (
+        "base_height_std",
+        "foot_clearance_std",
+        "slip_velocity_std",
+        "orientation_std",
+        "joint_limit_std",
+        "feet_distance_std",
+        "tracking_velocity_std",
+        "tracking_yaw_std",
+        "contact_force_threshold",
+    ):
+        if not math.isfinite(reward[key]) or reward[key] <= 0:
+            raise ValueError(f"reward.{key} must be positive and finite")
+    supported = {
+        "tracking_lin_vel",
+        "tracking_ang_vel",
+        "base_height",
+        "foot_clearance",
+        "contact_schedule",
+        "collision",
+        "termination",
+        "feet_slip",
+        "orientation",
+        "lin_vel_z",
+        "ang_vel_xy",
+        "torques",
+        "dof_acc",
+        "action_rate",
+        "action_smooth",
+        "dof_pos_limits",
+        "feet_distance",
+    }
+    version = reward.get("gait_reward_version")
+    if version not in (None, "pe01_shaped_v1"):
+        raise ValueError("unsupported reward.gait_reward_version")
+    if version == "pe01_shaped_v1":
+        supported -= {"contact_schedule", "feet_slip"}
+        supported |= {
+            "tracking_contacts_shaped_force",
+            "tracking_contacts_shaped_vel",
+            "feet_regulation",
+            "foot_landing_vel",
+        }
+        if reward.get("zero_command_stance", True):
+            raise ValueError("pe01_shaped_v1 requires alternating zero-command gait")
+        for key in (
+            "gait_kappa",
+            "gait_force_sigma",
+            "gait_vel_sigma",
+            "feet_regulation_height_scale",
+            "about_landing_threshold",
+            "landing_force_threshold",
+        ):
+            value = reward.get(key)
+            if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"reward.{key} must be positive and finite")
+    if set(reward.scales) != supported:
+        raise ValueError("weighted_v2 requires its explicit reward scale set")
+    positive_terms = {"tracking_lin_vel", "tracking_ang_vel"}
+    for key, weight in reward.scales.items():
+        if (
+            not math.isfinite(weight)
+            or (key in positive_terms and weight < 0)
+            or (key not in positive_terms and weight > 0)
+        ):
+            raise ValueError(f"invalid signed reward scale: {key}")
+    bodies = set(env.body_names) - set(env.foot_names)
+    if set(env.penalized_bodies) != bodies or len(env.penalized_bodies) != len(bodies):
+        raise ValueError("weighted_v2 must monitor every non-foot body")
+    if set(reward.collision_body_weights) != bodies or any(
+        not math.isfinite(v) or v <= 0 for v in reward.collision_body_weights.values()
+    ):
+        raise ValueError("collision_body_weights must cover all non-foot bodies")
+    if not set(env.persistent_ground_bodies) or not set(env.persistent_ground_bodies) <= bodies:
+        raise ValueError("invalid persistent ground bodies")
+    if env.contact_hz != config.control.physics_hz:
+        raise ValueError("weighted_v2 requires contact samples at every physics step")
+    for key in ("ground_contact_time_s", "failure_height", "failure_tilt_deg", "reset_clearance"):
+        if not math.isfinite(env[key]) or env[key] <= 0:
+            raise ValueError(f"env.{key} must be positive and finite")
+    if env.reset_max_attempts < 1 or not 0 < reward.soft_joint_limit <= 1:
+        raise ValueError("invalid reset attempts or soft joint limits")
+    if len(env.reference_points) != 2 or any(
+        len(p) != 3 or not all(math.isfinite(v) for v in p) for p in env.reference_points
+    ):
+        raise ValueError("reference_points requires two finite sole points")
+    if not 0 <= course.initial_level <= course.max_level <= 1 or not 0 < course.increment <= 1:
+        raise ValueError("invalid curriculum levels")
+    if not 0 < course.min_episode_fraction <= 1:
+        raise ValueError("invalid minimum episode fraction")
+    if (
+        not 0 <= config.commands.initial_zero_probability <= 1
+        or not 0 < config.commands.initial_range_scale <= 1
+    ):
+        raise ValueError("invalid initial command curriculum")
+    for owner in (course, config.evaluation):
+        for key in (
+            "max_nonfoot_fraction",
+            "max_height_error",
+            "max_tracking_error",
+            "max_yaw_error",
+        ):
+            if not math.isfinite(owner[key]) or owner[key] < 0:
+                raise ValueError(f"invalid quality threshold: {key}")
+    if not config.evaluation.commands or config.evaluation.delay_ms < 0:
+        raise ValueError("weighted evaluation requires commands and nonnegative delay")
+    for command in config.evaluation.commands.values():
+        if len(command) != 3 or not all(math.isfinite(v) for v in command):
+            raise ValueError("evaluation commands must be finite 3D velocities")

@@ -7,7 +7,7 @@ PE02 的迁移范围与物理差异见[迁移说明](docs/PE02_TRAINING_MIGRATIO
 PE03 CNC 点足样机已从当前 PE02 复制为独立训练线，使用新质量、碰撞体和默认站姿；
 训练、回放及验证结果见 [PE03 说明](docs/PE03_TRAINING_MIGRATION.md)。
 点足新基线为 [PE05](docs/PE05_BASELINE.md)：冻结 PE03 最新本体，参考原始 PE01
-训练设计，保留 90% 零命令。PE04/TRON1 暂缓，既有训练和回放入口保留。
+紧凑网络；当前使用[加权奖励与本体适配](docs/PE05_WEIGHTED_TASK.md)，暂关动力学随机化，启用独立速度命令课程，20% 零命令。PE04/TRON1 暂缓，既有训练和回放入口保留。
 
 ## 按操作查命令
 
@@ -21,7 +21,8 @@ PE03 CNC 点足样机已从当前 PE02 复制为独立训练线，使用新质�
 | WE11 实时回放、录制视频、调整起始姿态 | [WE11 Python 回放](docs/DAILY_USAGE.md#we11-play) |
 | PE01/PE02 训练、回放、修改网络 | [PE01 与 PE02](docs/DAILY_USAGE.md#pe-training) |
 | PE03 CNC 站立、行走与模型检查 | [PE03 独立训练线](docs/PE03_TRAINING_MIGRATION.md) |
-| PE05 训练、续训、回放与导出 | [PE05 基线](docs/PE05_BASELINE.md) |
+| PE05 训练、回放、TensorBoard 与日志目录 | [PE05 操作指南](docs/PE05_WORKFLOW.md) |
+| PE05 当前训练规则、奖励公式与改造讨论 | [训练规则与讨论基准](docs/PE05_TRAINING_RULES.md) |
 | 导出 ONNX、把新模型切换到 WE11 C++ Play | [导出与模型切换](docs/DAILY_USAGE.md#export) |
 | C++ 回放、读取 release、对比 Python/C++ | [C++ Sim2Sim](docs/DAILY_USAGE.md#cpp) |
 | 找 checkpoint、视频和日志 | [产物位置](docs/DAILY_USAGE.md#outputs) |

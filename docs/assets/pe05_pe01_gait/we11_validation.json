@@ -1,0 +1,40 @@
+{
+  "dr002_joystick_flat_we11/mujoco": {
+    "passed": true,
+    "steps": 5,
+    "num_envs": 2,
+    "observations": {
+      "obs": [
+        2,
+        145
+      ],
+      "critic": [
+        2,
+        141
+      ],
+      "privileged_target": [
+        2,
+        3
+      ]
+    }
+  },
+  "dr002_joystick_rough_we11/mujoco": {
+    "passed": true,
+    "steps": 5,
+    "num_envs": 2,
+    "observations": {
+      "obs": [
+        2,
+        145
+      ],
+      "critic": [
+        2,
+        328
+      ],
+      "privileged_target": [
+        2,
+        3
+      ]
+    }
+  }
+}

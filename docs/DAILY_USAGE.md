@@ -82,6 +82,10 @@ bash tools/train.sh pe02_walking
 bash tools/train.sh pe03_standing
 bash tools/train.sh pe03_walking
 
+# PE05 固定步态：训练与回放使用同一 profile 和日志根目录
+bash tools/train.sh pe05_gait_fixed
+# 回放、TensorBoard 与历史产物索引见 PE05_WORKFLOW.md
+
 # 只查看最终参数，不开始训练
 bash tools/train.sh pe02_walking --dry-run
 
@@ -512,6 +516,10 @@ bash tools/train.sh pe03_walking mode=play
 ```
 
 PE03 省略 `checkpoint` 时默认选最新模型，显式指定路径仍优先。
+
+PE05 使用 `bash tools/train.sh pe05_gait_fixed mode=play`，模型选择规则与 PE03 一致。
+旧 `pe05` 命令保留为兼容别名。TensorBoard 指向 `logs/pe05_gait_fixed/tensorboard_runs`，
+详细设置及旧产物归档见 [PE05 操作指南](PE05_WORKFLOW.md)。
 
 窗口获得键盘焦点后，PE01/PE02/PE03 Python Play 支持：
 

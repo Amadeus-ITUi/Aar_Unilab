@@ -21,6 +21,7 @@ from scipy.special import ndtr
 from unilab.base.backend.mujoco.training_robot import TrainingRobotSimulation
 from unilab.base.np_env import NpEnvState
 from unilab.catalog.registry import repository_path
+from unilab.envs.locomotion.pe05.adaptation import WeightedTask
 from unilab.envs.locomotion.pe05.config import ROOT, load_config, validate_config
 from unilab.envs.locomotion.pe05.math import inverse_rotate, multiply, rotate, wrap
 
@@ -50,6 +51,7 @@ class PE05VectorEnv:
             self.cfg["training"]["seed"] + (100000 if evaluation else 0)
         )
         env, control = self.cfg["env"], self.cfg["control"]
+        self.weighted = env.get("task_revision") == "weighted_v2"
         self.dt = 1.0 / control["policy_hz"]
         self.substeps = control["physics_hz"] // control["policy_hz"]
         self.history_length = env["history_length"]
@@ -63,8 +65,10 @@ class PE05VectorEnv:
             nthread=self.cfg["training"]["mujoco_threads"],
             keyframe=env["reset_keyframe"],
             visual=visual,
-            contact_hz=control["policy_hz"],
-            contact_history_length=1,
+            contact_hz=control["physics_hz"] if self.weighted else control["policy_hz"],
+            contact_history_length=self.substeps if self.weighted else 1,
+            ground_contact_history=self.weighted,
+            **({"foot_contact_geoms": tuple(env["foot_contact_geoms"])} if self.weighted else {}),
         )
         self.home = self.backend.home.copy()
         if env["initial_height"] is not None:
@@ -97,6 +101,7 @@ class PE05VectorEnv:
         self.foot_velocity = np.zeros((n, 2, 3))
         self.imu_offset = np.tile([1.0, 0.0, 0.0, 0.0], (n, 1))
         self._configure_randomization()
+        self.adaptation = WeightedTask(self) if self.weighted else None
         self.reset()
 
     def _uniform(self, bounds, shape):
@@ -174,6 +179,9 @@ class PE05VectorEnv:
         if self.evaluation:
             self.commands[ids] = self.cfg["play"]["command"]
             return
+        if self.adaptation is not None:
+            self.adaptation.sample_commands(ids)
+            return
         cfg = self.cfg["commands"]
         for i, key in enumerate(("lin_vel_x", "lin_vel_y", "ang_vel_yaw")):
             self.commands[ids, i] = self._uniform(cfg["ranges"][key], len(ids))
@@ -231,6 +239,8 @@ class PE05VectorEnv:
                     ]
                     * noise["level"]
                 )
+                if self.adaptation is not None:
+                    amplitude = amplitude * self.adaptation.level[ids, None]
                 frame += self.rng.uniform(-1, 1, frame.shape) * amplitude
         clip = scale["clip_observations"]
         return np.clip(frame, -clip, clip).astype(np.float32), clean.astype(np.float32)
@@ -256,27 +266,30 @@ class PE05VectorEnv:
     def _reset_ids(self, ids: np.ndarray) -> None:
         if not len(ids):
             return
-        n = len(ids)
-        qpos = np.tile(self.home, (n, 1))
-        qvel = np.zeros((n, 12))
-        if self.evaluation and self.evaluation_reset_noise:
-            joint_noise = self.cfg["training"].get("evaluation_joint_noise", 0.01)
-            velocity_noise = self.cfg["training"].get("evaluation_velocity_noise", 0.02)
-            qpos[:, 7:] += self.rng.uniform(-joint_noise, joint_noise, (n, 6))
-            qpos[:, 7:] = np.clip(
-                qpos[:, 7:], self.backend.joint_range[:, 0], self.backend.joint_range[:, 1]
-            )
-            qvel[:, :6] = self.rng.uniform(-velocity_noise, velocity_noise, (n, 6))
-        if not self.evaluation:
-            qpos[:, 7:] = self.backend.default_position[ids] + self._uniform(
-                self.cfg["env"]["joint_reset_range"], (n, 6)
-            )
-            # Keep perturbed initial positions within the PE05 mechanical joint limits.
-            qpos[:, 7:] = np.clip(
-                qpos[:, 7:], self.backend.joint_range[:, 0], self.backend.joint_range[:, 1]
-            )
-            qvel[:, :6] = self._uniform(self.cfg["env"]["base_velocity_reset_range"], (n, 6))
-        self.backend.reset(ids, qpos, qvel)
+        if self.adaptation is not None:
+            qpos, qvel = self.adaptation.reset(ids)
+        else:
+            n = len(ids)
+            qpos = np.tile(self.home, (n, 1))
+            qvel = np.zeros((n, 12))
+            if self.evaluation and self.evaluation_reset_noise:
+                joint_noise = self.cfg["training"].get("evaluation_joint_noise", 0.01)
+                velocity_noise = self.cfg["training"].get("evaluation_velocity_noise", 0.02)
+                qpos[:, 7:] += self.rng.uniform(-joint_noise, joint_noise, (n, 6))
+                qpos[:, 7:] = np.clip(
+                    qpos[:, 7:], self.backend.joint_range[:, 0], self.backend.joint_range[:, 1]
+                )
+                qvel[:, :6] = self.rng.uniform(-velocity_noise, velocity_noise, (n, 6))
+            if not self.evaluation:
+                qpos[:, 7:] = self.backend.default_position[ids] + self._uniform(
+                    self.cfg["env"]["joint_reset_range"], (n, 6)
+                )
+                # Keep perturbed initial positions within the PE05 mechanical joint limits.
+                qpos[:, 7:] = np.clip(
+                    qpos[:, 7:], self.backend.joint_range[:, 0], self.backend.joint_range[:, 1]
+                )
+                qvel[:, :6] = self._uniform(self.cfg["env"]["base_velocity_reset_range"], (n, 6))
+            self.backend.reset(ids, qpos, qvel)
         self.phase[ids], self.episode_steps[ids], self.failure_steps[ids] = 0, 0, 0
         self.actions[ids], self.last_actions[ids], self.episode_returns[ids] = 0, 0, 0
         self.previous_velocity[ids] = 0
@@ -319,6 +332,8 @@ class PE05VectorEnv:
         ) * (1 - ndtr((mapped - 1.5) / kappa))
 
     def _rewards(self) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        if self.adaptation is not None:
+            return self.adaptation.rewards()
         r, b = self.cfg["reward"], self.backend
         gyro, gravity = b.qvel[:, 3:6], self._gravity()
         forces = np.linalg.norm(b.contact_history[:, 0], axis=-1)
@@ -405,7 +420,12 @@ class PE05VectorEnv:
             if trigger.any():
                 mass = b.randomization.get("body_mass", np.tile(b.base_mass, (self.num_envs, 1)))[
                     :, b.body_ids[0]
-                ].mean()
+                ]
+                mass = (
+                    mass[:, None, None] * self.adaptation.level[:, None, None]
+                    if self.adaptation is not None
+                    else mass.mean()
+                )
                 random_force = (
                     self.rng.uniform(-1, 1, (self.num_envs, self.substeps, 3))
                     * mass
@@ -421,7 +441,9 @@ class PE05VectorEnv:
         )
         feet = b.foot_link_positions
         self.foot_velocity[:] = (feet - self.previous_feet) / self.dt
-        self._resample_commands(np.flatnonzero(self.episode_steps % self.command_interval == 0))
+        course = self.adaptation.command_course if self.adaptation is not None else None
+        if course is None:
+            self._resample_commands(np.flatnonzero(self.episode_steps % self.command_interval == 0))
         self._resample_gaits(np.flatnonzero(self.episode_steps % self.gait_interval == 0))
         self.phase[:] = (self.phase + self.dt * self.gaits[:, 0]) % 1
         if self.cfg["commands"]["heading_command"] and not self.evaluation:
@@ -429,18 +451,34 @@ class PE05VectorEnv:
             self.commands[:, 2] = self.cfg["commands"]["heading_gain"] * wrap(
                 self.headings - np.arctan2(forward[:, 1], forward[:, 0])
             )
+            if self.adaptation is not None:
+                commands = self.cfg["commands"]
+                level = self.adaptation.level if commands["curriculum"] else np.ones(self.num_envs)
+                scale = (
+                    commands["initial_range_scale"] + (1 - commands["initial_range_scale"]) * level
+                )
+                bounds = commands["ranges"]["ang_vel_yaw"]
+                self.commands[:, 2] = np.clip(
+                    self.commands[:, 2], bounds[0] * scale, bounds[1] * scale
+                )
         cfg = self.cfg["env"]
-        failure = (
-            np.linalg.norm(b.contact_history[:, 0][:, self.termination_bodies], axis=-1)
-            > cfg["failure_contact_force"]
-        ).any(1)
-        failure |= self._gravity()[:, 2] > cfg["failure_gravity_z"]
-        if cfg["consecutive_failure"]:
-            self.failure_steps[~failure] = 0
-        self.failure_steps += failure
-        terminated = self.failure_steps > cfg["fail_to_terminal_time_s"] / self.dt
-        truncated = (self.episode_steps > self.max_episode_steps) & ~terminated
-        reward, terms = self._rewards()
+        if self.adaptation is not None:
+            reward, terms = self._rewards()
+            terminated = self.adaptation.termination()
+            reward, terms = self.adaptation.apply_failure_cost(reward, terms, terminated)
+            truncated = (self.episode_steps >= self.max_episode_steps) & ~terminated
+        else:
+            failure = (
+                np.linalg.norm(b.contact_history[:, 0][:, self.termination_bodies], axis=-1)
+                > cfg["failure_contact_force"]
+            ).any(1)
+            failure |= self._gravity()[:, 2] > cfg["failure_gravity_z"]
+            if cfg["consecutive_failure"]:
+                self.failure_steps[~failure] = 0
+            self.failure_steps += failure
+            terminated = self.failure_steps > cfg["fail_to_terminal_time_s"] / self.dt
+            truncated = (self.episode_steps > self.max_episode_steps) & ~terminated
+            reward, terms = self._rewards()
         self.episode_returns += reward
         obs = self._observation(advance_history=True)
         done = terminated | truncated
@@ -455,7 +493,22 @@ class PE05VectorEnv:
                 np.linalg.norm(b.contact_history[:, 0][:, self.penalized], axis=-1) > 1
             ).any(1),
         }
+        if self.adaptation is not None:
+            info["diagnostics"] = self.adaptation.diagnostics.copy()
+            info["behavior"] = {key: value.copy() for key, value in self.adaptation.latest.items()}
+            info["nonfoot_contact"] = self.adaptation.latest["collision"].any(1).copy()
         final = {key: value.copy() for key, value in obs.items()} if done.any() else None
+        if course is not None and self.adaptation is not None:
+            # Score the command that produced this transition, before changing commands.
+            boundary = course.observe(
+                self.adaptation.latest["command_scores"], terminated, truncated
+            )
+            self._resample_commands(boundary[~done[boundary]])
+            scale = self.cfg["normalization"]
+            obs["command"] = (
+                self.commands * [scale["lin_vel"], scale["lin_vel"], scale["ang_vel"]]
+            ).astype(np.float32)
+            info["diagnostics"].update(course.metrics())
         self.previous_base[:] = b.qpos[:, :3]
         self.previous_feet[:] = feet
         self.previous_velocity[:] = b.joint_velocity
@@ -463,6 +516,8 @@ class PE05VectorEnv:
         self.last_actions[:, 0] = self.actions
         if done.any() and self.auto_reset:
             ids = np.flatnonzero(done)
+            if self.adaptation is not None:
+                self.adaptation.finish_episodes(ids, terminated)
             self._reset_ids(ids)
             reset_obs = self._observation(advance_history=False)
             reset_obs["frame"] = self.history[:, -1].copy()
@@ -482,6 +537,7 @@ class PE05VectorEnv:
             "rng": copy.deepcopy(self.rng.bit_generator.state),
             "backend": self.backend.snapshot(),
             "observation": copy.deepcopy(self.state.obs),
+            **({"adaptation": self.adaptation.snapshot()} if self.adaptation is not None else {}),
         }
 
     def restore(self, snapshot: dict[str, Any]) -> NpEnvState:
@@ -489,6 +545,8 @@ class PE05VectorEnv:
             setattr(self, name, value.copy())
         self.rng.bit_generator.state = copy.deepcopy(snapshot["rng"])
         self.backend.restore(snapshot["backend"])
+        if self.adaptation is not None:
+            self.adaptation.restore(snapshot["adaptation"])
         self.state = NpEnvState(
             copy.deepcopy(snapshot["observation"]),
             np.zeros(self.num_envs, np.float32),

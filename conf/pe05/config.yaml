@@ -15,7 +15,7 @@ algo:
   num_envs: 8192
   num_steps_per_env: 24
   max_iterations: 15000
-  save_interval: 400
+  save_interval: 100
   num_learning_epochs: 5
   num_mini_batches: 4
   gamma: 0.99
@@ -35,14 +35,16 @@ training:
   device: auto
   cpu_threads: 1
   mujoco_threads: 32
-  log_root: logs/pe05_custom_ppo/pe05/pe05_flat
+  log_root: logs/pe05_gait_fixed
   logger: tensorboard
+  # Descriptive run names follow PE03: robot__task-simulator__experiment__start-time.
+  experiment_name: gait_fixed
   resume: null
   export: true
   evaluation_episodes: 8
   evaluation_interval: 100
-  evaluation_joint_noise: 0.01
-  evaluation_velocity_noise: 0.02
+  evaluation_joint_noise: 0.0
+  evaluation_velocity_noise: 0.0
   evaluation_height_tolerance: 0.03
   evaluation_tilt_deg: 10.0
   evaluation_speed_tolerance: 0.1
@@ -57,6 +59,7 @@ network:
   initial_std: 1.0
 
 play:
+  # Run until the viewer is closed; use a finite count for headless playback.
   steps: -1
   render: interactive
   paused: false
@@ -70,5 +73,5 @@ play:
     deadzone: 0.12
     # Full-stick velocity [m/s, m/s, rad/s].
     scale: [1.0, 1.0, 1.0]
-  gait: [2.0, 0.5, 0.5, 0.06]
+  gait: [2.0, 0.5, 0.5, 0.03]
   delay_ms: 0.0

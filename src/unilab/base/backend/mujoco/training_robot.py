@@ -21,7 +21,14 @@ def rotate_vectors(q, v):
 
 
 class TrainingRobotSimulation(BatchedRobotSimulation):
-    def __init__(self, *args, contact_hz=200, contact_history_length=4, **kwargs):
+    def __init__(
+        self,
+        *args,
+        contact_hz=200,
+        contact_history_length=4,
+        ground_contact_history=False,
+        **kwargs,
+    ):
         native_pd = kwargs.pop("native_pd", True)
         super().__init__(*args, native_pd=True, track_gait_kinematics=True, **kwargs)
         if not hasattr(self.pool._pool, "has_joint_pd_telemetry"):
@@ -41,6 +48,13 @@ class TrainingRobotSimulation(BatchedRobotSimulation):
         self.contact_history = np.zeros(
             (self.num_envs, contact_history_length, len(self.body_ids), 3)
         )
+        self.record_ground_history = ground_contact_history
+        if ground_contact_history:
+            self.ground_contact_history = np.zeros_like(self.contact_history)
+            self._ground_addresses = np.ascontiguousarray(
+                self.gait_sensor_adr["ground"], dtype=np.int32
+            )
+            self._contact_addresses = np.r_[self._contact_addresses, self._ground_addresses]
         bodies = list(self.body_ids)
         inertia = []
         for body in bodies:
@@ -99,6 +113,8 @@ class TrainingRobotSimulation(BatchedRobotSimulation):
     def reset(self, ids, qpos, qvel):
         super().reset(ids, qpos, qvel)
         self.contact_history[ids] = 0
+        if self.record_ground_history:
+            self.ground_contact_history[ids] = 0
         sensors, acceleration = self._controlled_forward(ids=ids)
         self.sensors[ids] = sensors
         self._joint_acceleration[ids] = acceleration[:, 6:]
@@ -135,6 +151,11 @@ class TrainingRobotSimulation(BatchedRobotSimulation):
             self.contact_history[:, 1:] = self.contact_history[:, :-1].copy()
             # MuJoCo contact sensor with body1 reports the opposite force sign.
             self.contact_history[:, 0] = -self.contact_forces
+            if self.record_ground_history:
+                self.ground_contact_history[:, 1:] = self.ground_contact_history[:, :-1].copy()
+                self.ground_contact_history[:, 0] = -self.sensors[
+                    :, self._ground_addresses[:, None] + np.arange(3)
+                ]
 
     def _step_with_telemetry(self, actions, substeps, push_forces):
         wrench = None
@@ -174,7 +195,10 @@ class TrainingRobotSimulation(BatchedRobotSimulation):
         self._joint_acceleration[:] = acceleration[:, 6:]
         count = min(contacts.shape[1], self.contact_history.shape[1])
         self.contact_history[:, count:] = self.contact_history[:, :-count].copy()
-        self.contact_history[:, :count] = -contacts[:, :count]
+        self.contact_history[:, :count] = -contacts[:, :count, : len(self.body_ids)]
+        if self.record_ground_history:
+            self.ground_contact_history[:, count:] = self.ground_contact_history[:, :-count].copy()
+            self.ground_contact_history[:, :count] = -contacts[:, :count, len(self.body_ids) :]
         self.steps += substeps
         if not np.isfinite(self.state).all():
             raise FloatingPointError("non-finite MuJoCo state")
@@ -187,6 +211,11 @@ class TrainingRobotSimulation(BatchedRobotSimulation):
             "root_inertia": self.root_inertia.copy(),
             "sensors": self.sensors.copy(),
             "_joint_acceleration": self._joint_acceleration.copy(),
+            **(
+                {"ground_contact_history": self.ground_contact_history.copy()}
+                if self.record_ground_history
+                else {}
+            ),
         }
 
     def restore(self, snapshot):

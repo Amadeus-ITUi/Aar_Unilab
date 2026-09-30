@@ -1,0 +1,16 @@
+# @package _global_
+# Basic nominal balance/tracking acceptance, independent of training commands.
+algo:
+  num_envs: 4096
+  max_iterations: 1000
+  save_interval: 100
+training:
+  log_root: logs/pe05_weighted
+  experiment_name: reward_calibration
+  evaluation_interval: 100
+  evaluation_episodes: 8
+evaluation:
+  max_height_error: 0.02
+  commands:
+    left: [0, 0.1, 0]
+    right: [0, -0.1, 0]

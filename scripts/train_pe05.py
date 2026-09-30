@@ -194,14 +194,19 @@ def main() -> int:
     if config.mode != "play":
         raise ValueError(f"unsupported PE05 mode={config.mode!r}")
     if not config.checkpoint:
-        print("PE05 play requires checkpoint=<path>", file=sys.stderr)
+        print("PE05 play requires checkpoint=<path> or checkpoint=-1", file=sys.stderr)
         return 2
-    policy = load_policy(
-        resolve_checkpoint(config.checkpoint, config.training.log_root), device=device
-    )
+    checkpoint = resolve_checkpoint(config.checkpoint, config.training.log_root)
+    print(f"PE05 play checkpoint={checkpoint.resolve()}", flush=True)
+    policy = load_policy(checkpoint, device=device)
     play_config = OmegaConf.merge(policy.config)
     if play_config.observation == "pe05_v1":
+        saved_play = OmegaConf.merge(play_config.play)
         play_config.play = config.play
+        # Training gait and delay belong to the saved policy unless explicitly overridden.
+        for key in ("gait", "delay_ms"):
+            if not any(arg.lstrip("+").startswith(f"play.{key}=") for arg in sys.argv[1:]):
+                play_config.play[key] = saved_play[key]
     env = make_play_env(play_config)
 
     def action(observation, command):

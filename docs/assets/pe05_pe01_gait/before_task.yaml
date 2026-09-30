@@ -213,15 +213,8 @@ domain_rand:
     max_tracking_error: 0.15
     max_yaw_error: 0.2
 reward:
-  # PE01-shaped foot costs plus explicit PE05 clearance; see PE05_PE01_GAIT.md.
+  # PE03 model_20000 local reward-scale calibration; see PE05_REWARD_CALIBRATION.md.
   aggregation: weighted_sum
-  gait_reward_version: pe01_shaped_v1
-  gait_kappa: 0.05
-  gait_force_sigma: 5.0 # Exponent denominator, N^2; not a standard deviation.
-  gait_vel_sigma: 0.20 # Exponent denominator, (m/s)^2.
-  feet_regulation_height_scale: 0.00025
-  about_landing_threshold: 0.05
-  landing_force_threshold: 0.1
   zero_command_stance: false # Keep alternating gait targets even at zero command.
   base_height_target: null
   base_height_std: 0.03
@@ -247,20 +240,18 @@ reward:
     tracking_lin_vel: 1.0
     tracking_ang_vel: 0.5
     base_height: -0.135
-    foot_clearance: -0.1
-    tracking_contacts_shaped_force: -2.0
-    tracking_contacts_shaped_vel: -2.0
+    foot_clearance: -0.018
+    contact_schedule: -0.5
     collision: -5.0
     termination: -100.0
-    feet_regulation: -0.08
-    foot_landing_vel: -0.15
+    feet_slip: -0.0024
     orientation: -0.3
     lin_vel_z: -0.03
     ang_vel_xy: -0.0015
     torques: -0.00015
     dof_acc: -3.75e-07
-    action_rate: -0.01
-    action_smooth: -0.005
+    action_rate: -0.024375
+    action_smooth: -0.009375
     dof_pos_limits: -1.5
     feet_distance: -0.5
   tracking_velocity_std: 0.5

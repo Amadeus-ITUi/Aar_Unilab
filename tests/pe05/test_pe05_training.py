@@ -41,10 +41,10 @@ def source_constant(*names):
 
 
 def test_formal_defaults_match_original_source():
-    cfg = load_config()
+    cfg = load_config(["task=pe05_legacy"])
     assert cfg.observation == "pe05_v1"
     assert cfg.algo.num_envs == source_constant("DragonCfgFlat", "env", "num_envs") == 8192
-    for name in ("num_steps_per_env", "max_iterations", "save_interval"):
+    for name in ("num_steps_per_env", "max_iterations"):
         assert cfg.algo[name] == source_constant("DragonCfgPPOD", "runner", name)
     for name in (
         "num_learning_epochs",
@@ -106,7 +106,7 @@ def test_encoder_is_supervised_separately_and_actor_is_unbounded():
 
 
 def test_observation_layout_and_sparse_timeout_reset():
-    env = PE05VectorEnv(small_config("env.episode_length_s=0.02"), evaluation=True)
+    env = PE05VectorEnv(small_config("env.episode_length_s=0.04"), evaluation=True)
     try:
         obs = env.reset().obs
         assert isinstance(obs, dict)
@@ -129,7 +129,12 @@ def test_observation_layout_and_sparse_timeout_reset():
 
 
 def test_delay_pd_limits_and_randomization_isolation():
-    cfg = small_config("play.delay_ms=25")
+    cfg = small_config(
+        "play.delay_ms=25",
+        "domain_rand.enabled=true",
+        "domain_rand.curriculum.enabled=true",
+        "domain_rand.curriculum.initial_level=0.5",
+    )
     env = PE05VectorEnv(cfg, evaluation=True, num_envs=2)
     try:
         actions = np.array([[1] * 6, [0] * 6])
@@ -152,7 +157,7 @@ def test_delay_pd_limits_and_randomization_isolation():
 
 
 def test_standing_rewards_are_targeted_and_keep_original_weights():
-    env = PE05VectorEnv(small_config(), evaluation=True)
+    env = PE05VectorEnv(small_config("task=pe05_legacy"), evaluation=True)
     try:
         total, terms = env._rewards()
         np.testing.assert_allclose(terms["base_height"], 0, atol=1e-9)
@@ -214,13 +219,18 @@ def test_finite_evaluation_metrics(tmp_path):
         assert 0 <= metrics["evaluation/failure_rate"] <= 1
         assert 0 <= metrics["evaluation/standing_fraction"] <= 1
         assert 0 <= metrics["evaluation/nonfoot_contact"] <= 1
+        for command in runner.config.evaluation.commands:
+            assert f"evaluation/{command}/success_rate" in metrics
+            assert f"evaluation/{command}/height_error_p95_m" in metrics
         assert all(np.isfinite(value) for value in metrics.values())
     finally:
         runner.close()
 
 
 def test_evaluation_perturbations_are_reproducible_and_play_stays_at_home():
-    cfg = small_config()
+    cfg = small_config(
+        "training.evaluation_joint_noise=0.01", "training.evaluation_velocity_noise=0.02"
+    )
     env = PE05VectorEnv(cfg, evaluation=True, evaluation_reset_noise=True)
     try:
         perturbed = env.backend.qpos.copy()
@@ -302,3 +312,48 @@ finally:
 """
     )
     subprocess.run([sys.executable, str(script), str(ROOT)], cwd=tmp_path, check=True, timeout=60)
+
+
+def test_exact_resume_after_curriculum_promotion(tmp_path):
+    cfg = small_config(
+        "domain_rand.enabled=true",
+        "domain_rand.curriculum.enabled=true",
+        "commands.curriculum=true",
+        "noise.enabled=true",
+        "domain_rand.push_enabled=true",
+        "env.episode_length_s=0.06",
+        "domain_rand.curriculum.max_nonfoot_fraction=1",
+        "domain_rand.curriculum.max_height_error=1",
+        "domain_rand.curriculum.max_tracking_error=10",
+        "domain_rand.curriculum.max_yaw_error=10",
+    )
+    whole, _, final = run_training(cfg, tmp_path / "whole")
+    cfg.algo.max_iterations = 1
+    first, _, _ = run_training(cfg, tmp_path / "first")
+    state = torch.load(first, weights_only=True)
+    assert (state["environment"]["adaptation"]["level"] > 0).all()
+    assert any(
+        k.startswith("contact/L_calf_Link/")
+        for k in json.loads((tmp_path / "first/metrics.jsonl").read_text())
+    )
+    cfg.training.resume = str(first)
+    second, _, resumed = run_training(cfg, tmp_path / "second")
+    for name in final:
+        torch.testing.assert_close(final[name], resumed[name], rtol=0, atol=0)
+    full_state = torch.load(whole, weights_only=True)["environment"]["adaptation"]
+    resumed_state = torch.load(second, weights_only=True)["environment"]["adaptation"]
+    for key in ("level", "ground_ticks", "episode_sums", "reset_attempts"):
+        torch.testing.assert_close(full_state[key], resumed_state[key], rtol=0, atol=0)
+
+
+def test_legacy_checkpoint_loads_but_cannot_resume_weighted_task(tmp_path):
+    from unilab.adapters.pe05_ppo import load_policy
+
+    cfg = small_config("task=pe05_legacy", "algo.max_iterations=1")
+    checkpoint, _, _ = run_training(cfg, tmp_path / "legacy")
+    old_policy = load_policy(checkpoint)
+    assert old_policy.config.env.get("task_revision") is None
+    cfg = small_config("algo.max_iterations=1")
+    cfg.training.resume = str(checkpoint)
+    with pytest.raises(ValueError, match="training contract"):
+        PE05Runner(cfg, tmp_path / "weighted")

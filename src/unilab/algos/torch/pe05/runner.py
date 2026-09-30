@@ -17,8 +17,11 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from unilab.algos.torch.pe05.console import format_iteration
+from unilab.algos.torch.pe05.evaluation import evaluate_commands
 from unilab.algos.torch.pe05.policy import PE05EncoderPolicy
 from unilab.algos.torch.pe05.ppo import PE05PPO
+from unilab.algos.torch.pe05.run_logging import index_tensorboard_run
+from unilab.algos.torch.pe05.tensorboard import tensorboard_metrics
 from unilab.envs.locomotion.pe05.config import validate_config
 from unilab.envs.locomotion.pe05.contracts import (
     asset_fingerprint,
@@ -80,7 +83,11 @@ class PE05Runner:
                 from torch.utils.tensorboard import SummaryWriter
 
                 self.writer = SummaryWriter(
-                    str(output_dir / "tensorboard"), purge_step=self.iteration
+                    str(output_dir / "tensorboard"), purge_step=self.iteration, flush_secs=10
+                )
+                link = index_tensorboard_run(output_dir, config)
+                print(
+                    f"TensorBoard run: {link.name}\nTensorBoard logdir: {link.parent}", flush=True
                 )
             elif config.training.logger != "none":
                 raise ValueError("PE05 supports training.logger=tensorboard or none")
@@ -98,6 +105,7 @@ class PE05Runner:
     def collect(self) -> tuple[dict[str, torch.Tensor], dict[str, float]]:
         frames: dict[str, list[torch.Tensor]] = {}
         reward_terms: dict[str, list[float]] = {}
+        diagnostics: dict[str, list[float]] = {}
         with torch.no_grad():
             for _ in range(int(self.config.algo.num_steps_per_env)):
                 obs = self._tensors(self.observation)
@@ -128,13 +136,15 @@ class PE05Runner:
                     frames.setdefault(key, []).append(val.clone())
                 for key, val in result.info["reward_terms"].items():
                     reward_terms.setdefault(key, []).append(val)
+                for key, val in result.info.get("diagnostics", {}).items():
+                    diagnostics.setdefault(key, []).append(val)
                 self.returns.extend(result.info["episode_returns"].tolist())
                 self.lengths.extend(result.info["episode_lengths"].tolist())
                 self.observation = result.obs
         rollout = {key: torch.stack(values) for key, values in frames.items()}
-        return rollout, {
-            f"reward/{key}": float(np.mean(values)) for key, values in reward_terms.items()
-        }
+        metrics = {f"reward/{key}": float(np.mean(values)) for key, values in reward_terms.items()}
+        metrics.update({key: float(np.mean(values)) for key, values in diagnostics.items()})
+        return rollout, metrics
 
     def save(self, path: Path) -> None:
         payload = {
@@ -180,6 +190,8 @@ class PE05Runner:
             torch.cuda.set_rng_state_all([state.cpu() for state in payload["cuda_rng"]])
 
     def evaluate(self) -> dict[str, float]:
+        if self.env.weighted:
+            return evaluate_commands(self)
         env = PE05VectorEnv(
             self.config,
             evaluation=True,
@@ -269,7 +281,7 @@ class PE05Runner:
             with log_path.open("a") as stream:
                 stream.write(json.dumps(metrics, allow_nan=False) + "\n")
             if self.writer is not None:
-                for key, value in metrics.items():
+                for key, value in tensorboard_metrics(metrics, policy_dt=self.env.dt).items():
                     self.writer.add_scalar(key, value, self.iteration)
             if self.iteration % int(self.config.algo.save_interval) == 0:
                 last_path = self.output_dir / f"model_{self.iteration}.pt"

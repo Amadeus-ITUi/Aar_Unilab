@@ -1,0 +1,7 @@
+{
+  "scenario": "isolated mid-swing contact with F=0.5*mg, desired=[1,0]",
+  "source_positive_reward_loss": 0.025939941502901617,
+  "pe05_contact_schedule_loss": 0.005,
+  "ratio": 5.187988300580323,
+  "limitation": "Different physical terms; diagnostic anchor, not a proof of equivalent reward or a causal training ablation."
+}

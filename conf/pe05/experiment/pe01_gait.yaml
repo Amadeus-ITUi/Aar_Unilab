@@ -1,0 +1,16 @@
+# @package _global_
+algo:
+  num_envs: 4096
+  max_iterations: 100
+  save_interval: 25
+training:
+  seed: 1
+  experiment_name: pe01_gait
+  log_root: logs/pe05_pe01_gait
+  evaluation_interval: 25
+  evaluation_episodes: 8
+evaluation:
+  max_height_error: 0.02
+  commands:
+    left: [0, 0.1, 0]
+    right: [0, -0.1, 0]

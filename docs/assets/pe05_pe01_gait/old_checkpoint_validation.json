@@ -1,0 +1,6 @@
+{
+  "checkpoint": "logs/pe05_weighted/2026-09-28_15-27-23_266542_mujoco/model_1000.pt",
+  "loads_saved_configuration": true,
+  "reward_terms": 17,
+  "cross_contract_resume_rejected": true
+}
