@@ -44,7 +44,7 @@ def test_gait_launch_and_control_contract(stage):
     config = load_config(command[2:])
     previous = load_config(["+experiment=walking"])
     control = OmegaConf.to_container(config.control)
-    assert control.pop("clip_joint_targets") is True
+    assert control["clip_joint_targets"] is True
     assert control == OmegaConf.to_container(previous.control)
     assert config.task_id == "pe03_gait_flat" and config.observation == "pe03_v4"
     assert config.gait.stage == stage

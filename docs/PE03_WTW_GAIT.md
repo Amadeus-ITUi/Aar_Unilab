@@ -1,5 +1,8 @@
 # PE03 WTW-inspired gait training (v4)
 
+当前资产已于 2026-09-30 同步实测限位 v4，详见 [限位修订](PE03_JOINT_TARGET_LIMITS.md)。
+本文原有实验、标定和碰撞数据保留当时版本，不作为新限位的验证结果。
+
 工程验证结果（含已有检查问题）见 [验证记录](PE03_WTW_GAIT_VALIDATION.md)。
 训练加速、基准测试和续训方式见 [性能记录](PE03_TRAINING_PERFORMANCE.md)。
 

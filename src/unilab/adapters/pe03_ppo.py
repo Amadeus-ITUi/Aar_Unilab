@@ -66,6 +66,8 @@ def resolve_play_checkpoint(checkpoint: str | int | Path, *, log_root: Path) -> 
 
 
 def load_policy(checkpoint: Path, device: str = "cpu") -> PE03EncoderPolicy:
+    from unilab.algos.torch.pe03.runner import asset_fingerprint
+
     state = torch.load(checkpoint, map_location=device, weights_only=True)
     if state.get("robot_id") != "pe03":
         raise ValueError("PE03 requires a checkpoint with robot_id='pe03'")
@@ -74,6 +76,10 @@ def load_policy(checkpoint: Path, device: str = "cpu") -> PE03EncoderPolicy:
     else:
         raise ValueError("PE03 checkpoints must contain training_config")
     validate_config(config)
+    if state.get("asset_sha256") != asset_fingerprint(config):
+        raise ValueError(
+            "PE03 assets changed since checkpoint; use its original assets or start a new run"
+        )
     policy = PE03EncoderPolicy(config)
     policy.to(device)
     policy.load_state_dict(state["actor_state_dict"])

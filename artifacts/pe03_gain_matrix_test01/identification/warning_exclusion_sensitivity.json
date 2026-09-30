@@ -1,0 +1,200 @@
+[
+  {
+    "run": "01_A_baseline_hip",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.033106169952562596,
+      0.0005326233875636214,
+      0.00035890239347906484,
+      0.031048085744134906,
+      0.0008595752017994793,
+      0.001056483989980536
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.7529365825171858,
+      0.044389544862623156,
+      0.029516102575149996,
+      0.7001743592629915,
+      0.04584304011863539,
+      0.030201441109433347
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "02_A_baseline_thigh",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0004980662423597508,
+      0.027017923199762765,
+      0.0011020756893247582,
+      0.00018300949903925071,
+      0.02801345012566455,
+      0.0008544918799157883
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.04002673872519264,
+      0.5364176363239062,
+      0.030327900071687376,
+      0.042249089366868976,
+      0.5171674844872332,
+      0.031262616634307856
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "03_A_baseline_calf",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0004370988077324911,
+      0.0025102226162814194,
+      0.009916999634781614,
+      0.0003060681466641908,
+      0.0009911660721871663,
+      0.011742211327726857
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.0398495712160434,
+      0.04961953363337822,
+      0.16778621376117084,
+      0.040122003654161895,
+      0.042570450780090974,
+      0.16501013060823946
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "04_B_position_hip",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.047732746858598005,
+      0.0008427828580624464,
+      0.00046326877074399057,
+      0.045106220031315314,
+      0.0011011094878949882,
+      0.001054168745784267
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      1.0979491345455297,
+      0.060264140674955155,
+      0.02941606983116105,
+      1.0337641893455216,
+      0.06132884275230744,
+      0.02930852051274002
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "05_B_position_thigh",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0005315316590274022,
+      0.03481581713307855,
+      0.0012101008451808788,
+      0.00026353349566324313,
+      0.036237270669530454,
+      0.0008790827087431113
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.04635999984386678,
+      0.7500280337769503,
+      0.031346304502080244,
+      0.04485652318464738,
+      0.7505458510890624,
+      0.03413913120195757
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "06_B_position_calf",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0005794169926840827,
+      0.002055496877078326,
+      0.011684174568182909,
+      0.00035574941541877857,
+      0.001620392976883552,
+      0.009452179035471426
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.04493537171693748,
+      0.09365972665162516,
+      0.2393654887386054,
+      0.04829551946126621,
+      0.07239174551864996,
+      0.18389635540442734
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "07_C_damping_hip",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.023554926448579462,
+      0.0003175933440580993,
+      0.0005727493502819448,
+      0.022658207440146214,
+      0.0008841144473572596,
+      0.001317862896783
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.5310155099988777,
+      0.04076325331832377,
+      0.029811790716635523,
+      0.5018078571759519,
+      0.04492697260946346,
+      0.026835079618274044
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "08_C_damping_thigh",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0005059484989401565,
+      0.020839245812380648,
+      0.001032517268828212,
+      0.00022797104711642888,
+      0.02288106091532153,
+      0.0009993558355269902
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.042032193070957215,
+      0.40926119474904515,
+      0.03015226586593994,
+      0.043073028707035374,
+      0.4018130395780418,
+      0.030252584024296075
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  },
+  {
+    "run": "09_C_damping_calf",
+    "exclusion_half_window_s": 0.2,
+    "remaining_samples": 1970,
+    "q_rmse_rad_without_warning_windows": [
+      0.0004941421718313163,
+      0.0013448067340838625,
+      0.009816818597562381,
+      0.0002413461898542254,
+      0.0013807609642947684,
+      0.011502244978625014
+    ],
+    "dq_rmse_rad_s_without_warning_windows": [
+      0.042747702456883876,
+      0.06034755121038345,
+      0.16762580349554862,
+      0.04117283830393361,
+      0.04700299261286326,
+      0.1601552314053069
+    ],
+    "note": "Score sensitivity only; not a refit. Throttled logs cannot locate every rejection."
+  }
+]

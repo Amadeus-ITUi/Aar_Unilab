@@ -1,5 +1,71 @@
 # PE03 机械限位与 PD 目标修正
 
+## 2026-09-30 实测限位：当前 v4
+
+PE03 standing/walking、固定/可调步态及 PE04、PE05 统一使用以下实测机械范围。
+单位 rad，沿用原关节零位、关节顺序及轴方向，最终 PD 目标使用同一范围。
+
+| 关节 | 下限 | 上限 |
+| --- | ---: | ---: |
+| `L_hip_` | -0.20 | 1.50 |
+| `L_thigh_` | -1.44 | 0.00 |
+| `L_calf_` | -2.02 | 0.00 |
+| `R_hip_` | -1.50 | 0.20 |
+| `R_thigh_` | 0.00 | 1.44 |
+| `R_calf_` | 0.00 | 2.02 |
+
+资产版本分别为 `pe03-cnc-joint-limits-v4`、`pe04-pe03-cnc-joint-limits-v4`、
+`pe05-pe03-cnc-joint-limits-v4`。PE03 两套 XML/URDF 入口均已同步。
+PE03 v2/v3 也启用 `control.clip_joint_targets`：在动作与力矩估计预裁剪之后，
+裁剪包含电机零位偏置的最终绝对目标，动作历史及动作变化奖励使用裁剪后的动作。
+各任务软限位奖励比例、home、质量/惯量、网格、PD、动作尺度和时序保持原值。
+
+PE03 两份足端 workspace 均按各自 scene、每轴 41 点重新生成。运行
+`/ssd/conda/envs/aar_unilab/bin/python tools/build_pe03_gait_workspace.py` 重建两份，
+可用 `--variant gait` 或 `--variant flat` 选择单份。
+当前碰撞扫描见 `analysis/joint_limits_v4/`，旧 `analysis/joint_limits/` 保留历史值。
+扫描工具从模型读取六关节范围，仍只描述固定其余自由度或双腿镜像的几何切片，
+不保证任意六关节组合无碰撞。此前髋内收约 45° 的推定不再作为当前机械范围依据。
+
+新旧资产指纹不同，旧 checkpoint 不能直接 strict resume、回放或导出到当前资产。
+需使用旧版本资产/代码复现，或启动新训练；不修改历史 checkpoint、日志和已发布包。
+新 PE03 v2/v3/v4 发布包均使用 `pe03.runtime.vN.joint-limits.v1`，导出逐关节边界，
+C++ 校验其与模型及 home 一致；旧自包含发布包继续支持原协议。
+PE04 保持其现有导出边界校验，PE05 从包内模型读取范围。ONNX 接口和网络维度不变。
+
+### v4 离线重建结果
+
+两份 workspace 各保留左侧 48,387、右侧 48,434 个有效采样点。
+25×25 腿形扫描中，每种模式均有 565 组腿形在髋零位无干涉。
+home 腿形下单腿内收至 0.20 rad 未发现启用碰撞对的干涉；双腿镜像内收时，
+约 0.19305 rad 开始足部互碰。测得的单轴机械范围与多关节组合的无碰撞范围不同；
+该结果不修改用户确认的 0.20 rad 内收机械/目标边界。
+图表及模型指纹见 `src/unilab/assets/robots/pe03/analysis/joint_limits_v4/`。
+`analysis/standing_pose.json` 和 `analysis/collision_audit.json` 仍为原始分析记录，
+其中源文件哈希不改写为当前资产哈希；home 本身保持原值并在当前模型上复核。
+
+### v4 工程验证（2026-09-30）
+
+验证日志与机器可读记录：`logs/pe03-validation/joint_limits_v4_20260930/`。
+
+- 32 项限位/资产/检查点定向测试通过；八个 XML/URDF 与改动前对比，仅关节边界变化。
+- 七个当前 PE 任务完成 compose/init/reset/3 steps，并核对范围、home、版本一致；
+  WE11 flat/rough 两个保护任务也完成 compose/init/step。
+- 短训、保存/恢复、ONNX 导出和迁移目录回放通过。PE03 v2/v3/v4 在普通策略及
+  正负 1000 常量动作下通过 1/10/100 步 Python/C++ 对照（容差 2e-5），
+  旧 runtime 协议兼容对照通过；PE04/PE05 同样三组动作对照最大误差均为 0。
+- 全仓非 slow 回归：**648 passed、2 xfailed、4 failed**。四项失败是基线问题：
+  三项 PE03 robustness 旧测试预期 max_level=1.0，而当前配置为 0.7；已在未修改的
+  HEAD 独立工作区复现。另一个独立性测试报告 `references/tron1-rl-isaaclab/.git`
+  和 `references/walk-these-ways/.git` 嵌套元数据；HEAD 审计代码复现相同结果。
+  本次未改变课程上限，也未改动只读参考目录。
+- mypy（179 个源文件）、修改文件 Ruff、`git diff --check` 通过；全仓 Ruff 仍报告
+  11 个文件的格式问题及 7 个 lint 问题，相关文件均与 HEAD 完全相同。
+
+工程短训和控制一致性检查不代表新限位下策略已完成长训或实机步态验收。
+
+## 历史记录：2026-09-20，已由上述实测 v4 替代
+
 2026-09-20：用户确认大腿、小腿现有范围为实际限位，左髋机械范围可设为
 `[-0.785, 1.57] rad`；随后选择将训练和控制的内收范围收紧到 **11.1°**。
 当前左髋为 `[-0.19373154697137057, 1.57] rad`，右髋按镜像使用

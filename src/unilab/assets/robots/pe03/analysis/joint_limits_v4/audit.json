@@ -1,0 +1,199 @@
+{
+  "scene": "src/unilab/assets/robots/pe03/scene_joint_limits.xml",
+  "fingerprint": "0cb39d445cde2b96dced45087531d419703e4c57ca1d5240f092bc4da3c1900c",
+  "asset_version": "pe03-cnc-joint-limits-v4",
+  "joint_ranges": [
+    [
+      -0.2,
+      1.5
+    ],
+    [
+      -1.44,
+      0.0
+    ],
+    [
+      -2.02,
+      0.0
+    ],
+    [
+      -1.5,
+      0.2
+    ],
+    [
+      0.0,
+      1.44
+    ],
+    [
+      0.0,
+      2.02
+    ]
+  ],
+  "home": [
+    0.0,
+    0.0,
+    0.2913829166803791,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.02315985984147312,
+    -0.3123935666467531,
+    -1.254128379904943,
+    -0.02315985984147296,
+    0.312405637654568,
+    1.254112635692029
+  ],
+  "resolution": 25,
+  "penetration_threshold_m": 1e-06,
+  "scan_step_rad": 0.005,
+  "boundary_bisections": 10,
+  "scope": "Static enabled collision proxies; floor removed. Right angles use mirrored signs. Other leg at home except mirrored mode. No dynamic or full 6D guarantee.",
+  "examples": [
+    {
+      "left_thigh_calf_rad": [
+        -0.3123935666467531,
+        -1.254128379904943
+      ],
+      "left": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "right": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "mirrored": {
+        "free_at_zero": true,
+        "free_hip": -0.193046875,
+        "colliding_hip": -0.1930517578125,
+        "mechanical_endpoint_reached": false,
+        "contact": {
+          "bodies": [
+            "L_foot_Link",
+            "R_foot_Link"
+          ],
+          "geoms": [
+            "L_foot_Link_collision_sole_0",
+            "R_foot_Link_collision_sole_0"
+          ],
+          "penetration_m": 3.1746402342257187e-06
+        }
+      }
+    },
+    {
+      "left_thigh_calf_rad": [
+        -0.1,
+        -0.2
+      ],
+      "left": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "right": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "mirrored": {
+        "free_at_zero": true,
+        "free_hip": -0.19648437500000002,
+        "colliding_hip": -0.19648925781250004,
+        "mechanical_endpoint_reached": false,
+        "contact": {
+          "bodies": [
+            "L_foot_Link",
+            "R_foot_Link"
+          ],
+          "geoms": [
+            "L_foot_Link_collision_sole_0",
+            "R_foot_Link_collision_sole_0"
+          ],
+          "penetration_m": 2.699097040436786e-06
+        }
+      }
+    },
+    {
+      "left_thigh_calf_rad": [
+        -0.8,
+        -1.4
+      ],
+      "left": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "right": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "mirrored": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      }
+    },
+    {
+      "left_thigh_calf_rad": [
+        -1.0,
+        -0.2
+      ],
+      "left": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "right": {
+        "free_at_zero": true,
+        "free_hip": -0.2,
+        "mechanical_endpoint_reached": true,
+        "contact": null
+      },
+      "mirrored": {
+        "free_at_zero": true,
+        "free_hip": -0.13956542968750002,
+        "colliding_hip": -0.13957031250000002,
+        "mechanical_endpoint_reached": false,
+        "contact": {
+          "bodies": [
+            "L_foot_Link",
+            "R_foot_Link"
+          ],
+          "geoms": [
+            "L_foot_Link_collision_sole_0",
+            "R_foot_Link_collision_sole_0"
+          ],
+          "penetration_m": 2.459183653844264e-06
+        }
+      }
+    }
+  ],
+  "first_contact_pairs": {
+    "left": {
+      "body_link / L_calf_Link": 16,
+      "body_link / L_thigh_Link": 69
+    },
+    "right": {
+      "body_link / R_calf_link": 16,
+      "body_link / R_thigh_Link": 69
+    },
+    "mirrored": {
+      "body_link / R_calf_link": 12,
+      "body_link / L_thigh_Link": 67,
+      "L_foot_Link / R_foot_Link": 300,
+      "L_thigh_Link / R_thigh_Link": 52,
+      "body_link / L_calf_Link": 4
+    }
+  }
+}

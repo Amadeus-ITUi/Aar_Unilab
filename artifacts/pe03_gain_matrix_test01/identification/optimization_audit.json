@@ -1,0 +1,497 @@
+{
+  "mujoco": "3.8.0",
+  "model_and_mesh_sha256": {
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/pe03_joint_limits.xml": "ec35c835ae0d9bc08eaca549e25005060e3284cd7ab64bc28a354404e924cb1d",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/body_link.obj": "43d385af75c3bf7a45d337d9f712cf986f0ac033c4a203617378d1eeda30e77a",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/L_hip_Link.obj": "1db9ea2a3255e32bad92640e47acc709a081b727b8d0ae313037c43a03855f06",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/L_thigh_Link.obj": "af203b518bbb024a7d1c5791037094e54df9f924c2d13028be5893308d0be173",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/L_calf_Link.obj": "700506650b3bf206e3bbc4c1c0bfc2477073b4382075930c515a445533d0acda",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/L_foot_Link.obj": "bde984eed678a7dab7b17307e9abbbd655adadb631e5cfa488e237193fa9c898",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/R_hip_Link.obj": "1391c0f9ce3feb3d5204c13eeea1ae92e6f7c399172be928f0e98a7c1299dbde",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/R_thigh_Link.obj": "828bbd6b6df457fd0fac8c40dce5d022e52f48b0a588a0cf8313206c65da1073",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/R_calf_link.obj": "b2d844a89a6a27807152990cffdde16456dd9061cae230558634ad9062d49290",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/runtime_meshes/R_foot_Link.obj": "c887366c099c3436c210cd3c78413de344591c9a62c6fff83375b9d9e18eb3ac",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/body_link_cross_frame_0.STL": "01bf4939cf8724c51d59e624bfa65034bb6366c5a54c2943143ca252dd89e63d",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/body_link_right_frame_0.STL": "0b1a0f0bf8392ea785ddef4f052c33409691c142c61026bbc5e1413cf619ee33",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/body_link_left_frame_0.STL": "b0f2c03e3400ca47d8f24fb5bdcbaff2ab30f0b8502aba152f69639ffbac66b9",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_hip_Link_bracket_0.STL": "15e8a57d9e3067c9d587a4316372a5cb2ef602845bf3f69c86346234544986b3",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_hip_Link_bracket_0.STL": "56907f23897f149e5f272cdbfc1cc7c121db750ed6df2c6c3f077956f83d81ef",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_thigh_Link_outer_plate_0.STL": "cc32ad07e9784c69ba72680e8a9c161417d23b7d2a01bc50f778a0f9b65cf0dd",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_thigh_Link_inner_plate_0.STL": "a3297a9a562c4819e37b0a27def540f0ecbf74b5eed60496f6f1eb99c678e11c",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_thigh_Link_assembly_0.STL": "5ed6aedafcd61b96ac22e3cd94bbcdab9aa45927e256b20ccaa8fa05dfe013b7",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_thigh_Link_outer_plate_0.STL": "41b92ca5e16557f5a94aab0a95f675b2ce9b9e78b80e4639db2c9f7c974c3b1c",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_thigh_Link_inner_plate_0.STL": "f640787527cacc43919239d7ddb4441a7375a7d3ec93b9e9a8c9824f65ef96a6",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_thigh_Link_assembly_0.STL": "dbd02b4d8bd08783c567285d3a243bbc3a29fef99fa170bb6170cd1e1fd22c40",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_calf_Link_curve_0.STL": "e63f498c4aa72e249e67d4dc7c7b0b37eeb9423b2851e51579ca5f0f2e7faa6f",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_calf_Link_curve_1.STL": "4bab779b2a868678e31af6780d2bf1c7a24140469d2f85c91afd70309de2ed27",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_calf_Link_curve_2.STL": "d4f1eb75956eed55598ccd53cfcdc25801f4b92f3696a3d737a70cf8b1ec10a5",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_calf_link_curve_0.STL": "3c90aa9ea8be726b92a0f079e4435b1be9e6cfb5009e3e6bad3242db4b938b98",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_calf_link_curve_1.STL": "1f5691e3d20891d63f569b7bb0257d5b34e14c91322c363c5512f979ae79c903",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_calf_link_curve_2.STL": "017bb023900036bbd8cb4b70e6c2676fe6d9d3dd49cf0406aa268d684fb32de2",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/L_foot_Link_sole_0.STL": "2051c071853bdb7b7fe64f36f3884fc2990583a25131e229120eca176b870615",
+    "/ssd/Aar_Unilab/src/unilab/assets/robots/pe03/collision_meshes/R_foot_Link_sole_0.STL": "034509c6a7bcdaa685444f57f3524d25d553680dc81b49c85ca72768f105d474"
+  },
+  "runner_sha256": "a53707bb559e4e2bfb4fc106ab4bff8c1bf7c05dc0876c8c46a3de0bb8df72b7",
+  "native_sha256": "9b30027691b8163cb74526c8e74258e07533bbbf901ed9f663bf22053d765dcf",
+  "joint_order": [
+    "L_hip_",
+    "L_thigh_",
+    "L_calf_",
+    "R_hip_",
+    "R_thigh_",
+    "R_calf_"
+  ],
+  "ports": [
+    4,
+    5,
+    6,
+    1,
+    2,
+    3
+  ],
+  "trials": [
+    {
+      "name": "01_A_baseline_hip",
+      "csv_sha256": "7b2590f4b4c0c2fca3d24f3c4122a14fcad612d33e1a967663c2a94060452dea",
+      "yaml_sha256": "bcdd549475bb5fc851994ecc2f08e0849f1d0a2359800ded6c7c48aa7fafec13",
+      "rows_formal": 6272,
+      "start_host_s": 8.591337694271976,
+      "end_host_s": 48.59133769427198,
+      "kp": 4.3,
+      "kd": 0.34,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        4.038182785317417,
+        1.4613908529281616,
+        0.7751917839050293,
+        4.016667151849731,
+        1.5210282802581787,
+        1.0126662254333496
+      ],
+      "record_interval_ms_percentiles": [
+        3.6577590000028692,
+        6.0097200000015505,
+        9.975629499997751,
+        22.239264999996067
+      ],
+      "actual_min_q": [
+        0.27447509765625,
+        -0.31705474853515625,
+        -1.2534513473510742,
+        -0.891322135925293,
+        0.3132190704345703,
+        1.251150131225586
+      ],
+      "actual_max_q": [
+        0.8963088989257812,
+        -0.3136024475097656,
+        -1.2523012161254883,
+        -0.2748575210571289,
+        0.31667137145996094,
+        1.2519168853759766
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "02_A_baseline_thigh",
+      "csv_sha256": "1fa724630340515b8bb2db1e8b7500e7ea0a0bd624bdc815a18a95e60ff792e4",
+      "yaml_sha256": "83b5a68f5472c5ecf0f8f140397db785adf281f90acd394493119e037a779306",
+      "rows_formal": 6292,
+      "start_host_s": 5.5003544296862605,
+      "end_host_s": 45.50035442968626,
+      "kp": 4.3,
+      "kd": 0.34,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        0.9990761801600456,
+        2.580693249764863,
+        0.8034586906433105,
+        0.9759972617030144,
+        2.5333276750675395,
+        1.032102108001709
+      ],
+      "record_interval_ms_percentiles": [
+        1.9894489999998655,
+        6.010196000001855,
+        9.911630500001323,
+        25.9713270000006
+      ],
+      "actual_min_q": [
+        0.021673202514648438,
+        -0.9427261352539062,
+        -1.2549858093261719,
+        -0.0232086181640625,
+        0.5345630645751953,
+        1.250382423400879
+      ],
+      "actual_max_q": [
+        0.02282428741455078,
+        -0.534947395324707,
+        -1.2519168853759766,
+        -0.022057533264160156,
+        0.9415750503540039,
+        1.253067970275879
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "03_A_baseline_calf",
+      "csv_sha256": "cb3c740f4f2a69d003f761fe0e9b66da5b0566981abb8a2d7e39eb646ec1b03f",
+      "yaml_sha256": "ab783f4f7ed6224b06dc48de1bcaca75e2a71ae33515a1bc837fa6353b339d92",
+      "rows_formal": 6264,
+      "start_host_s": 9.925775448653319,
+      "end_host_s": 49.92577544865332,
+      "kp": 4.9,
+      "kd": 0.24,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        0.8922646567225456,
+        2.157611846923828,
+        4.9271466058947055,
+        0.8995125815272331,
+        1.7362785339355469,
+        4.8135499380681495
+      ],
+      "record_interval_ms_percentiles": [
+        3.8351170000012758,
+        6.010041999999771,
+        9.979937500001057,
+        22.03343699999749
+      ],
+      "actual_min_q": [
+        0.022057533264160156,
+        -0.012083053588867188,
+        -1.5465316772460938,
+        -0.023975372314453125,
+        0.0009593963623046875,
+        0.46743106842041016
+      ],
+      "actual_max_q": [
+        0.02397632598876953,
+        -0.0005750656127929688,
+        -0.4463319778442383,
+        -0.022057533264160156,
+        0.009015083312988281,
+        1.5204448699951172
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "04_B_position_hip",
+      "csv_sha256": "439c08598e01492e6d455181e96c81efe24eedb24e41d1c59a07d810c79bdffa",
+      "yaml_sha256": "8a42eb04d2e69e14176551946bb1b4b841c6d154dee6c1cd238c51405c6619f3",
+      "rows_formal": 6231,
+      "start_host_s": 7.846590185111604,
+      "end_host_s": 47.8465901851116,
+      "kp": 5.2,
+      "kd": 0.34,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        5.174009788670048,
+        2.0268243551254272,
+        0.7631754875183105,
+        5.1247775251363805,
+        2.1156442165374756,
+        0.9956145286560059
+      ],
+      "record_interval_ms_percentiles": [
+        3.6684940000029087,
+        6.000060499999904,
+        9.96956009999952,
+        21.97579999999988
+      ],
+      "actual_min_q": [
+        0.22729015350341797,
+        -0.31935691833496094,
+        -1.253835678100586,
+        -0.9431095123291016,
+        0.3124523162841797,
+        1.2507658004760742
+      ],
+      "actual_max_q": [
+        0.9496307373046875,
+        -0.3132190704345703,
+        -1.2523012161254883,
+        -0.23227691650390625,
+        0.3185892105102539,
+        1.2523002624511719
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "05_B_position_thigh",
+      "csv_sha256": "bd63b5768affa7d347ce9ee21531e6781138749d230f6d4043503edba1c31029",
+      "yaml_sha256": "ca406304e6df5e694179ad2e77bb407b408148518805cd53fa52619eeeb3131c",
+      "rows_formal": 6315,
+      "start_host_s": 5.942241443769533,
+      "end_host_s": 45.94224144376953,
+      "kp": 5.2,
+      "kd": 0.34,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        1.0985444113612175,
+        3.3254009692996647,
+        0.8789896965026855,
+        1.4417717978358269,
+        3.337697291634015,
+        1.0630202293395996
+      ],
+      "record_interval_ms_percentiles": [
+        3.6888020000009902,
+        6.003134999998494,
+        8.046056550000102,
+        22.01973000000379
+      ],
+      "actual_min_q": [
+        0.020906448364257812,
+        -0.9887590408325195,
+        -1.2553691864013672,
+        -0.023591995239257812,
+        0.4869956970214844,
+        1.250382423400879
+      ],
+      "actual_max_q": [
+        0.023207664489746094,
+        -0.49505138397216797,
+        -1.2515335083007812,
+        -0.021289825439453125,
+        0.9833889007568359,
+        1.2538347244262695
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "06_B_position_calf",
+      "csv_sha256": "855ec476dbdde81be0861e76d707b311d1d1d6e000daa6571a6902370579d4c5",
+      "yaml_sha256": "03812e0c2014beb289706a7b117cfee24c06af191a926abc8f6afe2e49b63a63",
+      "rows_formal": 6303,
+      "start_host_s": 9.663212766361495,
+      "end_host_s": 49.6632127663615,
+      "kp": 5.9,
+      "kd": 0.24,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        1.1987997964024544,
+        3.9801979064941406,
+        6.2418266730144865,
+        1.2203286215662956,
+        3.2617950439453125,
+        6.119873862737677
+      ],
+      "record_interval_ms_percentiles": [
+        3.829617000000951,
+        6.005678500002887,
+        9.948461150003496,
+        20.277642000003482
+      ],
+      "actual_min_q": [
+        0.020906448364257812,
+        -0.012850761413574219,
+        -1.6205682754516602,
+        -0.023975372314453125,
+        -0.0013427734375,
+        0.40451908111572266
+      ],
+      "actual_max_q": [
+        0.02397632598876953,
+        0.00019168853759765625,
+        -0.3841867446899414,
+        -0.021289825439453125,
+        0.010165214538574219,
+        1.592564582824707
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "07_C_damping_hip",
+      "csv_sha256": "54151d4bbc0ef2f5ac9f7fecfc69d6d58a0d0719792a77944eb2e86f2cec6bcc",
+      "yaml_sha256": "95610aa3e9aa369e583a09806027c13c88c51bbee83d1919bc5cdb095f946759",
+      "rows_formal": 6335,
+      "start_host_s": 7.839835046378639,
+      "end_host_s": 47.83983504637864,
+      "kp": 4.3,
+      "kd": 0.42,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        3.8290287569068937,
+        1.2549203634262085,
+        0.8638834953308105,
+        3.794620032504156,
+        1.2685906887054443,
+        0.872800350189209
+      ],
+      "record_interval_ms_percentiles": [
+        3.5513870000016823,
+        6.005520500000472,
+        8.076829999998658,
+        20.039456999995764
+      ],
+      "actual_min_q": [
+        0.27600955963134766,
+        -0.31705474853515625,
+        -1.253835678100586,
+        -0.8874855041503906,
+        0.3132190704345703,
+        1.2507658004760742
+      ],
+      "actual_max_q": [
+        0.8955411911010742,
+        -0.31437015533447266,
+        -1.2523012161254883,
+        -0.2779264450073242,
+        0.3162879943847656,
+        1.2519168853759766
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "08_C_damping_thigh",
+      "csv_sha256": "f44c2b203bfaae2113d31f789403cd83ef0a112223738b592e04756d1f9f050f",
+      "yaml_sha256": "33f4a3df5b1b8e0d11e2c664bd685b56afeb52e671e679f9a37e20d59c6209ab",
+      "rows_formal": 6301,
+      "start_host_s": 6.216811816920384,
+      "end_host_s": 46.216811816920384,
+      "kp": 4.3,
+      "kd": 0.42,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        1.0906289145350456,
+        2.38855958969458,
+        0.7945132255554199,
+        1.1667321249842644,
+        2.413482613653798,
+        1.022031307220459
+      ],
+      "record_interval_ms_percentiles": [
+        3.863810000005685,
+        6.023482999998997,
+        8.105975749999672,
+        20.100082000006125
+      ],
+      "actual_min_q": [
+        0.021673202514648438,
+        -0.9197092056274414,
+        -1.2546024322509766,
+        -0.0232086181640625,
+        0.5403175354003906,
+        1.250382423400879
+      ],
+      "actual_max_q": [
+        0.02282428741455078,
+        -0.5529766082763672,
+        -1.2515335083007812,
+        -0.021674156188964844,
+        0.9070501327514648,
+        1.253067970275879
+      ],
+      "measured_pose_contact_fraction": 0.0
+    },
+    {
+      "name": "09_C_damping_calf",
+      "csv_sha256": "5d5e4c878f3943ae9c5245521566b2faf523a60f4121621eb5a30d1715a37765",
+      "yaml_sha256": "d016d62aac3c9573775305109f72a15473f702c0165552f9510134f33108df1c",
+      "rows_formal": 6252,
+      "start_host_s": 9.68920878652783,
+      "end_host_s": 49.68920878652783,
+      "kp": 4.9,
+      "kd": 0.3,
+      "indicative_scale_fraction_by_joint": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "indicative_max_demand_nm": [
+        1.0219643637537956,
+        2.2774887084960938,
+        4.60519187505156,
+        0.9304116293787956,
+        2.9469871520996094,
+        4.519907567615178
+      ],
+      "record_interval_ms_percentiles": [
+        3.8512869999998145,
+        6.011354000001745,
+        9.997834500000025,
+        23.96163800000295
+      ],
+      "actual_min_q": [
+        0.021673202514648438,
+        -0.009398460388183594,
+        -1.4506282806396484,
+        -0.0232086181640625,
+        0.00019168853759765625,
+        0.5548944473266602
+      ],
+      "actual_max_q": [
+        0.02282428741455078,
+        -0.0009584426879882812,
+        -0.541468620300293,
+        -0.021674156188964844,
+        0.006329536437988281,
+        1.4318313598632812
+      ],
+      "measured_pose_contact_fraction": 0.0
+    }
+  ],
+  "fixture": "fixed upright body; suspended feet; original self collisions and limits retained",
+  "timing": "host receive/publish timestamps; ZOH reconstructed commands; not wire execution times"
+}

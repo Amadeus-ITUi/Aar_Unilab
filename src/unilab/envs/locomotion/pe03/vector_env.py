@@ -180,6 +180,13 @@ class PE03VectorEnv:
             position_difference=self.cfg["env"]["dof_vel_use_pos_diff"],
         )
         bounds = backend.joint_range
+        self.clip_joint_targets = bool(control.get("clip_joint_targets", False))
+        if self.clip_joint_targets and not (
+            np.isfinite(bounds).all()
+            and (bounds[:, 0] < bounds[:, 1]).all()
+            and ((self.home[7:] >= bounds[:, 0]) & (self.home[7:] <= bounds[:, 1])).all()
+        ):
+            raise ValueError("joint target bounds must be finite, ordered and contain home")
         middle, half = bounds.mean(axis=1), np.diff(bounds, axis=1)[:, 0] / 2
         half *= self.cfg["reward"]["soft_joint_limit"]
         self.soft_limits = np.column_stack((middle - half, middle + half))
@@ -459,6 +466,9 @@ class PE03VectorEnv:
             center - c["user_torque_limit"] / b.kp.mean(),
             center + c["user_torque_limit"] / b.kp.mean(),
         )
+        if self.clip_joint_targets:
+            target = np.clip(b.default_position + offset, b.joint_range[:, 0], b.joint_range[:, 1])
+            offset = target - b.default_position
         self.actions[:] = offset / c["action_scale"]
         forces = None
         dr = self.cfg["domain_rand"]

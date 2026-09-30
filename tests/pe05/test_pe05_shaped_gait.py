@@ -200,6 +200,10 @@ def test_gait_metrics_ignore_dead_environments_and_count_liftoffs():
 def test_migration_preserves_all_nonreward_task_settings():
     before = OmegaConf.load(ROOT / "docs/assets/pe05_pe01_gait/before_task.yaml")
     after = OmegaConf.load(ROOT / "conf/pe05/task/pe05_flat.yaml")
+    # Preserve the historical reward-migration snapshot; measured limits are a later revision.
+    assert before.env.asset_version == "pe05-pe03-cnc-joint-limits-v3"
+    assert after.env.asset_version == "pe05-pe03-cnc-joint-limits-v4"
+    del before.env.asset_version, after.env.asset_version
     del before.reward, after.reward
     assert OmegaConf.to_container(before, resolve=True) == OmegaConf.to_container(
         after, resolve=True

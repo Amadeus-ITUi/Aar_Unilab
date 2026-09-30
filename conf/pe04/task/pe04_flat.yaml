@@ -2,7 +2,7 @@
 task_id: pe04_flat
 env:
   model_path: src/unilab/assets/robots/pe04/scene.xml
-  asset_version: pe04-pe03-cnc-joint-limits-v3
+  asset_version: pe04-pe03-cnc-joint-limits-v4
   joint_order: [L_hip_, L_thigh_, L_calf_, R_hip_, R_thigh_, R_calf_]
   body_names: [body_link, L_hip_Link, L_thigh_Link, L_calf_Link, L_foot_Link, R_hip_Link, R_thigh_Link, R_calf_link, R_foot_Link]
   foot_names: [L_foot_Link, R_foot_Link]

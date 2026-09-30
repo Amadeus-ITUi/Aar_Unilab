@@ -50,20 +50,20 @@
       <geom name="body_link_collision_left_motor_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="cylinder" size="0.0235784815689101 0.02200000081211329" pos="-0.004781507886946201 0.06498001515865326 -0.04100000020116568" quat="0.7071067811865476 0 0.7071067811865475 0" />
       <geom name="body_link_collision_right_motor_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="cylinder" size="0.02357848338139327 0.02199999988079071" pos="-0.00448150746524334 -0.06521998345851898 -0.04100000113248825" quat="0.7071067811865476 0 0.7071067811865475 0" />
       <body name="L_hip_Link" pos="-0.0267815078748216 0.0649800164529826 -0.0409999999999955" quat="1 0 0 0">
-        <joint name="L_hip_" axis="1 0 0" range="-0.19373154697137057 1.57" />
+        <joint name="L_hip_" axis="1 0 0" range="-0.20 1.50" />
         <inertial pos="-0.029293 0.0020553 0.00094068" mass="0.267" fullinertia="2.291e-05 2.205e-05 2.505e-05 0 0 0" />
         <geom name="L_hip_Link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="L_hip_Link" contype="0" conaffinity="0" rgba="1 1 1 1" />
         <geom name="L_hip_Link_collision_bracket_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_L_hip_Link_bracket_0" pos="0 0 0" quat="1 0 0 0" />
         <geom name="L_hip_Link_collision_motor_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="cylinder" size="0.02300000216602247 0.02200000081211329" pos="-0.03000000026077032 -0.0001499997451901436 0" quat="0.7071067811865476 -0.7071067811865475 0 0" />
         <body name="L_thigh_Link" pos="-0.03 0.02185 0" quat="0.7071054825112363 0 -0.7071080798594735 0">
-          <joint name="L_thigh_" axis="0 1 0" range="-1.658 0" />
+          <joint name="L_thigh_" axis="0 1 0" range="-1.44 0.00" />
           <inertial pos="-0.023897 -0.015217 0.064151" mass="0.54955" fullinertia="0.00083899 0.00074366 0.00034319 -7.96e-06 0.00021014 5.478e-05" />
           <geom name="L_thigh_Link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="L_thigh_Link" contype="0" conaffinity="0" rgba="1 1 1 1" />
           <geom name="L_thigh_Link_collision_outer_plate_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_L_thigh_Link_outer_plate_0" pos="0 0 0" quat="1 0 0 0" />
           <geom name="L_thigh_Link_collision_inner_plate_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_L_thigh_Link_inner_plate_0" pos="0 0 0" quat="1 0 0 0" />
           <geom name="L_thigh_Link_collision_assembly_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_L_thigh_Link_assembly_0" pos="0 0 0" quat="1 0 0 0" />
           <body name="L_calf_Link" pos="-0.051406 -0.0077 0.14092" quat="0.7071054825112363 0 0.7071080798594735 0">
-            <joint name="L_calf_" axis="0 1 0" range="-1.99 0" armature="0.0193715" />
+            <joint name="L_calf_" axis="0 1 0" range="-2.02 0.00" armature="0.0193715" />
             <inertial pos="-0.050077 -0.014499 -0.056814" mass="0.118" fullinertia="0.00026744 0.00042766 0.0001644 0 -0.00019662 0" />
             <geom name="L_calf_Link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="L_calf_Link" contype="0" conaffinity="0" rgba="1 1 1 1" />
             <geom name="L_calf_Link_collision_curve_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_L_calf_Link_curve_0" pos="0 0 0" quat="1 0 0 0" />
@@ -78,20 +78,20 @@
         </body>
       </body>
       <body name="R_hip_Link" pos="-0.0267815078748224 -0.0652199835469763 -0.0409999999999955" quat="1 0 0 0">
-        <joint name="R_hip_" axis="1 0 0" range="-1.57 0.19373154697137057" />
+        <joint name="R_hip_" axis="1 0 0" range="-1.50 0.20" />
         <inertial pos="-0.029293 -0.0020553 0.00094068" mass="0.267" fullinertia="2.291e-05 2.205e-05 2.505e-05 0 0 0" />
         <geom name="R_hip_Link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="R_hip_Link" contype="0" conaffinity="0" rgba="1 1 1 1" />
         <geom name="R_hip_Link_collision_bracket_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_R_hip_Link_bracket_0" pos="0 0 0" quat="1 0 0 0" />
         <geom name="R_hip_Link_collision_motor_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="cylinder" size="0.02300000216602247 0.02200000081211329" pos="-0.03000000026077032 0.0001499997451901436 0" quat="0.7071067811865476 0.7071067811865475 0 0" />
         <body name="R_thigh_Link" pos="-0.03 -0.02185 0" quat="0.7071054825112363 0 -0.7071080798594735 0">
-          <joint name="R_thigh_" axis="0 -1 0" range="0 1.658" />
+          <joint name="R_thigh_" axis="0 -1 0" range="0.00 1.44" />
           <inertial pos="-0.023897 0.015217 0.064151" mass="0.54974" fullinertia="0.00083899 0.00074366 0.00034319 7.96e-06 0.00021014 -5.478e-05" />
           <geom name="R_thigh_Link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="R_thigh_Link" contype="0" conaffinity="0" rgba="1 1 1 1" />
           <geom name="R_thigh_Link_collision_outer_plate_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_R_thigh_Link_outer_plate_0" pos="0 0 0" quat="1 0 0 0" />
           <geom name="R_thigh_Link_collision_inner_plate_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_R_thigh_Link_inner_plate_0" pos="0 0 0" quat="1 0 0 0" />
           <geom name="R_thigh_Link_collision_assembly_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_R_thigh_Link_assembly_0" pos="0 0 0" quat="1 0 0 0" />
           <body name="R_calf_link" pos="-0.0514056281930285 0.00770000000000216 0.140916505030733" quat="0.7071067811865462 0 0.7071067811865488 0">
-            <joint name="R_calf_" axis="0 -1 0" range="0 1.99" armature="0.0193715" />
+            <joint name="R_calf_" axis="0 -1 0" range="0.00 2.02" armature="0.0193715" />
             <inertial pos="-0.050077 0.014499 -0.056814" mass="0.118" fullinertia="0.00026744 0.00042766 0.0001644 0 -0.00019662 0" />
             <geom name="R_calf_link_visual_0" group="2" density="0" pos="0 0 0" quat="1 0 0 0" type="mesh" mesh="R_calf_link" contype="0" conaffinity="0" rgba="1 1 1 1" />
             <geom name="R_calf_link_collision_curve_0" group="3" density="0" rgba="0.2 0.65 0.9 0.35" type="mesh" mesh="collision_R_calf_link_curve_0" pos="0 0 0" quat="1 0 0 0" />

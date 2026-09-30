@@ -97,7 +97,36 @@ def test_foreign_checkpoints_rejected_by_play_and_resume(tmp_path, robot):
         PE03Runner(cfg, tmp_path / "rejected")
 
 
-def test_cnc_source_preserved_except_authorized_mass_and_names():
+@pytest.mark.parametrize("experiment", ["standing", "walking", "gait_fixed"])
+def test_changed_asset_checkpoint_rejected_by_play_and_resume(tmp_path, experiment):
+    cfg = load_config(
+        [
+            f"+experiment={experiment}",
+            "algo.num_envs=2",
+            "training.device=cpu",
+            "training.logger=none",
+            "training.mujoco_threads=1",
+        ]
+    )
+    runner = PE03Runner(cfg, tmp_path / "run")
+    try:
+        checkpoint = tmp_path / "current.pt"
+        runner.save(checkpoint)
+        load_policy(checkpoint)
+    finally:
+        runner.close()
+    payload = torch.load(checkpoint, weights_only=True)
+    payload["asset_sha256"] = "pre-measurement-asset-fingerprint"
+    stale = tmp_path / "stale.pt"
+    torch.save(payload, stale)
+    with pytest.raises(ValueError, match="assets changed"):
+        load_policy(stale)
+    cfg.training.resume = str(stale)
+    with pytest.raises(ValueError, match="assets changed"):
+        PE03Runner(cfg, tmp_path / "rejected")
+
+
+def test_cnc_source_preserved_except_authorized_mass_limits_and_names():
     manifest = json.loads((ASSET / "asset_manifest.json").read_text())
     assert manifest["source_asset_name"] == "点足CNC"
     original_path = ASSET / "source/original.urdf"
@@ -120,6 +149,10 @@ def test_cnc_source_preserved_except_authorized_mass_and_names():
         mass += value
     assert mass == pytest.approx(3.26689, abs=1e-12)
     for old, new in zip(original.findall("joint"), current.findall("joint"), strict=True):
+        if old.get("type") != "fixed":
+            # Independently measured bounds replace CAD-exported bounds only.
+            for key in ("lower", "upper"):
+                old.find("limit").set(key, new.find("limit").get(key))
         assert ET.tostring(old).strip() == ET.tostring(new).strip()
     assert manifest["visual_mode"] == "original_obj"
     assert len(manifest["meshes"]) == 9

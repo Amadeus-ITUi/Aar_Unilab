@@ -1,0 +1,110 @@
+[
+  {
+    "run": "01_A_baseline_hip",
+    "log_sha256": "f5d75421197a03b3b56c8c92fd221a220dea189466c512440fb69c29deb063b6",
+    "warnings": [
+      {
+        "wall_time": 1790755380.8924685,
+        "formal_time_s": 31.080171156728028,
+        "nearest_record_wall_delta_s": -0.00035881996154785156
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "02_A_baseline_thigh",
+    "log_sha256": "57e208697be70cfe7e7a976948be49d918884043a2baf4367d85d3ab93538aea",
+    "warnings": [
+      {
+        "wall_time": 1790755450.8495839,
+        "formal_time_s": 33.90783316731374,
+        "nearest_record_wall_delta_s": -0.00034880638122558594
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "03_A_baseline_calf",
+    "log_sha256": "517eb866bc7312d798dd70c91ac54ab6c1f7a460cf72cccb654170b079452759",
+    "warnings": [
+      {
+        "wall_time": 1790755515.8699858,
+        "formal_time_s": 29.723705960346685,
+        "nearest_record_wall_delta_s": -0.00023794174194335938
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "04_B_position_hip",
+    "log_sha256": "c57cb87623f5e5b762290ff6b62d37a67331de3a669872a4f615124142891ba8",
+    "warnings": [
+      {
+        "wall_time": 1790755586.6896765,
+        "formal_time_s": 31.891460174888397,
+        "nearest_record_wall_delta_s": -0.0002474784851074219
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "05_B_position_thigh",
+    "log_sha256": "b5795f52a40a758c4e44b3fe13bf8f59974ba3dcc9e6a4f1e5bf855db2e2b4f1",
+    "warnings": [
+      {
+        "wall_time": 1790755658.8362312,
+        "formal_time_s": 33.52371517023047,
+        "nearest_record_wall_delta_s": -0.0002932548522949219
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "06_B_position_calf",
+    "log_sha256": "7e6da84f45355e357c919d6a4340029b2501479c8a3cccc8f4128957dce442ef",
+    "warnings": [
+      {
+        "wall_time": 1790755723.7224605,
+        "formal_time_s": 29.929232144638505,
+        "nearest_record_wall_delta_s": -0.00032901763916015625
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "07_C_damping_hip",
+    "log_sha256": "65b2db4949eee47153cc2e5dd4dc5a48a605f0f362b10415ea059c2ba10efffb",
+    "warnings": [
+      {
+        "wall_time": 1790755795.5515785,
+        "formal_time_s": 31.478047543621365,
+        "nearest_record_wall_delta_s": -0.00034737586975097656
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "08_C_damping_thigh",
+    "log_sha256": "ce1b95958b4ba533b5510b8964059d318384c993869f5b690c45bf62cccf1a7d",
+    "warnings": [
+      {
+        "wall_time": 1790755865.684021,
+        "formal_time_s": 33.065931690079616,
+        "nearest_record_wall_delta_s": -0.00028252601623535156
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  },
+  {
+    "run": "09_C_damping_calf",
+    "log_sha256": "df6dad46aa22a409114a023d6d8203b08a1d961b2f092ce075f8cd6577d4c823",
+    "warnings": [
+      {
+        "wall_time": 1790755931.9954252,
+        "formal_time_s": 30.153282129472174,
+        "nearest_record_wall_delta_s": -0.0003256797790527344
+      }
+    ],
+    "interpretation": "Throttled warnings; counts are lower bounds. Rejection reason is composite, not proven stale-source only."
+  }
+]

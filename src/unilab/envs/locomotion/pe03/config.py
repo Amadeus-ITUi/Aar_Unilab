@@ -55,6 +55,8 @@ def validate_config(config: DictConfig) -> None:
         raise ValueError("physics_hz must be a positive integer multiple of policy_hz")
     if config.control.action_clip <= 0 or config.control.action_scale <= 0:
         raise ValueError("action_clip and action_scale must be positive")
+    if not isinstance(config.control.get("clip_joint_targets", False), bool):
+        raise ValueError("clip_joint_targets must be boolean")
     if config.network.command_size != 3:
         raise ValueError("the PE03 joystick command contract requires three values")
     if config.network.latent_dim < 1 or config.network.initial_std <= 0:

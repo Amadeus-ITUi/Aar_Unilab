@@ -1,0 +1,31 @@
+format_version: 1
+robot_id: pe03
+profile_id: point_foot
+profile_version: 10
+control_allowed: true
+calibrated: true
+layout_id: 1
+schema_id: 1
+lower_config_fingerprint: 0x1ea92c7c
+imu:
+  to_base_xyzw: [0.0, -0.09931975, 0.99505557, 0.0]
+standby_ramp_seconds: 3.0
+policy:
+  observation_adapter: pe03_v4
+  action_adapter: pe03_position_v1
+  manifest: pe03_policy_manifest.json
+  observed_ports: [1, 2, 3, 4, 5, 6]
+  controlled_ports: [1, 2, 3, 4, 5, 6]
+remote:
+  lifecycle_select_button: 2
+  lifecycle_confirm_button: 3
+  auxiliary_positive_button: -1
+  auxiliary_negative_button: -1
+  auxiliary_velocity_rad_s: 0.0
+actuators:
+  - {port_id: 1, joint_name: R_hip_, device: lingzu_rs05, logical_can: 3, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 5.5, direction: 1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [-1.5, 0.2], command_velocity_max_rad_s: 35.0, default_position_rad: -0.02315985984147296, kp: 4.3, kd: 0.34, control: position, policy_owner: policy}
+  - {port_id: 2, joint_name: R_thigh_, device: lingzu_rs05, logical_can: 3, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 5.5, direction: -1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [0.0, 1.44], command_velocity_max_rad_s: 35.0, default_position_rad: 0.312405637654568, kp: 4.3, kd: 0.34, control: position, policy_owner: policy}
+  - {port_id: 3, joint_name: R_calf_, device: lingzu_rs00, logical_can: 3, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 14.0, direction: 1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [0.0, 2.02], command_velocity_max_rad_s: 35.0, default_position_rad: 1.254112635692029, kp: 4.9, kd: 0.24, control: position, policy_owner: policy}
+  - {port_id: 4, joint_name: L_hip_, device: lingzu_rs05, logical_can: 1, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 5.5, direction: 1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [-0.2, 1.5], command_velocity_max_rad_s: 35.0, default_position_rad: 0.02315985984147312, kp: 4.3, kd: 0.34, control: position, policy_owner: policy}
+  - {port_id: 5, joint_name: L_thigh_, device: lingzu_rs05, logical_can: 1, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 5.5, direction: -1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [-1.44, 0.0], command_velocity_max_rad_s: 35.0, default_position_rad: -0.3123935666467531, kp: 4.3, kd: 0.34, control: position, policy_owner: policy}
+  - {port_id: 6, joint_name: L_calf_, device: lingzu_rs00, logical_can: 1, device_velocity_max_rad_s: 35.0, device_effort_max_nm: 14.0, direction: 1.0, mechanical_zero_rad: 0.0, continuous: false, position_limits_rad: [-2.02, 0.0], command_velocity_max_rad_s: 35.0, default_position_rad: -1.254128379904943, kp: 4.9, kd: 0.24, control: position, policy_owner: policy}

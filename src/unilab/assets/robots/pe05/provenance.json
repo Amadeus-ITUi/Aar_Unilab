@@ -1,6 +1,5 @@
 {
-  "source": "PE03 pe03-cnc-joint-limits-v3",
-  "source_commit": "d2ea487ea300da6d322bb3f398e53e8597152532",
+  "source": "PE03 pe03-cnc-joint-limits-v4",
   "sha256": {
     "meshes/R_calf_link.STL": "9436c4ad09a0d9f4b5a24338e44e57fa22009e7cf8d51a77fefc816d2d3a15d0",
     "meshes/R_foot_Link.STL": "29c6e4faffdf4b428c40fb9887c3e7aaeb9eeec2b5d145397520985dfe42d311",
@@ -39,9 +38,46 @@
     "collision_meshes/L_thigh_Link_assembly_0.STL": "5ed6aedafcd61b96ac22e3cd94bbcdab9aa45927e256b20ccaa8fa05dfe013b7",
     "collision_meshes/L_hip_Link_bracket_0.STL": "15e8a57d9e3067c9d587a4316372a5cb2ef602845bf3f69c86346234544986b3",
     "collision_meshes/L_thigh_Link_outer_plate_0.STL": "cc32ad07e9784c69ba72680e8a9c161417d23b7d2a01bc50f778a0f9b65cf0dd",
-    "pe03_joint_limits.xml": "e0e11d07b3aee0968315583096b8b822d5d65c2a4a598221104de7e4cd2030e5",
+    "pe03_joint_limits.xml": "ec35c835ae0d9bc08eaca549e25005060e3284cd7ab64bc28a354404e924cb1d",
     "scene_joint_limits.xml": "aed02d8bb560236a99f1701260735ec197325a586dabd9648ae0c75652a87a29",
     "play_visual.xml": "67c3b540b64bc82dca53fb925f6cece9ee2c90e38115ca5c0fd86a4b2fb6ca7d",
+    "urdf/pe03_joint_limits.urdf": "b140b2dbbf8caf8a9144c412b1c5500b52038ddcf1eebe0e38c84eb6fb9b815c"
+  },
+  "original_source": "PE03 pe03-cnc-joint-limits-v3",
+  "original_source_commit": "d2ea487ea300da6d322bb3f398e53e8597152532",
+  "joint_limit_revision": {
+    "date": "2026-09-30",
+    "source": "User-measured prototype mechanical limits; existing model zero and axis conventions",
+    "units": "radian",
+    "limits": {
+      "L_hip_": [
+        -0.2,
+        1.5
+      ],
+      "L_thigh_": [
+        -1.44,
+        0.0
+      ],
+      "L_calf_": [
+        -2.02,
+        0.0
+      ],
+      "R_hip_": [
+        -1.5,
+        0.2
+      ],
+      "R_thigh_": [
+        0.0,
+        1.44
+      ],
+      "R_calf_": [
+        0.0,
+        2.02
+      ]
+    }
+  },
+  "original_modified_files_sha256": {
+    "pe03_joint_limits.xml": "e0e11d07b3aee0968315583096b8b822d5d65c2a4a598221104de7e4cd2030e5",
     "urdf/pe03_joint_limits.urdf": "0c277dc0fac5147cd5ef7747e2b79bc3e6043f00590c1b559733a0a131a5baba"
   }
 }

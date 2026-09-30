@@ -1,0 +1,16 @@
+Work directory: /ssd/Aar_Unilab
+All commands are offline and write only identification artifacts.
+
+Replay the frozen checkpoint (no refitting):
+/ssd/conda/envs/aar_unilab/bin/python scripts/identification/fit_pe_sweeps.py --resume --passes 0
+/ssd/conda/envs/aar_unilab/bin/python scripts/identification/report_pe_sweeps.py
+
+Full A/B refit from asset baseline (computationally expensive):
+/ssd/conda/envs/aar_unilab/bin/python scripts/identification/fit_pe_sweeps.py --maxiter 12 --passes 2
+/ssd/conda/envs/aar_unilab/bin/python scripts/identification/report_pe_sweeps.py
+
+Refresh figures only from saved sensitivity results:
+/ssd/conda/envs/aar_unilab/bin/python scripts/identification/report_pe_sweeps.py --reuse-sensitivity
+
+Tests:
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /ssd/conda/envs/aar_unilab/bin/python -m pytest tests/test_pe_sweep_replay.py -q

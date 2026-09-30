@@ -1,0 +1,10 @@
+{
+  "python": "3.13.15 | packaged by conda-forge | (main, Sep  2 2026, 22:01:58) [GCC 15.3.0]",
+  "executable": "/ssd/conda/envs/aar_unilab/bin/python",
+  "numpy": "2.3.3",
+  "scipy": "1.18.1",
+  "mujoco": "3.8.0",
+  "pyyaml": "6.0.3",
+  "matplotlib": "3.11.1",
+  "compiler": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+}

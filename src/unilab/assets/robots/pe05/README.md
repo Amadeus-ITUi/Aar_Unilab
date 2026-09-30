@@ -1,6 +1,12 @@
 # PE05 冻结本体
 
-直接复制自 PE03 `pe03-cnc-joint-limits-v3`。`provenance.json` 保存源文件 SHA256。
+2026-09-30：当前资产已同步 PE03 实测限位 v4；髋、大腿、小腿范围分别为
+左侧 `[-0.20, 1.50]`、`[-1.44, 0]`、`[-2.02, 0] rad`，右侧按镜像符号。
+home、PD、力矩、时序及网络不变。`provenance.json` 保留原始迁移来源，
+当前哈希对应实测修订；旧 checkpoint 不可直接用于当前资产，历史发布包保留原样。
+
+
+直接复制自 PE03 `pe03-cnc-joint-limits-v4`。`provenance.json` 保存源文件 SHA256。
 没有软链接；保留原质量、惯量、碰撞、网格、关节轴和限位。
 `pe05.xml` 是机器人，`scene.xml` 拥有 home 关键帧；`play_visual.xml` 仅提供回放外观。
 

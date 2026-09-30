@@ -1,0 +1,12 @@
+{
+  "source": "/ssd/esd-slave/Wzh/esd-h7-slave_V2.1",
+  "git_head": "4b2ce174a1293e7905645c725e5edc076ff21089",
+  "status": "",
+  "files": {
+    "Frameworks/lib_esd_port/Src/esd_port.c": "3a01331d4a42bd1062522c18db7974661ac45fe8606d047937e302441294c7bd",
+    "Frameworks/tskptt_esd_link/Src/tskptt_esd_link.c": "12e919c6dca59b6fdbfee21f2795c42d560e8087280b5a1d71e2d0156cf6d8ce",
+    "Tasks/App/Src/ESD_Control_Ports.cpp": "54fcdf4a6dc9cc844e36b7561628085c844f32f71b14db411303e2d5340d5aae",
+    "Tasks/App/Src/ESD_Link_Project.c": "29432bc8e41336d9561dba32392b38d16ae2a99089329d89d01f3f37fe79ba7b",
+    "Tasks/Config/CONF_ESD_Link_Task.h": "12f39ca64b01ce6205b4f04e1d8f4e853b4b35fc8a566ae93e5947876dfa3fcf"
+  }
+}

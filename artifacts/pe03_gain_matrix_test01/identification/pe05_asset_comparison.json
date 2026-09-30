@@ -1,0 +1,42 @@
+{
+  "body_mass": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "body_inertia": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "body_ipos": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "body_iquat": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "body_pos": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "body_quat": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "jnt_axis": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "jnt_range": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "dof_armature": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  },
+  "dof_damping": {
+    "same_shape": true,
+    "max_absolute_difference": 0.0
+  }
+}

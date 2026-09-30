@@ -29,6 +29,15 @@ class HipSweep:
         self.model = compile_robot_scene(scene, bodies, visual=False)
         self.data = mujoco.MjData(self.model)
         self.home = self.model.key("home").qpos.copy()
+        self.left_bounds = np.array(
+            [self.model.joint(name).range for name in ("L_hip_", "L_thigh_", "L_calf_")]
+        )
+        self.right_bounds = np.array(
+            [self.model.joint(name).range for name in ("R_hip_", "R_thigh_", "R_calf_")]
+        )
+        # Slices use left-convention angles for both legs.
+        np.testing.assert_allclose(self.left_bounds, -self.right_bounds[:, ::-1], atol=1e-12)
+        self.scan_step = 0.005
 
     def contact(self, hip: float, thigh: float, calf: float, mode: str):
         m, d = self.model, self.data
@@ -58,7 +67,9 @@ class HipSweep:
             return {"free_at_zero": False, "free_hip": None, "contact": contact}
         free = 0.0
         # First boundary connected to zero: do not jump across colliding intervals.
-        for hip in np.linspace(0, -0.785, 158)[1:]:
+        endpoint = float(self.left_bounds[0, 0])
+        intervals = max(1, int(np.ceil(abs(endpoint) / self.scan_step)))
+        for hip in np.linspace(0, endpoint, intervals + 1)[1:]:
             if contact := self.contact(float(hip), thigh, calf, mode):
                 blocked = float(hip)
                 for _ in range(10):
@@ -87,15 +98,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resolution", type=int, default=25)
     parser.add_argument(
-        "--output", type=Path, default=ROOT / "src/unilab/assets/robots/pe03/analysis/joint_limits"
+        "--output",
+        type=Path,
+        default=ROOT / "src/unilab/assets/robots/pe03/analysis/joint_limits_v4",
     )
     args = parser.parse_args()
     cfg = load_config(["+experiment=gait_fixed"])
     scene = ROOT / cfg.env.model_path
     sweep = HipSweep(scene, tuple(cfg.env.body_names))
     modes = ("left", "right", "mirrored")
-    thighs = np.linspace(-1.658, 0, args.resolution)
-    calves = np.linspace(-1.99, 0, args.resolution)
+    thighs = np.linspace(*sweep.left_bounds[1], args.resolution)
+    calves = np.linspace(*sweep.left_bounds[2], args.resolution)
     tables = np.full((3, len(thighs), len(calves)), np.nan)
     counts = {}
     for index, mode in enumerate(modes):
@@ -121,11 +134,12 @@ def main():
     report = {
         "scene": str(scene.relative_to(ROOT)),
         "fingerprint": workspace_fingerprint(scene),
+        "asset_version": str(cfg.env.asset_version),
         "joint_ranges": sweep.model.jnt_range[1:].tolist(),
         "home": sweep.home.tolist(),
         "resolution": args.resolution,
         "penetration_threshold_m": 1e-6,
-        "scan_step_rad": 0.005,
+        "scan_step_rad": sweep.scan_step,
         "boundary_bisections": 10,
         "scope": "Static enabled collision proxies; floor removed. Right angles use mirrored signs. Other leg at home except mirrored mode. No dynamic or full 6D guarantee.",
         "examples": examples,
@@ -143,7 +157,7 @@ def main():
             np.rad2deg(tables[index]),
             shading="nearest",
             cmap=color,
-            vmin=-45,
+            vmin=float(np.rad2deg(sweep.left_bounds[0, 0])),
             vmax=0,
         )
         ax.plot(*np.rad2deg(sweep.home[[9, 8]]), "r+", markersize=12)

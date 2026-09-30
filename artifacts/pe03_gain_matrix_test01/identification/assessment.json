@@ -1,0 +1,54 @@
+{
+  "provisional_kinematic_gate_passed": false,
+  "gates": [
+    {
+      "run": "07_C_damping_hip",
+      "q_nrmse_below_15pct": true,
+      "both_bias_below_0p03rad": true,
+      "improves_by_30pct": true,
+      "no_contact": true,
+      "held_joint_rmse_below_0p03rad": true,
+      "velocity_relative_rmse_below_25pct": true
+    },
+    {
+      "run": "08_C_damping_thigh",
+      "q_nrmse_below_15pct": true,
+      "both_bias_below_0p03rad": true,
+      "improves_by_30pct": true,
+      "no_contact": true,
+      "held_joint_rmse_below_0p03rad": true,
+      "velocity_relative_rmse_below_25pct": false
+    },
+    {
+      "run": "09_C_damping_calf",
+      "q_nrmse_below_15pct": true,
+      "both_bias_below_0p03rad": true,
+      "improves_by_30pct": true,
+      "no_contact": true,
+      "held_joint_rmse_below_0p03rad": true,
+      "velocity_relative_rmse_below_25pct": true
+    }
+  ],
+  "velocity_details": [
+    {
+      "run": "07_C_damping_hip",
+      "rms_error_rad_s": 0.5202237978993609,
+      "measured_velocity_std_rad_s": 2.4623952222354277,
+      "relative_rmse": 0.21126738437507522
+    },
+    {
+      "run": "08_C_damping_thigh",
+      "rms_error_rad_s": 0.40709104972502563,
+      "measured_velocity_std_rad_s": 1.483863961044445,
+      "relative_rmse": 0.2743452637251781
+    },
+    {
+      "run": "09_C_damping_calf",
+      "rms_error_rad_s": 0.16378511633190768,
+      "measured_velocity_std_rad_s": 2.993313591627949,
+      "relative_rmse": 0.054716992162131335
+    }
+  ],
+  "promote_training": false,
+  "note": "Passing these provisional sweep gates does not validate loaded locomotion or timing identifiability. Boundary and timing sensitivities must also be reviewed."
+}

@@ -1,0 +1,23 @@
+{
+  "focused_native_parity": {
+    "passed": 4,
+    "failed": 0,
+    "plugin_autoload_disabled": true
+  },
+  "full_pytest": {
+    "passed": 652,
+    "failed": 4,
+    "xfailed": 2,
+    "failed_tests": [
+      "tests/pe03/test_pe03_robustness_curriculum.py::test_fraction_never_demotes_and_caps_at_one",
+      "tests/pe03/test_pe03_robustness_curriculum.py::test_scaled_parameters_noise_reset_and_fixed_delay[1.0]",
+      "tests/pe03/test_pe03_robustness_curriculum.py::test_evaluation_freezes_requested_level_and_requires_maximum_for_acceptance",
+      "tests/repository/test_independence.py::test_runtime_tree_has_no_predecessor_path_dependencies"
+    ],
+    "note": "Failures are outside files changed by this identification task; ROS pytest plugin autoload disabled to avoid Python 3.10/3.13 contamination."
+  },
+  "mypy_src_unilab": "passed, 179 files",
+  "git_diff_check": "passed",
+  "changed_python_ruff": "passed",
+  "repository_ruff": "Existing errors outside new identification scripts: see ruff logs. Provenance source snapshots explicitly excluded without altering their content."
+}

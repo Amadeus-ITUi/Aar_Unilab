@@ -1,0 +1,2 @@
+# Read-only source snapshots are evidence, not this repository's Python code.
+extend-exclude = ["**"]

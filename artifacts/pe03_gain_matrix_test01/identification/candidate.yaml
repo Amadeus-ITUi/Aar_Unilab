@@ -1,0 +1,83 @@
+status: experimental_not_promoted
+fit_runs:
+- 01_A_baseline_hip
+- 02_A_baseline_thigh
+- 03_A_baseline_calf
+- 04_B_position_hip
+- 05_B_position_thigh
+- 06_B_position_calf
+held_out_runs:
+- 07_C_damping_hip
+- 08_C_damping_thigh
+- 09_C_damping_calf
+joint_type_order:
+- hip
+- thigh
+- calf
+armature_total_kg_m2:
+- 0.0054250249540648155
+- 0.005873866009375884
+- 0.01961329583456414
+passive_damping_nm_s_rad:
+- 7.128082597949125e-05
+- 5.752309411745311e-07
+- 6.359245529095584e-05
+coulomb_frictionloss_nm:
+- 0.00010135398083718428
+- 0.0001006086913528001
+- 0.16967208596773253
+effective_delay_s:
+- 0.026063976498349364
+- 0.02941182753010034
+- 0.017421145095315265
+fixed_torque_scale: 1
+fixed_encoder_offset_rad: 0
+search_bounds_not_confidence_intervals:
+  armature_total_kg_m2:
+  - 1.0e-05
+  - 0.19952623149688797
+  passive_damping_nm_s_rad:
+  - 0
+  - 0.8
+  coulomb_frictionloss_nm:
+  - 0
+  - 0.6
+  effective_delay_s:
+  - 0
+  - 0.06
+firmware_gain_scaling: min(1, effort_limit / (abs(P)+abs(D)+abs(FF)))
+physics_dt_s: 0.002
+gain_scaling_update_s: 0.002
+limitations:
+- No execution timestamps or motor sample age
+- Motor internal servo approximated by instantaneous PD
+- Uncalibrated feedback torque is diagnostic only
+- Paired synchronous excitation cannot identify all coupling parameters
+sweep_kinematic_gate_passed: false
+boundary_estimates:
+- group: hip
+  parameter: passive_damping_nm_s_rad
+  value: 7.128082597949125e-05
+  interpretation: Near the nonnegative boundary; does not establish exact physical
+    zero.
+- group: thigh
+  parameter: passive_damping_nm_s_rad
+  value: 5.752309411745311e-07
+  interpretation: Near the nonnegative boundary; does not establish exact physical
+    zero.
+- group: calf
+  parameter: passive_damping_nm_s_rad
+  value: 6.359245529095584e-05
+  interpretation: Near the nonnegative boundary; does not establish exact physical
+    zero.
+- group: hip
+  parameter: coulomb_frictionloss_nm
+  value: 0.00010135398083718428
+  interpretation: Near the nonnegative boundary; does not establish exact physical
+    zero.
+- group: thigh
+  parameter: coulomb_frictionloss_nm
+  value: 0.0001006086913528001
+  interpretation: Near the nonnegative boundary; does not establish exact physical
+    zero.
+pe05_usage: 'Prior only: matching current assets, no PE05 measurements in this dataset.'

@@ -48,7 +48,7 @@ env:
   - 0.0
   - 0.0
   dof_vel_use_pos_diff: true
-  asset_version: pe05-pe03-cnc-joint-limits-v3
+  asset_version: pe05-pe03-cnc-joint-limits-v4
   task_revision: weighted_v2
   foot_contact_geoms:
   - L_foot_Link_collision_sole_0

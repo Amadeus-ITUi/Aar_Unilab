@@ -1,0 +1,243 @@
+[
+  {
+    "run": "01_A_baseline_hip",
+    "rows": 8206,
+    "recorded_hz": 157.59930219709523,
+    "duration_s": 52.062413257,
+    "sweep_start_host_s": 8.591337694271976,
+    "sweep_end_host_s": 48.59133769427198,
+    "command_chirp_fit_rmse_rad": 0.0044147681406468565,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 22.0,
+    "device_vs_host_elapsed_difference_ms": -12.413256999991518,
+    "flags_counts": {
+      "0": 2,
+      "1": 7669,
+      "4": 535
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.6579252774637117,
+      "R_thigh_": 0.31240564584732056,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.6579252774637117,
+      "L_thigh_": -0.31239357590675354,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "7b2590f4b4c0c2fca3d24f3c4122a14fcad612d33e1a967663c2a94060452dea",
+    "yaml_sha256": "bcdd549475bb5fc851994ecc2f08e0849f1d0a2359800ded6c7c48aa7fafec13"
+  },
+  {
+    "run": "02_A_baseline_thigh",
+    "rows": 7363,
+    "recorded_hz": 157.97750233505425,
+    "duration_s": 46.60157232,
+    "sweep_start_host_s": 5.5003544296862605,
+    "sweep_end_host_s": 45.50035442968626,
+    "command_chirp_fit_rmse_rad": 0.0028509980280079436,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 26.0,
+    "device_vs_host_elapsed_difference_ms": -9.572319999989531,
+    "flags_counts": {
+      "0": 1,
+      "1": 7222,
+      "4": 140
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.7241618689066729,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": -0.7241618689066729,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "1fa724630340515b8bb2db1e8b7500e7ea0a0bd624bdc815a18a95e60ff792e4",
+    "yaml_sha256": "83b5a68f5472c5ecf0f8f140397db785adf281f90acd394493119e037a779306"
+  },
+  {
+    "run": "03_A_baseline_calf",
+    "rows": 8270,
+    "recorded_hz": 157.51740266732494,
+    "duration_s": 52.495786878000004,
+    "sweep_start_host_s": 9.925775448653319,
+    "sweep_end_host_s": 49.92577544865332,
+    "command_chirp_fit_rmse_rad": 0.005388724728834661,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 22.0,
+    "device_vs_host_elapsed_difference_ms": -9.786877999999888,
+    "flags_counts": {
+      "0": 2,
+      "1": 7883,
+      "4": 385
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.0,
+      "R_calf_": 1.0176893531667166,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": 0.0,
+      "L_calf_": -1.0176893531667166
+    },
+    "csv_sha256": "cb3c740f4f2a69d003f761fe0e9b66da5b0566981abb8a2d7e39eb646ec1b03f",
+    "yaml_sha256": "ab783f4f7ed6224b06dc48de1bcaca75e2a71ae33515a1bc837fa6353b339d92"
+  },
+  {
+    "run": "04_B_position_hip",
+    "rows": 8226,
+    "recorded_hz": 157.15552191016945,
+    "duration_s": 52.336691069000004,
+    "sweep_start_host_s": 7.846590185111604,
+    "sweep_end_host_s": 47.8465901851116,
+    "command_chirp_fit_rmse_rad": 0.004546932886854326,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 22.0,
+    "device_vs_host_elapsed_difference_ms": 71.30893100000435,
+    "flags_counts": {
+      "0": 1,
+      "1": 7517,
+      "4": 708
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.6579408684897587,
+      "R_thigh_": 0.31240564584732056,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.6579408684897587,
+      "L_thigh_": -0.31239357590675354,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "439c08598e01492e6d455181e96c81efe24eedb24e41d1c59a07d810c79bdffa",
+    "yaml_sha256": "8a42eb04d2e69e14176551946bb1b4b841c6d154dee6c1cd238c51405c6619f3"
+  },
+  {
+    "run": "05_B_position_thigh",
+    "rows": 7374,
+    "recorded_hz": 157.73215853085583,
+    "duration_s": 46.743797008,
+    "sweep_start_host_s": 5.942241443769533,
+    "sweep_end_host_s": 45.94224144376953,
+    "command_chirp_fit_rmse_rad": 0.0027944768273534394,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 22.0,
+    "device_vs_host_elapsed_difference_ms": 52.20299200000511,
+    "flags_counts": {
+      "1": 7283,
+      "4": 91
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.7243291897237631,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": -0.7243291897237631,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "bd63b5768affa7d347ce9ee21531e6781138749d230f6d4043503edba1c31029",
+    "yaml_sha256": "ca406304e6df5e694179ad2e77bb407b408148518805cd53fa52619eeeb3131c"
+  },
+  {
+    "run": "06_B_position_calf",
+    "rows": 8516,
+    "recorded_hz": 157.78350765949426,
+    "duration_s": 53.966350009,
+    "sweep_start_host_s": 9.663212766361495,
+    "sweep_end_host_s": 49.6632127663615,
+    "command_chirp_fit_rmse_rad": 0.00518849574355636,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 20.0,
+    "device_vs_host_elapsed_difference_ms": 27.649990999996987,
+    "flags_counts": {
+      "0": 1,
+      "1": 7849,
+      "4": 666
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.0,
+      "R_calf_": 1.0193086370728839,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": 0.0,
+      "L_calf_": -1.0193086370728839
+    },
+    "csv_sha256": "855ec476dbdde81be0861e76d707b311d1d1d6e000daa6571a6902370579d4c5",
+    "yaml_sha256": "03812e0c2014beb289706a7b117cfee24c06af191a926abc8f6afe2e49b63a63"
+  },
+  {
+    "run": "07_C_damping_hip",
+    "rows": 8260,
+    "recorded_hz": 158.8071570311258,
+    "duration_s": 52.006472217,
+    "sweep_start_host_s": 7.839835046378639,
+    "sweep_end_host_s": 47.83983504637864,
+    "command_chirp_fit_rmse_rad": 0.004525278214748031,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 20.0,
+    "device_vs_host_elapsed_difference_ms": 15.527783000010231,
+    "flags_counts": {
+      "0": 1,
+      "1": 7612,
+      "4": 647
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.6575181881414216,
+      "R_thigh_": 0.31240564584732056,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.6575181881414216,
+      "L_thigh_": -0.31239357590675354,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "54151d4bbc0ef2f5ac9f7fecfc69d6d58a0d0719792a77944eb2e86f2cec6bcc",
+    "yaml_sha256": "95610aa3e9aa369e583a09806027c13c88c51bbee83d1919bc5cdb095f946759"
+  },
+  {
+    "run": "08_C_damping_thigh",
+    "rows": 7545,
+    "recorded_hz": 158.3788188345331,
+    "duration_s": 47.632632037,
+    "sweep_start_host_s": 6.216811816920384,
+    "sweep_end_host_s": 46.216811816920384,
+    "command_chirp_fit_rmse_rad": 0.0028326887824732506,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 20.0,
+    "device_vs_host_elapsed_difference_ms": -140.63203699999605,
+    "flags_counts": {
+      "0": 1,
+      "1": 7351,
+      "4": 193
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.7239799494025178,
+      "R_calf_": 1.2541126012802124,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": -0.7239799494025178,
+      "L_calf_": -1.254128336906433
+    },
+    "csv_sha256": "f44c2b203bfaae2113d31f789403cd83ef0a112223738b592e04756d1f9f050f",
+    "yaml_sha256": "33f4a3df5b1b8e0d11e2c664bd685b56afeb52e671e679f9a37e20d59c6209ab"
+  },
+  {
+    "run": "09_C_damping_calf",
+    "rows": 8194,
+    "recorded_hz": 156.6016840824802,
+    "duration_s": 52.317445039000006,
+    "sweep_start_host_s": 9.68920878652783,
+    "sweep_end_host_s": 49.68920878652783,
+    "command_chirp_fit_rmse_rad": 0.005337530495856353,
+    "device_interval_median_ms": 6.0,
+    "device_interval_max_ms": 24.0,
+    "device_vs_host_elapsed_difference_ms": -37.44503899999785,
+    "flags_counts": {
+      "1": 7799,
+      "4": 395
+    },
+    "formal_command_mean_by_joint": {
+      "R_hip_": -0.02315985970199108,
+      "R_thigh_": 0.0,
+      "R_calf_": 1.0185951425033126,
+      "L_hip_": 0.02315985970199108,
+      "L_thigh_": 0.0,
+      "L_calf_": -1.0185951425033126
+    },
+    "csv_sha256": "5d5e4c878f3943ae9c5245521566b2faf523a60f4121621eb5a30d1715a37765",
+    "yaml_sha256": "d016d62aac3c9573775305109f72a15473f702c0165552f9510134f33108df1c"
+  }
+]

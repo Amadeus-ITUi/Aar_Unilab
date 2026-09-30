@@ -1,5 +1,8 @@
 # PE03 CNC 独立训练线
 
+当前资产已于 2026-09-30 同步实测限位 v4，详见 [限位修订](PE03_JOINT_TARGET_LIMITS.md)。
+本文原有实验、标定和碰撞数据保留当时版本，不作为新限位的验证结果。
+
 新增独立 WTW 步态训练线：见 [PE03_WTW_GAIT.md](PE03_WTW_GAIT.md)。使用
 `pe03_gait_fixed` / `pe03_gait_variable` 预设与 v4 观测；下文 v2/v3 迁移基线仍保留。
 

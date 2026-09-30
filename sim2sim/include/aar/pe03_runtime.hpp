@@ -24,7 +24,7 @@ class PE03Runtime {
     full_history_ = contract.observation_builder == "pe03_v4";
     const std::string expected_schema = full_history_ ? "pe03.runtime.v4" : clock_gait_ ? "pe03.runtime.v2" : "pe03.runtime.v3";
     const auto schema = tree.get<std::string>("schema");
-    const bool limited_targets = full_history_ && schema == expected_schema + ".joint-limits.v1";
+    const bool limited_targets = schema == expected_schema + ".joint-limits.v1";
     if ((!clock_gait_ && !full_history_ && contract.observation_builder != "pe03_v3") ||
         (schema != expected_schema && !limited_targets)) {
       throw std::runtime_error("unsupported PE03 runtime schema");

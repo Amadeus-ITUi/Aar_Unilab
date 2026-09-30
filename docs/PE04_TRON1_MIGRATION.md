@@ -1,5 +1,11 @@
 # PE04：PE03 本体与 TRON1 PF BlindFlat 训练设计
 
+2026-09-30：当前资产已同步 PE03 实测限位 v4；髋、大腿、小腿范围分别为
+左侧 `[-0.20, 1.50]`、`[-1.44, 0]`、`[-2.02, 0] rad`，右侧按镜像符号。
+home、PD、力矩、时序及网络不变。`provenance.json` 保留原始迁移来源，
+当前哈希对应实测修订；旧 checkpoint 不可直接用于当前资产，历史发布包保留原样。
+
+
 状态（2026-09-24）：**TRON1 基线暂缓**。保留 PE04 训练、checkpoint 回放和
 部署入口；后续新基线转向 PE05（PE03 本体、原始 PE01 训练设计）。
 
@@ -10,7 +16,7 @@
 全仓 Ruff 仍有原有 11 个格式问题和 7 个 lint 问题。原始输出位于
 `logs/pe05_validation/before_*.log`（不纳入提交）。
 
-PE04 是独立训练环境。机器人资产冻结自 PE03 最新的 `pe03-cnc-joint-limits-v3`；观测、速度估计网络、非对称 Actor/Critic、PPO、命令与步态采样、奖励和随机化参考 TRON1 PF BlindFlat。它不导入或继承 PE01/PE02/PE03 的环境、算法、配置或 C++ runtime，也不在运行或构建时使用 `references/` 中的代码。
+PE04 是独立训练环境。机器人资产冻结自 PE03 最新的 `pe03-cnc-joint-limits-v4`；观测、速度估计网络、非对称 Actor/Critic、PPO、命令与步态采样、奖励和随机化参考 TRON1 PF BlindFlat。它不导入或继承 PE01/PE02/PE03 的环境、算法、配置或 C++ runtime，也不在运行或构建时使用 `references/` 中的代码。
 
 ## 使用
 
@@ -88,7 +94,7 @@ Critic 的 267 维按 `observations.py::critic_layout()` 固定顺序：真实�
 
 | 本体项 | PE04 设置 |
 | --- | --- |
-| 资产 | 独立复制 PE03 的 joint-limits-v3 XML、碰撞网格、视觉网格与 URDF；不使用软链接 |
+| 资产 | 独立复制 PE03 的 joint-limits-v4 XML、碰撞网格、视觉网格与 URDF；不使用软链接 |
 | 关节顺序 | `L_hip_, L_thigh_, L_calf_, R_hip_, R_thigh_, R_calf_` |
 | 站姿与高度 | PE03 最新 `home` 关键帧；高度目标从该关键帧读取，约 0.29138 m |
 | PD | 每侧 Kp `[4.3, 4.3, 4.9]`，Kd `[0.34, 0.34, 0.24]` |

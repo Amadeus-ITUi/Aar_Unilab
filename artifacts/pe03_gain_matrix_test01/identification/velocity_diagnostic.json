@@ -1,0 +1,146 @@
+[
+  {
+    "run": "01_A_baseline_hip",
+    "joint": "L_hip_",
+    "dq_vs_smoothed_qdot_slope": 1.0008052161707277,
+    "bias": 6.336472376259543e-06,
+    "rmse": 0.09757231031592754,
+    "dq_std": 3.0972987245594448
+  },
+  {
+    "run": "01_A_baseline_hip",
+    "joint": "R_hip_",
+    "dq_vs_smoothed_qdot_slope": 1.0004929484288472,
+    "bias": -0.0011998018664280208,
+    "rmse": 0.10107758482340558,
+    "dq_std": 3.0598170835227223
+  },
+  {
+    "run": "02_A_baseline_thigh",
+    "joint": "L_thigh_",
+    "dq_vs_smoothed_qdot_slope": 1.001275302059337,
+    "bias": 0.0014725489999831063,
+    "rmse": 0.1189704387226597,
+    "dq_std": 1.8127911756166262
+  },
+  {
+    "run": "02_A_baseline_thigh",
+    "joint": "R_thigh_",
+    "dq_vs_smoothed_qdot_slope": 1.0007794764574245,
+    "bias": 0.001663723203947188,
+    "rmse": 0.12131916875451387,
+    "dq_std": 1.8258656036116174
+  },
+  {
+    "run": "03_A_baseline_calf",
+    "joint": "L_calf_",
+    "dq_vs_smoothed_qdot_slope": 1.000092387047766,
+    "bias": -0.0006857608874688734,
+    "rmse": 0.09894954367985509,
+    "dq_std": 3.6362224082576513
+  },
+  {
+    "run": "03_A_baseline_calf",
+    "joint": "R_calf_",
+    "dq_vs_smoothed_qdot_slope": 0.9996827986751016,
+    "bias": -0.0006939891751387294,
+    "rmse": 0.13188723441235198,
+    "dq_std": 3.4948058225146945
+  },
+  {
+    "run": "04_B_position_hip",
+    "joint": "L_hip_",
+    "dq_vs_smoothed_qdot_slope": 0.9980963062568706,
+    "bias": -0.001069310438601074,
+    "rmse": 0.12052045417402028,
+    "dq_std": 3.8590691159926163
+  },
+  {
+    "run": "04_B_position_hip",
+    "joint": "R_hip_",
+    "dq_vs_smoothed_qdot_slope": 0.9979609454626487,
+    "bias": -0.00022749801361821452,
+    "rmse": 0.12128854765906961,
+    "dq_std": 3.824023388768298
+  },
+  {
+    "run": "05_B_position_thigh",
+    "joint": "L_thigh_",
+    "dq_vs_smoothed_qdot_slope": 0.9993792709885334,
+    "bias": 0.00233363107687719,
+    "rmse": 0.14686482907354637,
+    "dq_std": 2.25773114986905
+  },
+  {
+    "run": "05_B_position_thigh",
+    "joint": "R_thigh_",
+    "dq_vs_smoothed_qdot_slope": 0.9995720502136745,
+    "bias": 0.00038075282403334545,
+    "rmse": 0.14110969649374788,
+    "dq_std": 2.2855873763697847
+  },
+  {
+    "run": "06_B_position_calf",
+    "joint": "L_calf_",
+    "dq_vs_smoothed_qdot_slope": 0.9995091862186067,
+    "bias": 0.0005057293141799468,
+    "rmse": 0.16502400521767543,
+    "dq_std": 4.412124233430289
+  },
+  {
+    "run": "06_B_position_calf",
+    "joint": "R_calf_",
+    "dq_vs_smoothed_qdot_slope": 0.9993710535036194,
+    "bias": -0.0004004404887636618,
+    "rmse": 0.12088685475374134,
+    "dq_std": 4.280948761142416
+  },
+  {
+    "run": "07_C_damping_hip",
+    "joint": "L_hip_",
+    "dq_vs_smoothed_qdot_slope": 1.000156420149806,
+    "bias": -0.0014276837401698565,
+    "rmse": 0.08546534351534467,
+    "dq_std": 2.532901893051569
+  },
+  {
+    "run": "07_C_damping_hip",
+    "joint": "R_hip_",
+    "dq_vs_smoothed_qdot_slope": 0.999890144364284,
+    "bias": -0.0012581652662290571,
+    "rmse": 0.088313590041499,
+    "dq_std": 2.5038680861942133
+  },
+  {
+    "run": "08_C_damping_thigh",
+    "joint": "L_thigh_",
+    "dq_vs_smoothed_qdot_slope": 1.003822427295083,
+    "bias": 0.00033265477166022616,
+    "rmse": 0.10199770700453203,
+    "dq_std": 1.5206244906176565
+  },
+  {
+    "run": "08_C_damping_thigh",
+    "joint": "R_thigh_",
+    "dq_vs_smoothed_qdot_slope": 1.0041854162676709,
+    "bias": 0.0012012906090967386,
+    "rmse": 0.12503952977118687,
+    "dq_std": 1.5213593666156267
+  },
+  {
+    "run": "09_C_damping_calf",
+    "joint": "L_calf_",
+    "dq_vs_smoothed_qdot_slope": 1.0007275871585968,
+    "bias": -0.0010989834476086793,
+    "rmse": 0.09168371188619037,
+    "dq_std": 3.13039596375191
+  },
+  {
+    "run": "09_C_damping_calf",
+    "joint": "R_calf_",
+    "dq_vs_smoothed_qdot_slope": 1.0005753072767132,
+    "bias": 0.0004516620733745378,
+    "rmse": 0.1163242982732067,
+    "dq_std": 3.007160259207847
+  }
+]

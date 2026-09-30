@@ -1,0 +1,35 @@
+format_version: 1
+completed: true
+deployment_id: pe03/gait_v4
+robot_id: pe03
+profile_id: point_foot
+profile_hash: 562960666850669862
+lower_config_fingerprint: 514403452
+robot_profile: /home/esd/Pheonix/Deploy/src/robot_packages/pe03/robot.yaml
+sweep_profile: /home/esd/Pheonix/Deploy/src/robot_packages/pe03/sweep.yaml
+group_id: calf
+mode: position
+selected_joints:
+- L_calf_
+- R_calf_
+selected_ports:
+- 6
+- 3
+single_joint: false
+start_frequency_hz: 0.1
+end_frequency_hz: 5.0
+duration_sec: 40.0
+kp: 4.9
+kd: 0.24
+hold_kp: 100.0
+hold_kd: 5.0
+targets:
+- joint_name: L_calf_
+  port_id: 6
+  phase_sign: -1.0
+  amplitude: 0.41000000000000003
+- joint_name: R_calf_
+  port_id: 3
+  phase_sign: 1.0
+  amplitude: 0.41000000000000003
+rows: 8270

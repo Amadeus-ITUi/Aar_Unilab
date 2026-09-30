@@ -301,7 +301,7 @@ catalog.robots["pe03"] = RobotSpec(
     capabilities=frozenset({"legs", "legacy-custom-ppo"}),
     metadata={"source_asset_name": "点足CNC", "training_profile": "pe03"},
     scene="src/unilab/assets/robots/pe03/scene.xml",
-    asset_version="cnc-collision-v1-20260918",
+    asset_version="pe03-cnc-joint-limits-v4",
     runtime_assets=(
         "pe03.xml",
         "pe03_joint_limits.xml",
@@ -375,7 +375,7 @@ catalog.robots["pe04"] = RobotSpec(
     actuators=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
     capabilities=frozenset({"legs"}),
     scene="src/unilab/assets/robots/pe04/scene.xml",
-    asset_version="pe04-pe03-cnc-joint-limits-v3",
+    asset_version="pe04-pe03-cnc-joint-limits-v4",
     runtime_assets=(
         "pe04.xml",
         "scene.xml",
@@ -420,7 +420,7 @@ catalog.robots["pe05"] = RobotSpec(
     actuators=("L_hip_", "L_thigh_", "L_calf_", "R_hip_", "R_thigh_", "R_calf_"),
     capabilities=frozenset({"legs"}),
     scene="src/unilab/assets/robots/pe05/scene.xml",
-    asset_version="pe05-pe03-cnc-joint-limits-v3",
+    asset_version="pe05-pe03-cnc-joint-limits-v4",
     runtime_assets=(
         "pe05.xml",
         "scene.xml",
