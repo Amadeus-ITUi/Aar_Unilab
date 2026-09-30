@@ -1,0 +1,80 @@
+{
+  "source": "logs/pe03_gait_identified_delay20_30/2026-09-30_19-50-14_882058_mujoco",
+  "last_iteration": 603,
+  "promotions": [
+    {
+      "iteration": 320,
+      "old_level": 0.0,
+      "new_level": 0.1,
+      "previous_round_seconds": 19.4281689453125,
+      "forced_cuts": 4095.0
+    },
+    {
+      "iteration": 404,
+      "old_level": 0.1,
+      "new_level": 0.2,
+      "previous_round_seconds": 19.790927734375,
+      "forced_cuts": 588.0
+    },
+    {
+      "iteration": 487,
+      "old_level": 0.2,
+      "new_level": 0.3,
+      "previous_round_seconds": 19.31271484375,
+      "forced_cuts": 546.0
+    },
+    {
+      "iteration": 570,
+      "old_level": 0.3,
+      "new_level": 0.4,
+      "previous_round_seconds": 19.201875,
+      "forced_cuts": 596.0
+    }
+  ],
+  "completed_rounds_since_280": [
+    {
+      "iteration": 320,
+      "level": 0.0,
+      "seconds": 19.4281689453125
+    },
+    {
+      "iteration": 362,
+      "level": 0.1,
+      "seconds": 17.820869140625
+    },
+    {
+      "iteration": 404,
+      "level": 0.1,
+      "seconds": 19.790927734375
+    },
+    {
+      "iteration": 445,
+      "level": 0.2,
+      "seconds": 18.3753125
+    },
+    {
+      "iteration": 487,
+      "level": 0.2,
+      "seconds": 19.31271484375
+    },
+    {
+      "iteration": 529,
+      "level": 0.3,
+      "seconds": 18.334775390625
+    },
+    {
+      "iteration": 570,
+      "level": 0.3,
+      "seconds": 19.201875
+    }
+  ],
+  "delay_min_ms_range": [
+    20.0,
+    20.0
+  ],
+  "delay_max_ms_range": [
+    30.0,
+    30.0
+  ],
+  "note": "Round checks use one natural completed episode per environment. Last-100 means are biased toward early finishers after synchronized reset. No training code or process changed."
+}

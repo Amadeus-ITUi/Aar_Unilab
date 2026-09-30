@@ -37,6 +37,12 @@ def native_joint_position_pd_available() -> bool:
     )
 
 
+def native_identified_pd_available() -> bool:
+    return _unilab_batch_env is not None and hasattr(
+        _unilab_batch_env.BatchEnvPool, "has_identified_joint_pd"
+    )
+
+
 def native_mixed_pd_import_error() -> ImportError | None:
     return _NATIVE_IMPORT_ERROR
 

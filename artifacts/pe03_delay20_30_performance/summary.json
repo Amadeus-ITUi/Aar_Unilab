@@ -1,0 +1,123 @@
+{
+  "root_cause": "Python MjData construction in actuator constant refresh installs the process-global native mjcb_time. Internal clock reads add physics-step overhead. Public get_mjcb_time returns None for this native timer.",
+  "resolution": "Use C mj_makeData/mj_setConst/mj_deleteData for temporary scratch data without changing existing timer callbacks.",
+  "controlled_replays": {
+    "environments": 4096,
+    "policy_steps": 24,
+    "threads": 32,
+    "repetitions": 3,
+    "input_actions": "seed=8102, normal(0,1.2)",
+    "policy_optimization": false
+  },
+  "historical_runs": {
+    "latest_random20_30": {
+      "path": "logs/pe03_gait_identified_delay20_30/2026-09-30_19-31-34_964539_mujoco/metrics.jsonl",
+      "sha256": "46ef099f000a82ebf29fe4e145a87e2807729ed82394419fa4a70c2ed01cc3bd",
+      "iterations": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ],
+      "collection_seconds": 2.6440392115036957,
+      "update_seconds": 0.5781270000006771,
+      "samples_per_second": 30368.645968939658
+    },
+    "previous_identified_fixed25": {
+      "path": "logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco/metrics.jsonl",
+      "sha256": "fadfd8157c4169178d29a82e502d6efe120248c3bc26c9cd14d004ded4092aed",
+      "iterations": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ],
+      "collection_seconds": 2.6578045704955002,
+      "update_seconds": 0.6160366619878914,
+      "samples_per_second": 30021.59111305061
+    },
+    "legacy_gait": {
+      "path": "logs/pe03_gait_fixed/2026-09-21_21-43-13_055597_mujoco/metrics.jsonl",
+      "sha256": "3f95c5708853f5d295391837fe9cb5e94c6c10f91b49069e92352be4e1d8c373",
+      "iterations": [
+        11005,
+        11006,
+        11007,
+        11008,
+        11009,
+        11010,
+        11011,
+        11012,
+        11013,
+        11014,
+        11015,
+        11016,
+        11017,
+        11018,
+        11019,
+        11020,
+        11021,
+        11022,
+        11023,
+        11024
+      ],
+      "collection_seconds": 1.502303439003299,
+      "update_seconds": 0.6413924064981984,
+      "samples_per_second": 45793.785859684474
+    }
+  },
+  "fixed_collection_seconds": 1.6363422170106787,
+  "estimated_iteration_seconds": 2.214469217011356,
+  "iteration_estimate_note": "Collection measured with fresh CUDA runner, 4096 environments, 24 steps; update time taken from latest pre-fix log. This is not a post-fix full training measurement.",
+  "timer_toggle_physics_comparison": "bitwise equal state, sensors, torque, joint velocity and FIFO for the replayed eight-substep batch",
+  "focused_tests": "13 passed, including constant recomputation, preserving absent/custom native timer, export replay and WE11 flat/rough step",
+  "training_restarted": false,
+  "training_configuration_changed": false,
+  "latest_training_status_at_inspection": "No training process; metrics end at iteration 24.",
+  "fixed_source_sha256": "1bda13faa910d6d5c39e542388c87fb1f641f2a28ef1c08fad25df0bcef7a359",
+  "full_non_slow_tests": {
+    "passed": 666,
+    "xfailed": 2,
+    "known_existing_failures": 4,
+    "failures": [
+      "3 PE03 robustness curriculum assertions expect max_level=1 while configured maximum is 0.7",
+      "repository audit reports two pre-existing nested .git directories in references"
+    ]
+  },
+  "mypy": "passed: 180 source files",
+  "changed_files_ruff": "passed",
+  "full_ruff": "7 pre-existing lint errors and 11 pre-existing unformatted files",
+  "diff_check": "passed"
+}

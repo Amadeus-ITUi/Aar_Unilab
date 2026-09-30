@@ -136,6 +136,12 @@ def validate_gait_config(config: DictConfig) -> None:
         config.control.policy_hz,
     ) != (400, 400, 50):
         raise ValueError("v4 control contract is 400 Hz physics/PD and 50 Hz policy")
+    if "actuator_model" in config.control:
+        from unilab.base.backend.mujoco.actuator_parameters import actuator_arrays
+
+        actuator_arrays(config.control.actuator_model, 6)
+        if config.env.dof_vel_use_pos_diff:
+            raise ValueError("identified PE03 requires encoder velocity, not position difference")
     for field in ("kp", "kd", "torque_limits"):
         values = np.asarray(config.control[field])
         if values.shape != (6,) or not np.isfinite(values).all() or (values <= 0).any():

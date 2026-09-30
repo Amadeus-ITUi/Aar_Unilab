@@ -1,0 +1,18 @@
+{
+  "checkpoint.json": "28ab57c8652d008c5bc74f77ebcbc1eed26c3867c8ba79c34d473b8c3a6bdaaa",
+  "candidate.yaml": "832275317fa1c63697846b391e7bb708ca958aa61336544283785b0411954003",
+  "comparison.json": "a01c6257d3edced6fee73a91757e74eed725223a4f1fbcc809b1fca9b1361d8e",
+  "07_C_damping_hip.npz": "7665849108e74736501ccf40b563e1978838683e35cd760fc8fa940ce0ffb1ec",
+  "grouped_fresh_constants_check.json": "097a3c7bbe514f7659fbe0d571a081f9541302c9ed948a7f48c803f0e14e6dcb",
+  "delay_model_comparison.png": "d2376eb2e0a2545a7e626f01f902105b0fb24341e70272dec2f5028b70770bc5",
+  "08_C_damping_thigh.npz": "5e1921d8531f37fcc174b0ad1b20f4f4fa3d65296c1b431cf2080d4d69ba5822",
+  "01_A_baseline_hip.npz": "8b41a9f7e1a5811951ee1442f55bf3ff61c43a2cd9db33f1ebf0542e92212ff4",
+  "04_B_position_hip.npz": "aeb624b152c11b3a3b8b8c9c6d7b229ce7705b9e4ae2f6e824d3295304310a6b",
+  "delay_model_comparison.pdf": "90b0e4fad79a0296ce55e665101b2ef192263847b323119806b02b1b474d5297",
+  "02_A_baseline_thigh.npz": "c5c2fff156dcfb7cd4152f1ddba6c7dc9eb2c7f3ce262aa2668fdeb5c4a750a0",
+  "training_discretization_check.json": "9575f46a62ecdf0120b602ea287433a30c9f4a0c424bd46f01b2bf402deacf9a",
+  "03_A_baseline_calf.npz": "19e50dfbe94bd64dcf20dc72594ebbc36ac3d9b630d3014f3c30f4a859fd2996",
+  "09_C_damping_calf.npz": "9ea18d117e155b2172a4dfe21c1d76bb6b60d45d2863984de25e1f3d290116ec",
+  "05_B_position_thigh.npz": "839c89c94762ee4c6f4c584c8c2f5924d8e46c06f9222064ebd2d0cf4e5524fe",
+  "06_B_position_calf.npz": "e42652115467691e9323f9341521074553babe524da4718ae381a185142cc861"
+}

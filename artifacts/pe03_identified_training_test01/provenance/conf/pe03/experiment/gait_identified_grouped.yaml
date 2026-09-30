@@ -1,0 +1,29 @@
+# @package _global_
+# Fresh PE03 experiment: measured actuator bundle, original gait/reward contract.
+defaults:
+  - gait_fixed
+  - _self_
+env:
+  dof_vel_use_pos_diff: false
+control:
+  actuator_model:
+    saturation: sum_abs_pd
+    armature: [0.0054250249540648155, 0.005873866009375884, 0.01961329583456414, 0.0054250249540648155, 0.005873866009375884, 0.01961329583456414]
+    damping: [7.128082597949125e-05, 5.752309411745311e-07, 6.359245529095584e-05, 7.128082597949125e-05, 5.752309411745311e-07, 6.359245529095584e-05]
+    frictionloss: [0.00010135398083718428, 0.0001006086913528001, 0.16967208596773253, 0.00010135398083718428, 0.0001006086913528001, 0.16967208596773253]
+    delay_ms: [26.063976498349366, 29.41182753010034, 17.421145095315264, 26.063976498349366, 29.41182753010034, 17.421145095315264]
+    # Effective command/servo/logging delay; NOT an extra wait on the real robot.
+    source: artifacts/pe03_gain_matrix_test01/identification/candidate.yaml
+    source_sha256: 414a8e0cd622313347c52062de54e7734c3e6e72121fa81ec589d42ed885a735
+    status: experimental
+# Retain existing mechanical/load/noise randomization. Replace the old 20 ms delay.
+domain_rand:
+  delay_ms_range: [0.0, 0.0]
+training:
+  experiment_name: gait_identified_grouped_test01
+  log_root: logs/pe03_gait_identified_grouped_test01
+  resume: null
+  stage_from: null
+play:
+  delay_ms: 0
+  telemetry: logs/play/pe03/pe03_gait_flat/identified_grouped_test01

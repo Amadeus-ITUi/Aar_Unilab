@@ -1,0 +1,381 @@
+diff --git a/scripts/train_pe03.py b/scripts/train_pe03.py
+index 25430caa..cfd770d1 100644
+--- a/scripts/train_pe03.py
++++ b/scripts/train_pe03.py
+@@ -122,6 +122,17 @@ def export_release(checkpoint: Path, run_id: str, device: str = "cpu") -> Path:
+             ),
+             reset_keyframe=reset_keyframe,
+         )
++        actuator_model = config.control.get("actuator_model")
++        if actuator_model is not None:
++            import xml.etree.ElementTree as ET
++
++            from unilab.base.backend.mujoco.actuator_parameters import bake_actuator_parameters
++
++            robot_path = staging / robot_xml_path(model_path).name
++            tree = ET.parse(robot_path)
++            bake_actuator_parameters(tree.getroot(), tuple(config.env.joint_order), actuator_model)
++            ET.indent(tree, space="  ")
++            tree.write(robot_path, encoding="unicode")
+         if config.observation in {"pe03_v2", "pe03_v3", "pe03_v4"}:
+             from unilab.base.backend.mujoco.batched_robot import compile_robot_scene
+ 
+@@ -144,6 +155,21 @@ def export_release(checkpoint: Path, run_id: str, device: str = "cpu") -> Path:
+             if config.control.get("clip_joint_targets", False):
+                 runtime["schema"] += ".joint-limits.v1"
+                 runtime["joint_target_limits"] = model.jnt_range[1:].tolist()
++            if actuator_model is not None:
++                runtime["schema"] += ".identified.v1"
++                runtime["actuator_model"] = OmegaConf.to_container(actuator_model, resolve=True)
++                runtime["joint_delay_steps"] = (
++                    np.rint(
++                        (np.array(actuator_model.delay_ms) + float(config.play.delay_ms))
++                        * int(config.control.physics_hz)
++                        / 1000
++                    )
++                    .astype(int)
++                    .tolist()
++                )
++                runtime["saturation"] = "sum_abs_pd"
++                manifest["control"]["actuator_model"] = runtime["actuator_model"]
++                manifest["control"]["joint_delay_steps"] = runtime["joint_delay_steps"]
+             if config.observation in {"pe03_v2", "pe03_v4"}:
+                 runtime["gait"] = list(config.play.gait)
+             if config.observation == "pe03_v4":
+diff --git a/sim2sim/include/aar/pe03_runtime.hpp b/sim2sim/include/aar/pe03_runtime.hpp
+index 07d5353a..566346a3 100644
+--- a/sim2sim/include/aar/pe03_runtime.hpp
++++ b/sim2sim/include/aar/pe03_runtime.hpp
+@@ -23,7 +23,11 @@ class PE03Runtime {
+     clock_gait_ = contract.observation_builder == "pe03_v2";
+     full_history_ = contract.observation_builder == "pe03_v4";
+     const std::string expected_schema = full_history_ ? "pe03.runtime.v4" : clock_gait_ ? "pe03.runtime.v2" : "pe03.runtime.v3";
+-    const auto schema = tree.get<std::string>("schema");
++    auto schema = tree.get<std::string>("schema");
++    const std::string identified_suffix = ".identified.v1";
++    const bool identified = schema.size() >= identified_suffix.size() &&
++        schema.compare(schema.size()-identified_suffix.size(), identified_suffix.size(), identified_suffix) == 0;
++    if (identified) schema.resize(schema.size()-identified_suffix.size());
+     const bool limited_targets = schema == expected_schema + ".joint-limits.v1";
+     if ((!clock_gait_ && !full_history_ && contract.observation_builder != "pe03_v3") ||
+         (schema != expected_schema && !limited_targets)) {
+@@ -79,7 +83,24 @@ class PE03Runtime {
+     }
+     delay_ = tree.get<int>("delay_steps");
+     if (delay_ < 0 || delay_ > 10000) throw std::runtime_error("invalid PE03 action delay");
++    joint_delay_.assign(count, delay_);
++    if (identified) {
++      if (tree.get<std::string>("saturation") != "sum_abs_pd")
++        throw std::runtime_error("unsupported identified actuator saturation");
++      const auto delays = array("joint_delay_steps");
++      if (delays.size() != count) throw std::runtime_error("invalid joint delay dimensions");
++      for (std::size_t i = 0; i < count; ++i) {
++        if (!std::isfinite(delays[i]) || delays[i] < 0 || delays[i] > 10000 ||
++            delays[i] != std::floor(delays[i])) throw std::runtime_error("invalid joint delay");
++        joint_delay_[i] = static_cast<int>(delays[i]);
++      }
++      delay_ = *std::max_element(joint_delay_.begin(), joint_delay_.end());
++      sum_abs_pd_ = true;
++    } else if (tree.get_child_optional("joint_delay_steps") || tree.get_child_optional("actuator_model")) {
++      throw std::runtime_error("identified actuator parameters require identified runtime schema");
++    }
+     difference_velocity_ = tree.get<bool>("position_difference");
++    if (identified && difference_velocity_) throw std::runtime_error("identified actuator requires encoder velocity");
+     user_limit_ = tree.get<double>("user_torque_limit");
+     q_scale_ = tree.get<double>("normalization.dof_pos");
+     dq_scale_ = tree.get<double>("normalization.dof_vel");
+@@ -188,7 +209,11 @@ class PE03Runtime {
+     fifo_[0] = offset_;
+     for (std::size_t i = 0; i < home_.size(); ++i) {
+       previous_q_[i] = data->qpos[7+i];
+-      const double torque = kp_[i]*(home_[i]+fifo_[delay_][i]-previous_q_[i])-kd_[i]*velocity_[i];
++      const double proportional = kp_[i]*(home_[i]+fifo_[joint_delay_[i]][i]-previous_q_[i]);
++      const double derivative = -kd_[i]*velocity_[i];
++      double torque = proportional + derivative;
++      const double demand = std::abs(proportional) + std::abs(derivative);
++      if (sum_abs_pd_ && demand > limits_[i]) torque *= limits_[i]/demand;
+       data->ctrl[i] = std::clamp(torque, -limits_[i], limits_[i])/model->actuator_gear[6*i];
+     }
+     // Batched training passes FULLPHYSICS and starts each substep without a warmstart.
+@@ -218,6 +243,8 @@ class PE03Runtime {
+   std::vector<double> target_low_, target_high_;
+   std::vector<std::vector<double>> fifo_;
+   int delay_{0};
++  std::vector<int> joint_delay_;
++  bool sum_abs_pd_{false};
+   bool difference_velocity_{true}, initialized_{false}, clock_gait_{true};
+   bool full_history_{false};
+   double transition_s_{0.5}, transition_elapsed_{0.5};
+diff --git a/src/unilab/base/backend/mujoco/batched_robot.py b/src/unilab/base/backend/mujoco/batched_robot.py
+index 4c91ae7b..38920e13 100644
+--- a/src/unilab/base/backend/mujoco/batched_robot.py
++++ b/src/unilab/base/backend/mujoco/batched_robot.py
+@@ -18,6 +18,7 @@ from mujoco.batch_env import BatchEnvPool
+ 
+ from unilab.base.backend.mujoco.native_batch import (
+     NativeMixedPdBatchEnvPool,
++    native_identified_pd_available,
+     native_joint_position_pd_available,
+ )
+ 
+@@ -179,6 +180,7 @@ class BatchedRobotSimulation:
+         track_foot_ground_contact: bool = False,
+         track_foot_clearance: bool = False,
+         track_gait_kinematics: bool = False,
++        actuator_model: dict[str, Any] | None = None,
+     ) -> None:
+         self.model = compile_robot_scene(
+             path,
+@@ -214,6 +216,11 @@ class BatchedRobotSimulation:
+             raise ValueError(f"actuator order mismatch: {actual}")
+         np.testing.assert_array_equal(model.jnt_qposadr[1:], np.arange(7, model.nq))
+         np.testing.assert_array_equal(model.jnt_dofadr[1:], np.arange(6, model.nv))
++        self.sum_abs_pd = actuator_model is not None
++        if actuator_model is not None:
++            from unilab.base.backend.mujoco.actuator_parameters import apply_actuator_parameters
++
++            apply_actuator_parameters(model, joint_order, actuator_model)
+         self.home = model.key(keyframe).qpos.copy()
+         self.joint_range = model.jnt_range[1:].copy()
+         self.gear = model.actuator_gear[:, 0].copy()
+@@ -315,7 +322,12 @@ class BatchedRobotSimulation:
+                 f"available {available / 1024**3:.1f} GiB. Set algo.num_envs=256 "
+                 "or choose an explicit count fitting this host."
+             )
+-        self.native_pd = native_pd and native_joint_position_pd_available()
++        native_available = (
++            native_identified_pd_available
++            if self.sum_abs_pd
++            else native_joint_position_pd_available
++        )
++        self.native_pd = native_pd and native_available()
+         if native_pd and not self.native_pd:
+             warnings.warn(
+                 "Native joint-position PD is unavailable; using the equivalent Python loop. "
+@@ -456,7 +468,11 @@ class BatchedRobotSimulation:
+         self.kp, self.kd, self.torque_scale = kp.copy(), kd.copy(), torque_scale.copy()
+         self.torque_limits = torque_limits.copy()
+         self.default_position = default_position.copy()
+-        self.delay_steps = delay_steps.astype(np.int64).copy()
++        if delay_steps.shape not in {(self.num_envs,), (self.num_envs, self.action_size)}:
++            raise ValueError("delay_steps must be per environment or per environment/joint")
++        if not np.isfinite(delay_steps).all() or (delay_steps < 0).any():
++            raise ValueError("delay_steps must be finite and nonnegative")
++        self.delay_steps = np.rint(delay_steps).astype(np.int64)
+         self.position_difference = position_difference
+         self.delay_buffer = np.zeros(
+             (self.num_envs, int(self.delay_steps.max()) + 1, self.action_size)
+@@ -496,11 +512,21 @@ class BatchedRobotSimulation:
+         for index in range(substeps):
+             self.delay_buffer[:, 1:] = self.delay_buffer[:, :-1]
+             self.delay_buffer[:, 0] = actions
+-            delayed = self.delay_buffer[rows, self.delay_steps]
++            delayed = (
++                self.delay_buffer[rows, self.delay_steps]
++                if self.delay_steps.ndim == 1
++                else self.delay_buffer[rows[:, None], self.delay_steps, np.arange(self.action_size)]
++            )
+             desired = self.default_position + delayed
++            p = self.kp * (desired - self.qpos[:, 7:])
++            d = -self.kd * self.joint_velocity
++            gain_scale = (
++                np.minimum(1.0, self.torque_limits / np.maximum(np.abs(p) + np.abs(d), 1e-300))
++                if self.sum_abs_pd
++                else 1.0
++            )
+             self.torque[:] = np.clip(
+-                (self.kp * (desired - self.qpos[:, 7:]) - self.kd * self.joint_velocity)
+-                * self.torque_scale,
++                (p + d) * gain_scale * self.torque_scale,
+                 -self.torque_limits,
+                 self.torque_limits,
+             )
+@@ -548,6 +574,7 @@ class BatchedRobotSimulation:
+                 wrench[:, :, self.body_ids[0], :3] = push_forces
+             if self.external_wrench is not None:
+                 wrench += self.external_wrench[:, None]
++        options = {"sum_abs_pd": True} if self.sum_abs_pd else {}
+         state, sensors, torque, velocity, fifo = self.pool._pool.step_joint_position_pd(
+             nstep=substeps,
+             state0=self.state,
+@@ -565,6 +592,7 @@ class BatchedRobotSimulation:
+             initial_fifo=self.delay_buffer,
+             position_difference=self.position_difference,
+             wrench=wrench,
++            **options,
+         )
+         self.state[:], self.sensors[:] = state, sensors
+         self.torque[:], self.joint_velocity[:] = torque, velocity
+diff --git a/src/unilab/base/backend/mujoco/native_batch.py b/src/unilab/base/backend/mujoco/native_batch.py
+index e513dfa8..832a5c20 100644
+--- a/src/unilab/base/backend/mujoco/native_batch.py
++++ b/src/unilab/base/backend/mujoco/native_batch.py
+@@ -37,6 +37,12 @@ def native_joint_position_pd_available() -> bool:
+     )
+ 
+ 
++def native_identified_pd_available() -> bool:
++    return _unilab_batch_env is not None and hasattr(
++        _unilab_batch_env.BatchEnvPool, "has_identified_joint_pd"
++    )
++
++
+ def native_mixed_pd_import_error() -> ImportError | None:
+     return _NATIVE_IMPORT_ERROR
+ 
+diff --git a/src/unilab/envs/locomotion/pe03/gait_config.py b/src/unilab/envs/locomotion/pe03/gait_config.py
+index d326785e..b7ba8293 100644
+--- a/src/unilab/envs/locomotion/pe03/gait_config.py
++++ b/src/unilab/envs/locomotion/pe03/gait_config.py
+@@ -136,6 +136,12 @@ def validate_gait_config(config: DictConfig) -> None:
+         config.control.policy_hz,
+     ) != (400, 400, 50):
+         raise ValueError("v4 control contract is 400 Hz physics/PD and 50 Hz policy")
++    if "actuator_model" in config.control:
++        from unilab.base.backend.mujoco.actuator_parameters import actuator_arrays
++
++        actuator_arrays(config.control.actuator_model, 6)
++        if config.env.dof_vel_use_pos_diff:
++            raise ValueError("identified PE03 requires encoder velocity, not position difference")
+     for field in ("kp", "kd", "torque_limits"):
+         values = np.asarray(config.control[field])
+         if values.shape != (6,) or not np.isfinite(values).all() or (values <= 0).any():
+diff --git a/src/unilab/envs/locomotion/pe03/gait_env.py b/src/unilab/envs/locomotion/pe03/gait_env.py
+index cbff228a..a5cb4621 100644
+--- a/src/unilab/envs/locomotion/pe03/gait_env.py
++++ b/src/unilab/envs/locomotion/pe03/gait_env.py
+@@ -75,6 +75,7 @@ class PE03GaitEnv:
+             native_pd=bool(config.training.native_pd) and not evaluation,
+             foot_contact_geoms=tuple(config.env.foot_contact_geoms),
+             track_gait_kinematics=True,
++            actuator_model=self.cfg["control"].get("actuator_model"),
+         )
+         self.home = b.home.copy()
+         self.height_target = float(self.home[2])
+diff --git a/src/unilab/envs/locomotion/pe03/gait_randomization.py b/src/unilab/envs/locomotion/pe03/gait_randomization.py
+index 1a58ecb4..95addd44 100644
+--- a/src/unilab/envs/locomotion/pe03/gait_randomization.py
++++ b/src/unilab/envs/locomotion/pe03/gait_randomization.py
+@@ -82,6 +82,11 @@ def configure_randomization(env):
+         raise ValueError("mass randomization produced a non-positive robot mass")
+     env.weight = masses.sum(axis=1) * b.gravity_acceleration
+     env.push_mass = masses[:, b.body_ids[0]].copy()
++    if "actuator_model" in c:
++        # The measured effective delay replaces the old common 20 ms assumption.
++        # play/domain_rand delay is an additional simulation-only jitter, not a
++        # second copy of the communication/servo delay.
++        delay = np.rint(delay[:, None] + np.array(c["actuator_model"]["delay_ms"]) / 1000 / b.dt)
+     b.configure_pd(
+         kp=kp,
+         kd=kd,
+diff --git a/tests/pe03/test_pe03_gait_export.py b/tests/pe03/test_pe03_gait_export.py
+index 5657199b..5b264d99 100644
+--- a/tests/pe03/test_pe03_gait_export.py
++++ b/tests/pe03/test_pe03_gait_export.py
+@@ -3,10 +3,13 @@
+ import subprocess
+ import sys
+ 
++import pytest
++
+ from unilab.envs.locomotion.pe03.config import ROOT
+ 
+ 
+-def test_v4_export_relocation_and_live_commands(tmp_path):
++@pytest.mark.parametrize("experiment", ["gait_fixed", "gait_identified"])
++def test_v4_export_relocation_and_live_commands(tmp_path, experiment):
+     script = tmp_path / "check_export.py"
+     script.write_text("""
+ import sys
+@@ -22,7 +25,7 @@ from unilab.envs.locomotion.pe03.play_env import make_play_env
+ from unilab.algos.torch.pe03.runner import PE03Runner
+ from unilab.adapters.pe03_ppo import load_policy
+ from scripts.train_pe03 import export_release
+-cfg=load_config(['+experiment=gait_fixed','algo.num_envs=2','algo.num_steps_per_env=2',
++cfg=load_config(['+experiment='+sys.argv[2],'algo.num_envs=2','algo.num_steps_per_env=2',
+  'algo.max_iterations=1','algo.num_learning_epochs=1','algo.num_mini_batches=1',
+  'training.device=cpu','training.logger=none','training.mujoco_threads=1','training.evaluation_interval=0'])
+ r=PE03Runner(cfg,Path('run'))
+@@ -34,10 +37,15 @@ policy=load_policy(checkpoint)
+ session=ort.InferenceSession('relocated/policy.onnx',providers=['CPUExecutionProvider'])
+ manifest=json.loads(Path('relocated/deployment_manifest.json').read_text())
+ runtime=json.loads((Path('relocated')/manifest['artifacts']['pe03_runtime_path']).read_text())
+-assert runtime['schema']=='pe03.runtime.v4.joint-limits.v1'
++assert runtime['schema']=='pe03.runtime.v4.joint-limits.v1'+('.identified.v1' if sys.argv[2]=='gait_identified' else '')
++if sys.argv[2]=='gait_identified':
++ assert runtime['saturation']=='sum_abs_pd' and not runtime['position_difference']
++ np.testing.assert_array_equal(runtime['joint_delay_steps'],np.rint(np.array(cfg.control.actuator_model.delay_ms)/2.5))
+ np.testing.assert_allclose(runtime['joint_target_limits'],
+  [[-.20,1.50],[-1.44,0],[-2.02,0],[-1.50,.20],[0,1.44],[0,2.02]])
+ env=make_play_env(policy.config,Path('relocated')/manifest['artifacts']['scene_path'])
++original=make_play_env(policy.config)
++original.reset()
+ try:
+  observation=env.reset()
+  for index in range(30):
+@@ -48,9 +56,13 @@ try:
+   with torch.no_grad(): expected=policy.action_mean(*[torch.from_numpy(v) for v in inputs.values()]).numpy()
+   np.testing.assert_allclose(action,expected,atol=1e-6,rtol=1e-5)
+   observation,reward,_,_=env.step(action[0])
++  original.step(action[0])
++  np.testing.assert_allclose(env.vector.backend.state,original.vector.backend.state,atol=1e-10,rtol=1e-10)
+   assert np.isfinite(reward)
+  np.testing.assert_allclose(env.vector.gaits[0],[2.5,.65,.05],atol=1e-7)
+-finally:env.close()
++finally:
++ env.close()
++ original.close()
+ 
+ from tools.compare_pe03_sim2sim import python_trajectory, cpp_trajectory
+ import onnx
+@@ -77,15 +89,19 @@ from omegaconf import OmegaConf
+ import json
+ runtime_path=release_path/'robot/pe03_runtime.json'
+ runtime=json.loads(runtime_path.read_text())
+-runtime['schema']=runtime['schema'].removesuffix('.joint-limits.v1')
++runtime['schema']=runtime['schema'].removesuffix('.identified.v1').removesuffix('.joint-limits.v1')
++for key in ('joint_delay_steps','saturation','actuator_model'): runtime.pop(key,None)
+ del runtime['joint_target_limits']
+ runtime_path.write_text(json.dumps(runtime))
+ old_config=OmegaConf.load(release_path/'runtime_config.yaml')
+ del old_config.control.clip_joint_targets
++if 'actuator_model' in old_config.control: del old_config.control.actuator_model
+ OmegaConf.save(old_config,release_path/'runtime_config.yaml')
+ expected=python_trajectory(release_path,10)
+ actual=cpp_trajectory(binary,release_path,10,Path('telemetry-legacy'))
+ for a,b in zip(expected,actual,strict=True):
+  np.testing.assert_allclose([a[k] for k in a],[b[k] for k in a],rtol=0,atol=2e-5)
+ """)
+-    subprocess.run([sys.executable, str(script), str(ROOT)], cwd=tmp_path, check=True, timeout=180)
++    subprocess.run(
++        [sys.executable, str(script), str(ROOT), experiment], cwd=tmp_path, check=True, timeout=180
++    )
+diff --git a/third_party/mujoco_uni_mixed_pd/build_extension.sh b/third_party/mujoco_uni_mixed_pd/build_extension.sh
+index a6c45ebc..7a0a2e82 100755
+--- a/third_party/mujoco_uni_mixed_pd/build_extension.sh
++++ b/third_party/mujoco_uni_mixed_pd/build_extension.sh
+@@ -43,7 +43,7 @@ DEST_SO="${DEST_DIR}/_unilab_batch_env${EXT_SUFFIX}"
+ 
+ if [[ -f "${DEST_SO}" ]] && \
+    PYTHONPATH="${ROOT_DIR}/src" "${PYTHON_BIN}" -c \
+-     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available, native_joint_position_pd_available; from unilab.base.backend.mujoco.native_batch import _unilab_batch_env; assert native_mixed_pd_available() and native_command_delay_pd_available() and native_joint_position_pd_available() and hasattr(_unilab_batch_env.BatchEnvPool, "has_joint_pd_telemetry")'; then
++     'from unilab.base.backend.mujoco.native_batch import native_command_delay_pd_available, native_mixed_pd_available, native_joint_position_pd_available; from unilab.base.backend.mujoco.native_batch import _unilab_batch_env; assert native_mixed_pd_available() and native_command_delay_pd_available() and native_joint_position_pd_available() and hasattr(_unilab_batch_env.BatchEnvPool, "has_identified_joint_pd")'; then
+   echo "UniLab native torque-FIFO, command-delay and joint-position PD extension: already ready"
+   exit 0
+ fi
+@@ -61,6 +61,7 @@ patch --directory="${SOURCE_DIR}" --strip=1 < "${COMMAND_DELAY_PATCH_PATH}"
+ patch --directory="${SOURCE_DIR}" --strip=1 < "${JOINT_POSITION_PATCH_PATH}"
+ patch --directory="${SOURCE_DIR}" --strip=1 < "${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/controlled_forward.patch"
+ patch --directory="${SOURCE_DIR}" --strip=1 < "${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/joint_pd_telemetry.patch"
++patch --directory="${SOURCE_DIR}" --strip=1 < "${ROOT_DIR}/third_party/mujoco_uni_mixed_pd/identified_joint_pd.patch"
+ 
+ pushd "${SOURCE_DIR}" >/dev/null
+ MUJOCO_PATH="${MUJOCO_DIR}" \
+@@ -84,6 +85,6 @@ from unilab.base.backend.mujoco.native_batch import (
+ 
+ if not all((native_mixed_pd_available(), native_command_delay_pd_available(), native_joint_position_pd_available())):
+     raise SystemExit("native PD extension import check failed")
+-assert hasattr(_unilab_batch_env.BatchEnvPool, "has_joint_pd_telemetry")
++assert hasattr(_unilab_batch_env.BatchEnvPool, "has_identified_joint_pd")
+ print("UniLab native torque-FIFO, command-delay and joint-position PD extension: ready")
+ PY

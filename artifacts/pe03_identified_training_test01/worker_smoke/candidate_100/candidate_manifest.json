@@ -1,0 +1,53 @@
+{
+  "status": "candidate_not_activated",
+  "release": "/ssd/Aar_Unilab/releases/pe03/pe03_gait_flat/2026-09-30_18-14-17_572270_mujoco_identified_100",
+  "converter_sha256": "66767f3a8930b70f17b7c950e3995016e545a7a57215d32b8167380e203da659",
+  "control_model": {
+    "saturation": "sum_abs_pd",
+    "armature": [
+      0.006000966963410477,
+      0.007297767118167024,
+      0.01796254567238364,
+      0.006000966963410477,
+      0.007297767118167024,
+      0.01796254567238364
+    ],
+    "damping": [
+      7.128082597949125e-05,
+      5.752309411745311e-07,
+      0.0014794116477199319,
+      7.128082597949125e-05,
+      5.752309411745311e-07,
+      0.0014794116477199319
+    ],
+    "frictionloss": [
+      0.00010135398083718428,
+      0.0001006086913528001,
+      0.15242735387585288,
+      0.00010135398083718428,
+      0.0001006086913528001,
+      0.15242735387585288
+    ],
+    "delay_ms": [
+      24.0,
+      24.0,
+      24.0,
+      24.0,
+      24.0,
+      24.0
+    ],
+    "source": "artifacts/pe03_gain_matrix_test01/identification/shared_delay_comparison/candidate.yaml",
+    "source_sha256": "832275317fa1c63697846b391e7bb708ca958aa61336544283785b0411954003",
+    "status": "experimental"
+  },
+  "hardware_delay_injected": false,
+  "matching_policy_profile_required": true,
+  "note": "Staging only. The supplied profile differs from legacy action limits; do not select weights under an unmatched profile.",
+  "sha256": {
+    "training_config.yaml": "feed3191f319fc61c100178e04ec9b0e9333bb6608bfe577f97dbbafe7131cca",
+    "policy.yaml": "4187f55a0702ac39e227036c0a4409ee1011d7759261ffa58902b4af54152e40",
+    "policy.mnn": "9b1b57894c72594a11d05d9e9eefe69a7a4e61044f83fba5bbd22b6fc78aef68",
+    "parity_cases.npz": "b2cc7417e9f1b442e6adf0e1bc8b1faaa555bac9e06f551f5748a8eb9c558955",
+    "policy.onnx": "00db6ab62c5885ab5cc7abed99a7d8867856a37cb61baa2ebc6312c8539af304"
+  }
+}

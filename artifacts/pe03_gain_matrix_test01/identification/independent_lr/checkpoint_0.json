@@ -1,0 +1,114 @@
+{
+  "parameters": [
+    0.006106520727143951,
+    0.00748116730729173,
+    0.01805919664211906,
+    0.006000966963410477,
+    0.007297767118167024,
+    0.01796254567238364,
+    0.0,
+    0.0,
+    0.002453128869484922,
+    7.128082597949125e-05,
+    5.752309411745311e-07,
+    0.0014794116477199319,
+    0.0,
+    0.0,
+    0.11576494234604547,
+    0.00010135398083718428,
+    0.0001006086913528001,
+    0.15242735387585288,
+    0.024,
+    0.024,
+    0.024,
+    0.024,
+    0.024,
+    0.024
+  ],
+  "history": [
+    {
+      "pass_index": 0,
+      "joint": "L_hip_",
+      "calls": 102,
+      "before_loss": 0.01411247924492823,
+      "after_loss": 0.014084392834637909,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.006106520727143951,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 0,
+      "joint": "L_thigh_",
+      "calls": 102,
+      "before_loss": 0.020632999070988048,
+      "after_loss": 0.020603625838266314,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.00748123946213507,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 0,
+      "joint": "L_calf_",
+      "calls": 220,
+      "before_loss": 0.0021415026089863444,
+      "after_loss": 0.0019515621298396473,
+      "converged": false,
+      "message": "Maximum number of function evaluations has been exceeded.",
+      "parameters": [
+        0.018059318582590488,
+        0.002532020951456588,
+        0.11582667644147049
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "L_hip_",
+      "calls": 52,
+      "before_loss": 0.014084401351106678,
+      "after_loss": 0.014084401351106678,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.006106520727143951,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "L_thigh_",
+      "calls": 51,
+      "before_loss": 0.020606744053297744,
+      "after_loss": 0.020606744015134546,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.00748116730729173,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "L_calf_",
+      "calls": 34,
+      "before_loss": 0.0019515621398076945,
+      "after_loss": 0.0019515304027049826,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.01805919664211906,
+        0.002453128869484922,
+        0.11576494234604547
+      ]
+    }
+  ]
+}

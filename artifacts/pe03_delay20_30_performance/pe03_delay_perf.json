@@ -1,0 +1,134 @@
+[
+  {
+    "case": "legacy_gait",
+    "measurements": [
+      {
+        "env_seconds": 1.1308633500011638,
+        "backend_seconds": 0.6734262130048592
+      },
+      {
+        "env_seconds": 1.1220182809920516,
+        "backend_seconds": 0.6743195119779557
+      },
+      {
+        "env_seconds": 1.135086318012327,
+        "backend_seconds": 0.6737410079804249
+      }
+    ],
+    "median_env_seconds": 1.1308633500011638,
+    "median_backend_seconds": 0.6737410079804249,
+    "native_pd": true,
+    "delay_ms_min": 20.0,
+    "delay_ms_max": 20.0
+  },
+  {
+    "case": "identified_random20_30",
+    "measurements": [
+      {
+        "env_seconds": 2.2448954109859187,
+        "backend_seconds": 1.7695697610033676
+      },
+      {
+        "env_seconds": 2.17578721998143,
+        "backend_seconds": 1.7078217670496088
+      },
+      {
+        "env_seconds": 2.165210200008005,
+        "backend_seconds": 1.708371765067568
+      }
+    ],
+    "median_env_seconds": 2.17578721998143,
+    "median_backend_seconds": 1.708371765067568,
+    "native_pd": true,
+    "delay_ms_min": 20.0,
+    "delay_ms_max": 30.0
+  },
+  {
+    "case": "identified_fixed25",
+    "measurements": [
+      {
+        "env_seconds": 2.190670361975208,
+        "backend_seconds": 1.722340227017412
+      },
+      {
+        "env_seconds": 2.167306835006457,
+        "backend_seconds": 1.6986357739951927
+      },
+      {
+        "env_seconds": 2.166406409989577,
+        "backend_seconds": 1.7041452340781689
+      }
+    ],
+    "median_env_seconds": 2.167306835006457,
+    "median_backend_seconds": 1.7041452340781689,
+    "native_pd": true,
+    "delay_ms_min": 25.0,
+    "delay_ms_max": 25.0
+  },
+  {
+    "case": "identified_zero_joint_friction",
+    "measurements": [
+      {
+        "env_seconds": 2.1857512870046776,
+        "backend_seconds": 1.6808410990342963
+      },
+      {
+        "env_seconds": 2.1755068769853096,
+        "backend_seconds": 1.6775791399995796
+      },
+      {
+        "env_seconds": 2.1788864390109666,
+        "backend_seconds": 1.684065048058983
+      }
+    ],
+    "median_env_seconds": 2.1788864390109666,
+    "median_backend_seconds": 1.6808410990342963,
+    "native_pd": true,
+    "delay_ms_min": 20.0,
+    "delay_ms_max": 30.0
+  },
+  {
+    "case": "identified_calf_friction_only",
+    "measurements": [
+      {
+        "env_seconds": 2.146825142990565,
+        "backend_seconds": 1.6847789719467983
+      },
+      {
+        "env_seconds": 2.127640632010298,
+        "backend_seconds": 1.6724878210225143
+      },
+      {
+        "env_seconds": 2.1427637280139606,
+        "backend_seconds": 1.6847801610128954
+      }
+    ],
+    "median_env_seconds": 2.1427637280139606,
+    "median_backend_seconds": 1.6847789719467983,
+    "native_pd": true,
+    "delay_ms_min": 20.0,
+    "delay_ms_max": 30.0
+  },
+  {
+    "case": "identified_control_legacy_physics",
+    "measurements": [
+      {
+        "env_seconds": 2.204444008995779,
+        "backend_seconds": 1.672838251979556
+      },
+      {
+        "env_seconds": 2.1854899500031024,
+        "backend_seconds": 1.6588769119407516
+      },
+      {
+        "env_seconds": 2.178201024013106,
+        "backend_seconds": 1.6586322090006433
+      }
+    ],
+    "median_env_seconds": 2.1854899500031024,
+    "median_backend_seconds": 1.6588769119407516,
+    "native_pd": true,
+    "delay_ms_min": 20.0,
+    "delay_ms_max": 30.0
+  }
+]

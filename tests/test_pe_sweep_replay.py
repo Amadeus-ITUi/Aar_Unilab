@@ -36,13 +36,27 @@ def fixture(tmp_path_factory):
 
 @pytest.mark.parametrize("dt", [0.001, 0.002])
 @pytest.mark.parametrize("legacy", [False, True])
-def test_native_matches_explicit_python_zoh_scaled_pd(fixture, dt, legacy):
+@pytest.mark.parametrize("independent", [False, True])
+def test_native_matches_explicit_python_zoh_scaled_pd(fixture, dt, legacy, independent):
     dll, filename, original = fixture
     model = mujoco.MjModel.from_binary_path(str(filename))
     par = np.array([0.01] * 3 + [0.1] * 3 + [0.02] * 3 + [0.004] * 3)
     model.dof_armature[:] = par[:3].tolist() * 2
     model.dof_damping[:] = par[3:6].tolist() * 2
     model.dof_frictionloss[:] = par[6:9].tolist() * 2
+    delays = np.repeat(par[9], 6)
+    if independent:
+        # Deliberately asymmetric values catch accidental left/right sharing.
+        par = np.r_[
+            np.linspace(0.006, 0.025, 6),
+            np.linspace(0.01, 0.25, 6),
+            np.linspace(0.02, 0.3, 6),
+            np.arange(6) * 0.002,
+        ]
+        model.dof_armature[:], model.dof_damping[:], model.dof_frictionloss[:] = np.split(
+            par[:18], 3
+        )
+        delays = par[18:]
     model.opt.timestep = dt
     q0, dq0 = np.full(6, 0.2), np.full(6, 5.0)
     times = np.array([0.0, 0.01, 0.02])
@@ -55,7 +69,8 @@ def test_native_matches_explicit_python_zoh_scaled_pd(fixture, dt, legacy):
     handle = dll.pe_create(str(filename).encode())
     assert handle
     try:
-        code = dll.pe_run(
+        run = dll.pe_run_independent if independent else dll.pe_run
+        code = run(
             handle,
             par,
             dt,
@@ -79,19 +94,22 @@ def test_native_matches_explicit_python_zoh_scaled_pd(fixture, dt, legacy):
     mujoco.mj_forward(model, data)
     limit = np.array([5.5, 5.5, 14] * 2)
     expected = []
-    idx = 0
+    idx = np.zeros(6, dtype=int)
     scale = np.ones(6)
     tau = np.zeros(6)
     for step in range(round(samples[-1] / dt) + 1):
         if step % round(0.002 / dt) == 0:
             expected.append(np.r_[data.qpos, data.qvel, tau, scale, data.ncon])
-            while idx + 1 < len(times) and times[idx + 1] <= data.time - par[9] + 1e-9:
-                idx += 1
-            p = command[idx, 12:18] * (command[idx, :6] - data.qpos)
-            d = command[idx, 18:24] * (command[idx, 6:12] - data.qvel)
+            for j in range(6):
+                while idx[j] + 1 < len(times) and times[idx[j] + 1] <= data.time - delays[j] + 1e-9:
+                    idx[j] += 1
+            selected = command[idx]
+            joints = np.arange(6)
+            p = selected[joints, 12 + joints] * (selected[joints, joints] - data.qpos)
+            d = selected[joints, 18 + joints] * (selected[joints, 6 + joints] - data.qvel)
             scale = np.minimum(1, limit / np.maximum(abs(p) + abs(d), 1e-30))
-        p = command[idx, 12:18] * (command[idx, :6] - data.qpos)
-        d = command[idx, 18:24] * (command[idx, 6:12] - data.qvel)
+        p = selected[joints, 12 + joints] * (selected[joints, joints] - data.qpos)
+        d = selected[joints, 18 + joints] * (selected[joints, 6 + joints] - data.qvel)
         tau = np.clip(p + d, -limit, limit) if legacy else scale * (p + d)
         data.qfrc_applied[:] = tau
         mujoco.mj_step(model, data)

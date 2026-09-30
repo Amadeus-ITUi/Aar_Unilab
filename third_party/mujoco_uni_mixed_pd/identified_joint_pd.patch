@@ -1,0 +1,80 @@
+--- a/mujoco/batch_env.cc
++++ b/mujoco/batch_env.cc
+@@ -1563,6 +1563,7 @@
+ struct JointPdArgs {
+   int nu, nstep, nstate, nsensor, depth;
+   bool position_difference;
++  bool sum_abs_pd = false, joint_delay = false;
+   int telemetry_stride = 0, ncontact = 0;
+   const int* contact_adr = nullptr;
+   mjtNum *contact_out = nullptr, *acceleration_out = nullptr;
+@@ -1611,9 +1612,12 @@
+       mju_copy(fifo.data(), p.actions + offset, p.nu);
+       for (int i = 0; i < p.nu; ++i) {
+         previous[i] = d->qpos[p.qpos_adr[i]];
+-        mjtNum target = p.nominal[offset + i] + fifo[p.delay[r] * p.nu + i];
+-        mjtNum torque = p.kp[offset + i] * (target - previous[i]) -
+-                        p.kd[offset + i] * velocity[i];
++        mjtNum target = p.nominal[offset + i] + fifo[p.delay[p.joint_delay ? offset + i : r] * p.nu + i];
++        const mjtNum proportional = p.kp[offset + i] * (target - previous[i]);
++        const mjtNum derivative = -p.kd[offset + i] * velocity[i];
++        mjtNum torque = proportional + derivative;
++        const mjtNum demand = std::abs(proportional) + std::abs(derivative);
++        if (p.sum_abs_pd && demand > p.limits[i]) torque *= p.limits[i] / demand;
+         torque *= p.scale[offset + i];
+         torque = std::min(std::max(torque, -p.limits[i]), p.limits[i]);
+         p.torque_out[offset + i] = torque;
+@@ -2070,7 +2074,7 @@
+       const PyIArray delay_steps, const PyCArray initial_fifo,
+       bool position_difference, std::optional<PyCArray> wrench,
+       int telemetry_stride, std::optional<PyIArray> contact_adr,
+-      std::optional<int> chunk_size) {
++      std::optional<int> chunk_size, bool sum_abs_pd) {
+     if (nstep < 1) throw py::value_error("nstep must be positive");
+     if (chunk_size.has_value() && *chunk_size <= 0)
+       throw py::value_error("chunk_size must be positive");
+@@ -2083,13 +2087,17 @@
+     }
+     auto pos_info = qpos_adr.request(), vel_info = qvel_adr.request();
+     auto delay_info = delay_steps.request();
+-    if (pos_info.size != nu || vel_info.size != nu || delay_info.size != nbatch_) {
++    const bool joint_delay = delay_info.ndim == 2 &&
++        delay_info.shape[0] == nbatch_ && delay_info.shape[1] == nu;
++    const bool shared_delay = delay_info.ndim == 1 && delay_info.shape[0] == nbatch_;
++    if (pos_info.size != nu || vel_info.size != nu || (!joint_delay && !shared_delay)) {
+       throw py::value_error("invalid joint-address or delay array size");
+     }
+     JointPdArgs p{};
+     p.nu = nu; p.nstep = nstep; p.nstate = nstate_; p.nsensor = nsensordata_;
+     p.depth = static_cast<int>(fifo_info.shape[1]);
+     p.position_difference = position_difference;
++    p.sum_abs_pd = sum_abs_pd; p.joint_delay = joint_delay;
+     size_t batch = static_cast<size_t>(nbatch_) * nu;
+     p.state = required_array_ptr(state0, "state0", static_cast<size_t>(nbatch_) * nstate_);
+     p.actions = required_array_ptr(actions, "actions", batch);
+@@ -2114,7 +2122,7 @@
+         throw py::value_error("invalid joint address, gear, or torque limit");
+       }
+     }
+-    for (int i = 0; i < nbatch_; ++i) {
++    for (int i = 0; i < delay_info.size; ++i) {
+       if (p.delay[i] < 0 || p.delay[i] >= p.depth)
+         throw py::value_error("delay_steps must index the FIFO depth");
+     }
+@@ -2899,7 +2907,7 @@
+            py::arg("delay_steps"), py::arg("initial_fifo"),
+            py::arg("position_difference"), py::arg("wrench") = py::none(),
+            py::arg("telemetry_stride") = 0, py::arg("contact_adr") = py::none(),
+-           py::arg("chunk_size") = py::none())
++           py::arg("chunk_size") = py::none(), py::arg("sum_abs_pd") = false)
+       .def("step_command_delay_pd",
+            &BatchEnvPool::step_command_delay_pd, py::kw_only(),
+            py::arg("nstep"), py::arg("control_spec"), py::arg("state0"),
+@@ -2918,6 +2926,7 @@
+       .def("forward_controlled", &BatchEnvPool::forward_controlled,
+            py::arg("state0"), py::arg("control"), py::arg("wrench"),
+            py::arg("ids") = py::none())
++      .def_property_readonly("has_identified_joint_pd", [](const BatchEnvPool&) { return true; })
+       .def_property_readonly("has_joint_pd_telemetry", [](const BatchEnvPool&) { return true; })
+       .def("forward", &BatchEnvPool::forward, py::kw_only(),
+            py::arg("state0"), py::arg("warmstart0") = py::none(),

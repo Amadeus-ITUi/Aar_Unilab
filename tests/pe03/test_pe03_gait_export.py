@@ -3,10 +3,13 @@
 import subprocess
 import sys
 
+import pytest
+
 from unilab.envs.locomotion.pe03.config import ROOT
 
 
-def test_v4_export_relocation_and_live_commands(tmp_path):
+@pytest.mark.parametrize("experiment", ["gait_fixed", "gait_identified"])
+def test_v4_export_relocation_and_live_commands(tmp_path, experiment):
     script = tmp_path / "check_export.py"
     script.write_text("""
 import sys
@@ -22,7 +25,7 @@ from unilab.envs.locomotion.pe03.play_env import make_play_env
 from unilab.algos.torch.pe03.runner import PE03Runner
 from unilab.adapters.pe03_ppo import load_policy
 from scripts.train_pe03 import export_release
-cfg=load_config(['+experiment=gait_fixed','algo.num_envs=2','algo.num_steps_per_env=2',
+cfg=load_config(['+experiment='+sys.argv[2],'algo.num_envs=2','algo.num_steps_per_env=2',
  'algo.max_iterations=1','algo.num_learning_epochs=1','algo.num_mini_batches=1',
  'training.device=cpu','training.logger=none','training.mujoco_threads=1','training.evaluation_interval=0'])
 r=PE03Runner(cfg,Path('run'))
@@ -34,10 +37,15 @@ policy=load_policy(checkpoint)
 session=ort.InferenceSession('relocated/policy.onnx',providers=['CPUExecutionProvider'])
 manifest=json.loads(Path('relocated/deployment_manifest.json').read_text())
 runtime=json.loads((Path('relocated')/manifest['artifacts']['pe03_runtime_path']).read_text())
-assert runtime['schema']=='pe03.runtime.v4.joint-limits.v1'
+assert runtime['schema']=='pe03.runtime.v4.joint-limits.v1'+('.identified.v1' if sys.argv[2]=='gait_identified' else '')
+if sys.argv[2]=='gait_identified':
+ assert runtime['saturation']=='sum_abs_pd' and not runtime['position_difference']
+ np.testing.assert_array_equal(runtime['joint_delay_steps'],np.rint(np.array(cfg.control.actuator_model.delay_ms)/2.5))
 np.testing.assert_allclose(runtime['joint_target_limits'],
  [[-.20,1.50],[-1.44,0],[-2.02,0],[-1.50,.20],[0,1.44],[0,2.02]])
 env=make_play_env(policy.config,Path('relocated')/manifest['artifacts']['scene_path'])
+original=make_play_env(policy.config)
+original.reset()
 try:
  observation=env.reset()
  for index in range(30):
@@ -48,9 +56,13 @@ try:
   with torch.no_grad(): expected=policy.action_mean(*[torch.from_numpy(v) for v in inputs.values()]).numpy()
   np.testing.assert_allclose(action,expected,atol=1e-6,rtol=1e-5)
   observation,reward,_,_=env.step(action[0])
+  original.step(action[0])
+  np.testing.assert_allclose(env.vector.backend.state,original.vector.backend.state,atol=1e-10,rtol=1e-10)
   assert np.isfinite(reward)
  np.testing.assert_allclose(env.vector.gaits[0],[2.5,.65,.05],atol=1e-7)
-finally:env.close()
+finally:
+ env.close()
+ original.close()
 
 from tools.compare_pe03_sim2sim import python_trajectory, cpp_trajectory
 import onnx
@@ -77,15 +89,19 @@ from omegaconf import OmegaConf
 import json
 runtime_path=release_path/'robot/pe03_runtime.json'
 runtime=json.loads(runtime_path.read_text())
-runtime['schema']=runtime['schema'].removesuffix('.joint-limits.v1')
+runtime['schema']=runtime['schema'].removesuffix('.identified.v1').removesuffix('.joint-limits.v1')
+for key in ('joint_delay_steps','saturation','actuator_model'): runtime.pop(key,None)
 del runtime['joint_target_limits']
 runtime_path.write_text(json.dumps(runtime))
 old_config=OmegaConf.load(release_path/'runtime_config.yaml')
 del old_config.control.clip_joint_targets
+if 'actuator_model' in old_config.control: del old_config.control.actuator_model
 OmegaConf.save(old_config,release_path/'runtime_config.yaml')
 expected=python_trajectory(release_path,10)
 actual=cpp_trajectory(binary,release_path,10,Path('telemetry-legacy'))
 for a,b in zip(expected,actual,strict=True):
  np.testing.assert_allclose([a[k] for k in a],[b[k] for k in a],rtol=0,atol=2e-5)
 """)
-    subprocess.run([sys.executable, str(script), str(ROOT)], cwd=tmp_path, check=True, timeout=180)
+    subprocess.run(
+        [sys.executable, str(script), str(ROOT), experiment], cwd=tmp_path, check=True, timeout=180
+    )

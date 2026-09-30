@@ -1,0 +1,56 @@
+# @package _global_
+# Physical parameters from the shared 24 ms fit; A/B fitted, C held out.
+# Training delay override: 20 ms base + 0-10 ms shared per-environment offset.
+# At 400 Hz the total is 20/22.5/25/27.5/30 ms. Sampled once at initialization.
+# This is a robustness setting, not a new delay identification. Fresh policy.
+defaults:
+- gait_fixed
+- _self_
+env:
+  dof_vel_use_pos_diff: false
+control:
+  actuator_model:
+    saturation: sum_abs_pd
+    armature:
+    - 0.006000966963410477
+    - 0.007297767118167024
+    - 0.01796254567238364
+    - 0.006000966963410477
+    - 0.007297767118167024
+    - 0.01796254567238364
+    damping:
+    - 7.128082597949125e-05
+    - 5.752309411745311e-07
+    - 0.0014794116477199319
+    - 7.128082597949125e-05
+    - 5.752309411745311e-07
+    - 0.0014794116477199319
+    frictionloss:
+    - 0.00010135398083718428
+    - 0.0001006086913528001
+    - 0.15242735387585288
+    - 0.00010135398083718428
+    - 0.0001006086913528001
+    - 0.15242735387585288
+    delay_ms:
+    - 20.0
+    - 20.0
+    - 20.0
+    - 20.0
+    - 20.0
+    - 20.0
+    source: artifacts/pe03_gain_matrix_test01/identification/shared_delay_comparison/candidate.yaml
+    source_sha256: 832275317fa1c63697846b391e7bb708ca958aa61336544283785b0411954003
+    status: experimental
+domain_rand:
+  delay_ms_range:
+  - 0.0
+  - 10.0
+training:
+  experiment_name: gait_identified_delay20_30
+  log_root: logs/pe03_gait_identified_delay20_30
+  resume: null
+  stage_from: null
+play:
+  delay_ms: 0
+  telemetry: logs/play/pe03/pe03_gait_flat/identified_delay20_30

@@ -1,0 +1,15 @@
+{
+  "collection_seconds": [
+    1.4756849980039988,
+    1.5993984649830963,
+    1.6363422170106787,
+    1.6519676629977766
+  ],
+  "steady_median_seconds": 1.6363422170106787,
+  "device": "cuda",
+  "native_pd": true,
+  "timer_pointer": null,
+  "num_envs": 4096,
+  "steps": 24,
+  "policy_updates": 0
+}

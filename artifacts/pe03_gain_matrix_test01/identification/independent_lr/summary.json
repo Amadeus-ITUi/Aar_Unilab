@@ -1,0 +1,108 @@
+{
+  "joints": [
+    {
+      "joint": "L_hip_",
+      "armature_kg_m2": 0.006106520727143951,
+      "damping_nm_s_rad": 0.0,
+      "frictionloss_nm": 0.0,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.023747685304013402,
+      "independent_q_rmse_rad": 0.023853321113378113,
+      "q_rmse_improvement_percent": -0.4448257083264462,
+      "tied_dq_rmse_rad_s": 0.5522006353377036,
+      "independent_dq_rmse_rad_s": 0.5520438128646233,
+      "independent_q_bias_rad": -0.0009270196753492887
+    },
+    {
+      "joint": "R_hip_",
+      "armature_kg_m2": 0.005893378862724733,
+      "damping_nm_s_rad": 0.0,
+      "frictionloss_nm": 0.0,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.02278540921878574,
+      "independent_q_rmse_rad": 0.02261975044270613,
+      "q_rmse_improvement_percent": 0.7270388452932819,
+      "tied_dq_rmse_rad_s": 0.5210613859886001,
+      "independent_dq_rmse_rad_s": 0.5199814174165666,
+      "independent_q_bias_rad": -0.0009956285233969305
+    },
+    {
+      "joint": "L_thigh_",
+      "armature_kg_m2": 0.00748116730729173,
+      "damping_nm_s_rad": 0.0,
+      "frictionloss_nm": 0.0,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.02102888014381915,
+      "independent_q_rmse_rad": 0.021098677692136,
+      "q_rmse_improvement_percent": -0.3319128162769358,
+      "tied_dq_rmse_rad_s": 0.43783139194047066,
+      "independent_dq_rmse_rad_s": 0.4360963167482165,
+      "independent_q_bias_rad": -0.010573243521522186
+    },
+    {
+      "joint": "R_thigh_",
+      "armature_kg_m2": 0.007115924854497566,
+      "damping_nm_s_rad": 0.0,
+      "frictionloss_nm": 0.0,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.02301386248962282,
+      "independent_q_rmse_rad": 0.02293912053064417,
+      "q_rmse_improvement_percent": 0.32476929508182817,
+      "tied_dq_rmse_rad_s": 0.43133140165168266,
+      "independent_dq_rmse_rad_s": 0.4327710686491054,
+      "independent_q_bias_rad": 0.012724945606749784
+    },
+    {
+      "joint": "L_calf_",
+      "armature_kg_m2": 0.01805919664211906,
+      "damping_nm_s_rad": 0.002453128869484922,
+      "frictionloss_nm": 0.11576494234604547,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.01676371154434334,
+      "independent_q_rmse_rad": 0.016601809634027603,
+      "q_rmse_improvement_percent": 0.9657879753387055,
+      "tied_dq_rmse_rad_s": 0.30218646933649873,
+      "independent_dq_rmse_rad_s": 0.3295634067660623,
+      "independent_q_bias_rad": -0.005389679588112963
+    },
+    {
+      "joint": "R_calf_",
+      "armature_kg_m2": 0.017854716371112443,
+      "damping_nm_s_rad": 0.00023116540280223934,
+      "frictionloss_nm": 0.19073761684021479,
+      "delay_ms": 24.0,
+      "tied_q_rmse_rad": 0.01672655437837833,
+      "independent_q_rmse_rad": 0.015175073296924359,
+      "q_rmse_improvement_percent": 9.27555697579593,
+      "tied_dq_rmse_rad_s": 0.3280376077651541,
+      "independent_dq_rmse_rad_s": 0.2885312938396631,
+      "independent_q_bias_rad": 0.005927051963882047
+    }
+  ],
+  "left_right_differences": [
+    {
+      "group": "hip",
+      "armature_symmetric_relative_difference_percent": 3.552394131683732,
+      "damping_absolute_difference": 0.0,
+      "friction_absolute_difference": 0.0
+    },
+    {
+      "group": "thigh",
+      "armature_symmetric_relative_difference_percent": 5.004317966152968,
+      "damping_absolute_difference": 0.0,
+      "friction_absolute_difference": 0.0
+    },
+    {
+      "group": "calf",
+      "armature_symmetric_relative_difference_percent": 1.1387245435009057,
+      "damping_absolute_difference": 0.002221963466682683,
+      "friction_absolute_difference": 0.07497267449416932
+    }
+  ],
+  "train_loss_improvement_percent": 0.6723354167783246,
+  "final_pass_converged": true,
+  "conditional_best_shared_delay_ms": 24.0,
+  "tied_validation_q_nrmse": 0.07332296573146303,
+  "independent_validation_q_nrmse": 0.07291594106325852,
+  "validation_q_nrmse_improvement_percent": 0.5551121182075347
+}

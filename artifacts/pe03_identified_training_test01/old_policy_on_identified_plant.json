@@ -1,0 +1,70 @@
+{
+  "old_checkpoint": "logs/pe03_gait_fixed/2026-09-21_18-58-13_996063_mujoco/model_8800.pt",
+  "old_checkpoint_sha256": "01aa5099afb9294e73afd61230d800633a234fbe12e0dfe27601e26d898c1f34",
+  "note": "Old policy weights evaluated on the NEW identified plant and hardware-aligned velocity observation. Not a claim about real robot performance or an exact replay of the original training simulator.",
+  "nominal_commands": {
+    "standing": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.21716280663544776,
+      "yaw_error_rad_s": 0.4850404561468457,
+      "height_error_m": 0.009629149797879086,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.311
+    },
+    "forward": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.21204136545679791,
+      "yaw_error_rad_s": 0.2898471021697226,
+      "height_error_m": 0.006402537093345137,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.167
+    },
+    "backward": {
+      "failed": true,
+      "episode_seconds": 4.92,
+      "planar_error_m_s": 0.3421452031841221,
+      "yaw_error_rad_s": 0.6343912500455926,
+      "height_error_m": 0.013284667862255956,
+      "nonfoot_fraction": 0.012195121951219513,
+      "joint_limit_fraction": 0.4105691056910569
+    },
+    "left": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.25186637125524713,
+      "yaw_error_rad_s": 0.562018269003512,
+      "height_error_m": 0.01069997183575375,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.261
+    },
+    "right": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.1819425524684559,
+      "yaw_error_rad_s": 0.3710080786314405,
+      "height_error_m": 0.0070366693576313505,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.293
+    },
+    "turn_left": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.18112364582002294,
+      "yaw_error_rad_s": 0.33278559088643145,
+      "height_error_m": 0.006320171893060798,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.262
+    },
+    "turn_right": {
+      "failed": false,
+      "episode_seconds": 20.0,
+      "planar_error_m_s": 0.19599229456405043,
+      "yaw_error_rad_s": 0.454493385939538,
+      "height_error_m": 0.009825466778070167,
+      "nonfoot_fraction": 0.0,
+      "joint_limit_fraction": 0.252
+    }
+  }
+}

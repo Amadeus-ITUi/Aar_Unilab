@@ -1,0 +1,114 @@
+{
+  "parameters": [
+    0.006000966963410477,
+    0.007297767118167024,
+    0.01796254567238364,
+    0.005893378862724733,
+    0.007115924854497566,
+    0.017854716371112443,
+    7.128082597949125e-05,
+    5.752309411745311e-07,
+    0.0014794116477199319,
+    0.0,
+    0.0,
+    0.00023116540280223934,
+    0.00010135398083718428,
+    0.0001006086913528001,
+    0.15242735387585288,
+    0.0,
+    0.0,
+    0.19073761684021479,
+    0.024,
+    0.024,
+    0.024,
+    0.024,
+    0.024,
+    0.024
+  ],
+  "history": [
+    {
+      "pass_index": 0,
+      "joint": "R_hip_",
+      "calls": 100,
+      "before_loss": 0.01256436896453093,
+      "after_loss": 0.012537624474867223,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.005893231807506659,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 0,
+      "joint": "R_thigh_",
+      "calls": 102,
+      "before_loss": 0.022305029628192342,
+      "after_loss": 0.022275254768782365,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.007114718589055304,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 0,
+      "joint": "R_calf_",
+      "calls": 206,
+      "before_loss": 0.0019329038686445883,
+      "after_loss": 0.0017397418645614283,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.01782256980700979,
+        0.00030396968990954504,
+        0.1908647193232515
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "R_hip_",
+      "calls": 50,
+      "before_loss": 0.012537622919516178,
+      "after_loss": 0.0125376228994412,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.005893378862724733,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "R_thigh_",
+      "calls": 51,
+      "before_loss": 0.022274539715230336,
+      "after_loss": 0.022274538933207008,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.007115924854497566,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "pass_index": 1,
+      "joint": "R_calf_",
+      "calls": 72,
+      "before_loss": 0.001739741725408688,
+      "after_loss": 0.001738993787046189,
+      "converged": true,
+      "message": "Optimization terminated successfully.",
+      "parameters": [
+        0.017854716371112443,
+        0.00023116540280223934,
+        0.19073761684021479
+      ]
+    }
+  ]
+}

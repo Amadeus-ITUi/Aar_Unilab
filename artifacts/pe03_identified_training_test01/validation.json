@@ -1,0 +1,42 @@
+{
+  "focused_initial": "12 passed (native parity, old PE02, both PE03 exports)",
+  "focused_after_constant_refresh": "10 passed (identified control, export trajectory, WE11 flat/rough stepping)",
+  "full_non_slow": {
+    "passed": 659,
+    "failed": 4,
+    "xfailed": 2
+  },
+  "known_failures": [
+    "PE03 curriculum test max_level=1 vs configured 0.7 (3 tests)",
+    "nested Git metadata in references/tron1-rl-isaaclab/.git and references/walk-these-ways/.git"
+  ],
+  "mypy": "180 source files passed",
+  "ruff_existing_lint_errors": 7,
+  "ruff_existing_format_files": 11,
+  "changed_files_ruff": "passed",
+  "git_diff_check": "passed",
+  "hardware_commands_sent": false,
+  "contract_check_mnn": {
+    "passed": true,
+    "cases": 64,
+    "max_abs_action_error": 1.627206802368164e-05,
+    "rmse_action": 5.718738975701854e-06,
+    "threads": 1,
+    "hardware_commands_sent": false
+  },
+  "full_worker_smoke": {
+    "stage": "completed_candidate_not_accepted",
+    "updated_at": "2026-09-30T10:39:29.148861+00:00",
+    "training_pid": 0,
+    "worker_pid": 192028,
+    "run": "/ssd/Aar_Unilab/logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco",
+    "hardware_activated": false,
+    "simulation_accepted": false,
+    "checkpoint": "/ssd/Aar_Unilab/logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco/model_100.pt",
+    "release": "/ssd/Aar_Unilab/releases/pe03/pe03_gait_flat/2026-09-30_18-14-17_572270_mujoco_identified_100",
+    "evaluation": "/ssd/Aar_Unilab/artifacts/pe03_identified_training_test01/worker_smoke/evaluation_100",
+    "candidate": "/ssd/Aar_Unilab/artifacts/pe03_identified_training_test01/worker_smoke/candidate_100",
+    "remote_candidate": "esd@10.42.0.204:/home/esd/Pheonix/Deploy/artifacts/pe03_identified_test01/worker_smoke/candidate_100",
+    "note": "Candidate uploaded and numerically checked only. Matching policy profile and behavioral review are required before activation."
+  }
+}

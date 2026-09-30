@@ -1,0 +1,38 @@
+[
+  {
+    "case": "old_recompute",
+    "seconds": [
+      2.093260688998271,
+      2.1071105890150648,
+      2.113683912990382
+    ],
+    "median": 2.1071105890150648,
+    "pool": "<class 'unilab.base.backend.mujoco.native_batch.NativeMixedPdBatchEnvPool'>",
+    "nthread": 32,
+    "timestep": 0.0025
+  },
+  {
+    "case": "identified_no_apply",
+    "seconds": [
+      2.1179392639896832,
+      2.2011786709772423,
+      2.1224760079931
+    ],
+    "median": 2.1224760079931,
+    "pool": "<class 'unilab.base.backend.mujoco.native_batch.NativeMixedPdBatchEnvPool'>",
+    "nthread": 32,
+    "timestep": 0.0025
+  },
+  {
+    "case": "old_baseline",
+    "seconds": [
+      2.11877016001381,
+      2.110800875991117,
+      2.1296741659753025
+    ],
+    "median": 2.11877016001381,
+    "pool": "<class 'unilab.base.backend.mujoco.native_batch.NativeMixedPdBatchEnvPool'>",
+    "nthread": 32,
+    "timestep": 0.0025
+  }
+]

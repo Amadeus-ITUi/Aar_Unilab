@@ -1,0 +1,47 @@
+{
+  "focused_native_python_parity": {
+    "passed": 8,
+    "failed": 0,
+    "physics_dt_s": [
+      0.001,
+      0.002
+    ],
+    "parameters": [
+      "grouped",
+      "asymmetric_independent"
+    ],
+    "saturation": [
+      "sum_abs_pd",
+      "legacy_net_clipping"
+    ]
+  },
+  "grouped_and_expanded_api_on_real_logs": "bitwise_equal_all_9_runs",
+  "cross_leg_invariance_max_abs_rad": 5.551115123125783e-16,
+  "final_pass_converged_all_six": true,
+  "max_contacts_all_replays": 0.0,
+  "changed_python_ruff_format": "passed",
+  "changed_python_ruff_check": "passed",
+  "mypy_src_unilab": "passed_180_source_files",
+  "git_diff_check": "passed",
+  "full_non_slow_suite": {
+    "passed": 663,
+    "failed": 4,
+    "xfailed": 2,
+    "known_existing_failures": [
+      "PE03 robustness curriculum: 3 tests expect maximum 1.0 but configuration maximum is 0.7",
+      "repository independence audit: pre-existing nested Git metadata in references/tron1-rl-isaaclab/.git and references/walk-these-ways/.git"
+    ]
+  },
+  "we11_flat_compose_initialize_step": "passed_in_full_suite",
+  "we11_rough_compose_initialize_step": "passed_in_full_suite",
+  "full_ruff_format": "11 pre-existing unformatted files outside this change",
+  "full_ruff_check": "7 pre-existing lint errors outside this change",
+  "visual_review": [
+    "parameters.png",
+    "validation_calf.png"
+  ],
+  "pdf_pages": 6,
+  "training_configuration_changed_by_this_task": false,
+  "training_restarted": false,
+  "hardware_commands_sent": false
+}

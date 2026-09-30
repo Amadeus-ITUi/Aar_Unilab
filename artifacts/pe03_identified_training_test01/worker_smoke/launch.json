@@ -1,0 +1,18 @@
+{
+  "run": "/ssd/Aar_Unilab/logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco",
+  "command": "env -u PYTHONPATH PYTHONNOUSERSITE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 /ssd/conda/envs/aar_unilab/bin/python scripts/train_pe03.py +experiment=gait_identified",
+  "git_head": "bc8918bb79cd4b415d4397e9e6ffb4e1bf46b180",
+  "resume": null,
+  "max_iterations": 100,
+  "num_envs": 4096,
+  "source_files": {
+    "conf/pe03/experiment/gait_identified.yaml": "263b12567e3fe3ca588111753f3ff24f6f877060ff69be9cf666725ee193d108",
+    "conf/pe03/experiment/gait_identified_grouped.yaml": "51515cb799a7b7d7857a1e30bad87af23725e58400777c7c7343b61fb343ccac",
+    "scripts/train_pe03.py": "2985470247214eea8b667ed7d690cea0286c5768fe37ea9a7882e1c619576522",
+    "src/unilab/base/backend/mujoco/actuator_parameters.py": "6405ff86b5bd63b3c7d0d98189406233e161eea73b7e9da90b85bcf299f111c5",
+    "src/unilab/base/backend/mujoco/batched_robot.py": "ac1b7cdfc096c21daa7aa585120ada7252a0e410c8584eb4d28e54607602d178",
+    "src/unilab/envs/locomotion/pe03/gait_randomization.py": "59fdc6349472043684b88769f481eb88c08d6ca00e908529469263e6e4e139a1",
+    "src/unilab/envs/locomotion/pe03/gait_env.py": "4f4f6eb4718b8f1777da5b56ab91411fc2af9d9682d1906103260209222b2bd8",
+    "third_party/mujoco_uni_mixed_pd/identified_joint_pd.patch": "bdf10ce7a9f7d0d4eb0cc42c4f84eb5e984fc59103cda88042bebcb69e1a1646"
+  }
+}

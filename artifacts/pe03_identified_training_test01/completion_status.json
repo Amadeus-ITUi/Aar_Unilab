@@ -1,0 +1,12 @@
+{
+  "stage": "stopped_by_user",
+  "updated_at": "2026-09-30T10:47:10.882570+00:00",
+  "training_pid": 179112,
+  "worker_pid": 192576,
+  "run": "/ssd/Aar_Unilab/logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco",
+  "hardware_activated": false,
+  "last_logged_iteration": 548,
+  "latest_checkpoint": "/ssd/Aar_Unilab/logs/pe03_gait_identified_test01/2026-09-30_18-14-17_572270_mujoco/model_500.pt",
+  "active_matching_processes": [],
+  "note": "Training and automatic postprocessing stopped at user request. Existing checkpoints and logs retained."
+}

@@ -23,7 +23,11 @@ class PE03Runtime {
     clock_gait_ = contract.observation_builder == "pe03_v2";
     full_history_ = contract.observation_builder == "pe03_v4";
     const std::string expected_schema = full_history_ ? "pe03.runtime.v4" : clock_gait_ ? "pe03.runtime.v2" : "pe03.runtime.v3";
-    const auto schema = tree.get<std::string>("schema");
+    auto schema = tree.get<std::string>("schema");
+    const std::string identified_suffix = ".identified.v1";
+    const bool identified = schema.size() >= identified_suffix.size() &&
+        schema.compare(schema.size()-identified_suffix.size(), identified_suffix.size(), identified_suffix) == 0;
+    if (identified) schema.resize(schema.size()-identified_suffix.size());
     const bool limited_targets = schema == expected_schema + ".joint-limits.v1";
     if ((!clock_gait_ && !full_history_ && contract.observation_builder != "pe03_v3") ||
         (schema != expected_schema && !limited_targets)) {
@@ -79,7 +83,24 @@ class PE03Runtime {
     }
     delay_ = tree.get<int>("delay_steps");
     if (delay_ < 0 || delay_ > 10000) throw std::runtime_error("invalid PE03 action delay");
+    joint_delay_.assign(count, delay_);
+    if (identified) {
+      if (tree.get<std::string>("saturation") != "sum_abs_pd")
+        throw std::runtime_error("unsupported identified actuator saturation");
+      const auto delays = array("joint_delay_steps");
+      if (delays.size() != count) throw std::runtime_error("invalid joint delay dimensions");
+      for (std::size_t i = 0; i < count; ++i) {
+        if (!std::isfinite(delays[i]) || delays[i] < 0 || delays[i] > 10000 ||
+            delays[i] != std::floor(delays[i])) throw std::runtime_error("invalid joint delay");
+        joint_delay_[i] = static_cast<int>(delays[i]);
+      }
+      delay_ = *std::max_element(joint_delay_.begin(), joint_delay_.end());
+      sum_abs_pd_ = true;
+    } else if (tree.get_child_optional("joint_delay_steps") || tree.get_child_optional("actuator_model")) {
+      throw std::runtime_error("identified actuator parameters require identified runtime schema");
+    }
     difference_velocity_ = tree.get<bool>("position_difference");
+    if (identified && difference_velocity_) throw std::runtime_error("identified actuator requires encoder velocity");
     user_limit_ = tree.get<double>("user_torque_limit");
     q_scale_ = tree.get<double>("normalization.dof_pos");
     dq_scale_ = tree.get<double>("normalization.dof_vel");
@@ -188,7 +209,11 @@ class PE03Runtime {
     fifo_[0] = offset_;
     for (std::size_t i = 0; i < home_.size(); ++i) {
       previous_q_[i] = data->qpos[7+i];
-      const double torque = kp_[i]*(home_[i]+fifo_[delay_][i]-previous_q_[i])-kd_[i]*velocity_[i];
+      const double proportional = kp_[i]*(home_[i]+fifo_[joint_delay_[i]][i]-previous_q_[i]);
+      const double derivative = -kd_[i]*velocity_[i];
+      double torque = proportional + derivative;
+      const double demand = std::abs(proportional) + std::abs(derivative);
+      if (sum_abs_pd_ && demand > limits_[i]) torque *= limits_[i]/demand;
       data->ctrl[i] = std::clamp(torque, -limits_[i], limits_[i])/model->actuator_gear[6*i];
     }
     // Batched training passes FULLPHYSICS and starts each substep without a warmstart.
@@ -218,6 +243,8 @@ class PE03Runtime {
   std::vector<double> target_low_, target_high_;
   std::vector<std::vector<double>> fifo_;
   int delay_{0};
+  std::vector<int> joint_delay_;
+  bool sum_abs_pd_{false};
   bool difference_velocity_{true}, initialized_{false}, clock_gait_{true};
   bool full_history_{false};
   double transition_s_{0.5}, transition_elapsed_{0.5};

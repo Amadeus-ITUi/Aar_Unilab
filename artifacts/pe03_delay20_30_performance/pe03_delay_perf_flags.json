@@ -1,0 +1,97 @@
+[
+  {
+    "case": "legacy_baseline",
+    "measurements": [
+      {
+        "env_seconds": 1.1234293169982266,
+        "backend_seconds": 0.6742709440295584
+      },
+      {
+        "env_seconds": 1.1139684460067656,
+        "backend_seconds": 0.6672358819050714
+      },
+      {
+        "env_seconds": 1.1238658080110326,
+        "backend_seconds": 0.6666150230739731
+      }
+    ],
+    "median_env_seconds": 1.1234293169982266,
+    "median_backend_seconds": 0.6672358819050714
+  },
+  {
+    "case": "legacy_sum_abs",
+    "measurements": [
+      {
+        "env_seconds": 1.1478152000054251,
+        "backend_seconds": 0.6869264770648442
+      },
+      {
+        "env_seconds": 1.1375040060083847,
+        "backend_seconds": 0.6786314689670689
+      },
+      {
+        "env_seconds": 1.147131340985652,
+        "backend_seconds": 0.6875152059365064
+      }
+    ],
+    "median_env_seconds": 1.147131340985652,
+    "median_backend_seconds": 0.6869264770648442
+  },
+  {
+    "case": "legacy_joint_delay",
+    "measurements": [
+      {
+        "env_seconds": 1.1490171500190627,
+        "backend_seconds": 0.6683136980573181
+      },
+      {
+        "env_seconds": 1.1592512580100447,
+        "backend_seconds": 0.6731211490987334
+      },
+      {
+        "env_seconds": 1.1545095820038114,
+        "backend_seconds": 0.672018845070852
+      }
+    ],
+    "median_env_seconds": 1.1545095820038114,
+    "median_backend_seconds": 0.672018845070852
+  },
+  {
+    "case": "legacy_qvel",
+    "measurements": [
+      {
+        "env_seconds": 1.1254072570009157,
+        "backend_seconds": 0.676024327025516
+      },
+      {
+        "env_seconds": 1.1275716119853314,
+        "backend_seconds": 0.6709702790249139
+      },
+      {
+        "env_seconds": 1.1259205650130752,
+        "backend_seconds": 0.6729653299262282
+      }
+    ],
+    "median_env_seconds": 1.1259205650130752,
+    "median_backend_seconds": 0.6729653299262282
+  },
+  {
+    "case": "legacy_all_identified_control",
+    "measurements": [
+      {
+        "env_seconds": 1.1255069609906059,
+        "backend_seconds": 0.667755548027344
+      },
+      {
+        "env_seconds": 1.129349174007075,
+        "backend_seconds": 0.6653223459725268
+      },
+      {
+        "env_seconds": 1.1354294729826506,
+        "backend_seconds": 0.667760775948409
+      }
+    ],
+    "median_env_seconds": 1.129349174007075,
+    "median_backend_seconds": 0.667755548027344
+  }
+]

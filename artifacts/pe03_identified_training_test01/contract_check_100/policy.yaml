@@ -1,0 +1,77 @@
+format_version: 1
+contract_id: gait_v4
+contract_version: 1
+legacy_profile_id: point_foot
+joint_order:
+- L_hip_
+- L_thigh_
+- L_calf_
+- R_hip_
+- R_thigh_
+- R_calf_
+default_position_rad:
+- 0.02315985984147312
+- -0.3123935666467531
+- -1.254128379904943
+- -0.02315985984147296
+- 0.312405637654568
+- 1.254112635692029
+kp:
+- 4.3
+- 4.3
+- 4.9
+- 4.3
+- 4.3
+- 4.9
+kd:
+- 0.34
+- 0.34
+- 0.24
+- 0.34
+- 0.34
+- 0.24
+training_position_min_rad:
+- -0.2
+- -1.44
+- -2.02
+- -1.5
+- 0.0
+- 0.0
+training_position_max_rad:
+- 1.5
+- 0.0
+- 0.0
+- 0.2
+- 1.44
+- 2.02
+observation:
+  frame_size: 38
+  history_length: 30
+  history_layout: frame_major_oldest_to_newest
+  velocity_scale: 0.1
+  clip: 100.0
+action:
+  output_tensor: action
+  clip: 100.0
+  scale: 0.25
+  user_torque_limit_nm: 14.0
+  torque_envelope_mean_kp: 4.5
+  torque_envelope_mean_kd: 0.3066666666666667
+command:
+  input_tensor: command
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 0.5
+  - 1.0
+  - 10.0
+  enable_lateral: true
+  gait_frequency_hz: 2.0
+  support_fraction: 0.6
+  clearance_m: 0.03
+runtime:
+  observation_tensor: observation
+  history_tensor: observation_history
+  reset_phase: 0.05
+  policy_dt: 0.02

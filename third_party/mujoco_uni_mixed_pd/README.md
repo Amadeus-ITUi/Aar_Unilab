@@ -25,6 +25,15 @@ entry point and both WE11 controllers retain their existing behavior.
 `forward_controlled` also accepts selected environment IDs for sparse resets.
 See `docs/PE04_TRAINING_PERFORMANCE.md` for parity and timing results.
 
+PE03's opt-in identified experiment uses `identified_joint_pd.patch`. The same
+joint-position entry point accepts either the legacy `(batch,)` delay or a
+`(batch, joint)` delay matrix. `sum_abs_pd=true` scales P and D together when
+`abs(P)+abs(D)` exceeds the joint effort limit, before applying the simulated
+torque-efficiency factor and final effort clip. This matches the measured
+firmware's zero-feedforward position command. Defaults retain legacy behavior.
+The `has_identified_joint_pd` capability prevents silently using a stale binary;
+the Python backend provides the same fallback semantics.
+
 Build it in the active UniLab environment:
 
 ```bash
